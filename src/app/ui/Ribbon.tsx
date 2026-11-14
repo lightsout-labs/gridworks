@@ -1,10 +1,15 @@
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Tabs from '@radix-ui/react-tabs';
 import {
+  ChevronDown,
+  ClipboardPaste,
+  Copy,
   Download,
   FolderOpen,
   SquareFunction,
   Moon,
   Redo2,
+  Scissors,
   Sun,
   Table2,
   Undo2,
@@ -19,6 +24,7 @@ import {
 import type { Workbook } from '../../engine/workbook';
 import { MAC } from '../grid/Grid';
 import type { View } from '../grid/view';
+import { PASTE_SPECIAL, useCopied } from './CellMenu';
 import { Tooltip, useTranslation } from './controls';
 import type { Language } from './i18n';
 import styles from './Shell.module.css';
@@ -108,6 +114,9 @@ export function Ribbon({
         <Group label={t('undo')}>
           <History workbook={workbook} view={view} />
         </Group>
+        <Group label={t('clipboard')}>
+          <Clipboard view={view} />
+        </Group>
       </Tabs.Content>
       <Tabs.Content className={styles.ribbonPanel} value="formulas">
         <Group label={t('formulas.library')}>
@@ -196,6 +205,70 @@ function History({ workbook, view }: { workbook: Workbook; view: View }) {
         tooltip={`${t('redo.tooltip')} (${key}Y)`}
         disabled={!canRedo}
         onRun={() => view.redo()}
+      />
+    </>
+  );
+}
+
+/** Paste, paste special, cut and copy. */
+function Clipboard({ view }: { view: View }) {
+  const t = useTranslation();
+  const copied = useCopied(view);
+  const key = MAC ? '⌘' : 'Ctrl+';
+  return (
+    <>
+      <Command
+        icon={ClipboardPaste}
+        label={t('paste')}
+        tooltip={`${t('paste.tooltip')} (${key}V)`}
+        disabled={!copied}
+        onRun={() => view.paste()}
+        labeled
+      />
+      <DropdownMenu.Root>
+        <Tooltip text={t('paste.special.tooltip')}>
+          <DropdownMenu.Trigger asChild>
+            <button
+              type="button"
+              className={styles.button}
+              aria-label={t('paste.special')}
+              disabled={!copied || copied.cut}
+            >
+              <ChevronDown size={ICON_SIZE} aria-hidden />
+            </button>
+          </DropdownMenu.Trigger>
+        </Tooltip>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content
+            className={styles.menu}
+            align="start"
+            sideOffset={4}
+          >
+            {PASTE_SPECIAL.map(([only, label]) => (
+              <DropdownMenu.Item
+                key={only}
+                className={styles.menuItem}
+                onSelect={() => view.paste(only)}
+              >
+                {t(label)}
+              </DropdownMenu.Item>
+            ))}
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
+      <Command
+        icon={Scissors}
+        label={t('cut')}
+        tooltip={`${t('cut.tooltip')} (${key}X)`}
+        disabled={false}
+        onRun={() => view.cut()}
+      />
+      <Command
+        icon={Copy}
+        label={t('copy')}
+        tooltip={`${t('copy.tooltip')} (${key}C)`}
+        disabled={false}
+        onRun={() => view.copy()}
       />
     </>
   );

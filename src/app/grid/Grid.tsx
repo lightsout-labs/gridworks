@@ -1,3 +1,4 @@
+import * as ContextMenu from '@radix-ui/react-context-menu';
 import {
   useEffect,
   useLayoutEffect,
@@ -5,6 +6,7 @@ import {
   useSyncExternalStore,
   type KeyboardEvent,
   type MouseEvent,
+  type ReactNode,
 } from 'react';
 import {
   cellName,
@@ -38,18 +40,30 @@ import type { Entry, View, ViewState } from './view';
 const FONT_SIZE = 13;
 export const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
 
+/** How often the border of the cells copied moves, in milliseconds. */
+const MARCH = 100;
+
 /**
  * The cells of the sheet that the view shows, drawn on a canvas that stays
  * in place while the element around it scrolls over the whole sheet. The
- * mouse and the keyboard select and edit cells as in Excel.
+ * mouse and the keyboard select and edit cells as in Excel. Right-clicking
+ * a cell opens `menu`, the content of a context menu.
  */
-export function Grid({ workbook, view }: { workbook: Workbook; view: View }) {
+export function Grid({
+  workbook,
+  view,
+  menu,
+}: {
+  workbook: Workbook;
+  view: View;
+  menu: ReactNode;
+}) {
   const scroller = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   /** What a drag selects, or the corner of the range it picks for a formula. */
   const drag = useRef<Target['kind'] | CellPosition | null>(null);
   const state = useSyncExternalStore(view.subscribe, () => view.state);
-  const { sheet, selection, entry, zoom } = state;
+  const { sheet, selection, entry, zoom, copied } = state;
   const { active } = selection;
   const activeDisplay = useSyncExternalStore(
     workbook.subscribe.bind(workbook),
@@ -94,7 +108,12 @@ export function Grid({ workbook, view }: { workbook: Workbook; view: View }) {
     theme.observe(document.documentElement, {
       attributeFilter: ['data-theme'],
     });
+    // The border of the cells copied moves while they are shown.
+    const march = window.setInterval(() => {
+      if (view.state.copied?.sheet === view.state.sheet) paint();
+    }, MARCH);
     return () => {
+      window.clearInterval(march);
       unsubscribeWorkbook();
       unsubscribeView();
       element.removeEventListener('scroll', paint);
@@ -217,6 +236,31 @@ export function Grid({ workbook, view }: { workbook: Workbook; view: View }) {
     scroller.current!.focus();
   };
 
+  // Right-clicking a cell outside the selection selects it first, as in
+  // Excel; the headers have no menu yet.
+  const onContextMenu = (event: MouseEvent) => {
+    const bounds = canvas.current!.getBoundingClientRect();
+    const target = hitTest(
+      event.clientX - bounds.left,
+      event.clientY - bounds.top,
+      viewport(),
+    );
+    if (target.kind !== 'cell') {
+      event.preventDefault();
+      return;
+    }
+    const { row, col } = target;
+    const inside = view.state.selection.ranges.some(
+      (each) =>
+        row >= each.top &&
+        row <= each.bottom &&
+        col >= each.left &&
+        col <= each.right,
+    );
+    if (!inside)
+      view.select(pick(view.state.selection, target, 'replace', topLeft()));
+  };
+
   const onDoubleClick = (event: MouseEvent) => {
     const bounds = canvas.current!.getBoundingClientRect();
     const target = hitTest(
@@ -285,49 +329,66 @@ export function Grid({ workbook, view }: { workbook: Workbook; view: View }) {
 
   const sheetArea = sheetSize(zoom);
   const editor = cellRect(active, { scrollX: 0, scrollY: 0, zoom });
+  const shownCopy =
+    copied && copied.sheet === sheet ? rangeName(copied.range) : undefined;
   return (
-    <div
-      ref={scroller}
-      className={styles.grid}
-      tabIndex={0}
-      onKeyDown={onKeyDown}
-    >
-      <div style={{ width: sheetArea.width, height: sheetArea.height }}>
-        <canvas
-          ref={canvas}
-          className={styles.canvas}
-          onMouseDown={onMouseDown}
-          onDoubleClick={onDoubleClick}
-        />
-      </div>
-      {entry !== null && entry.sheet === sheet && (
-        <FormulaEditor
-          view={view}
-          place="cell"
-          label={cellName(active.row, active.col)}
-          className={styles.editorBox}
-          inputClassName={styles.editor}
-          mirrorClassName={styles.editorMirror}
-          style={{
-            left: editor.x,
-            top: editor.y,
-            width: editor.width + 1,
-            height: editor.height + 1,
-            fontSize: FONT_SIZE * zoom,
-          }}
-        />
-      )}
-      <div role="status" className={styles.announcement}>
-        {`${cellName(active.row, active.col)} ${activeDisplay}`.trim()}
-      </div>
-    </div>
+    <ContextMenu.Root>
+      <ContextMenu.Trigger asChild>
+        <div
+          ref={scroller}
+          className={styles.grid}
+          tabIndex={0}
+          onKeyDown={onKeyDown}
+          data-copied={shownCopy}
+        >
+          <div style={{ width: sheetArea.width, height: sheetArea.height }}>
+            <canvas
+              ref={canvas}
+              className={styles.canvas}
+              onMouseDown={onMouseDown}
+              onDoubleClick={onDoubleClick}
+              onContextMenu={onContextMenu}
+            />
+          </div>
+          {entry !== null && entry.sheet === sheet && (
+            <FormulaEditor
+              view={view}
+              place="cell"
+              label={cellName(active.row, active.col)}
+              className={styles.editorBox}
+              inputClassName={styles.editor}
+              mirrorClassName={styles.editorMirror}
+              style={{
+                left: editor.x,
+                top: editor.y,
+                width: editor.width + 1,
+                height: editor.height + 1,
+                fontSize: FONT_SIZE * zoom,
+              }}
+            />
+          )}
+          <div role="status" className={styles.announcement}>
+            {`${cellName(active.row, active.col)} ${activeDisplay}`.trim()}
+          </div>
+        </div>
+      </ContextMenu.Trigger>
+      {menu}
+    </ContextMenu.Root>
   );
+}
+
+/** The name of a range, as in `A1:B2`, or of its one cell. */
+function rangeName({ top, left, bottom, right }: Range): string {
+  const start = cellName(top, left);
+  return isSingleCell({ top, left, bottom, right })
+    ? start
+    : `${start}:${cellName(bottom, right)}`;
 }
 
 function draw(
   canvas: HTMLCanvasElement,
   workbook: Workbook,
-  { sheet, selection, entry }: ViewState,
+  { sheet, selection, entry, copied }: ViewState,
   viewport: Viewport,
   width: number,
   height: number,
@@ -470,6 +531,17 @@ function draw(
     const box = rect(active);
     context.lineWidth = 1;
     context.strokeRect(box.x + 0.5, box.y + 0.5, box.width, box.height);
+  }
+
+  // The cells copied, with a border that moves.
+  if (copied && copied.sheet === sheet) {
+    const box = rangeRect(copied.range);
+    context.strokeStyle = color('--accent');
+    context.lineWidth = 2;
+    context.setLineDash([4, 4]);
+    context.lineDashOffset = -Math.floor(performance.now() / MARCH) % 8;
+    context.strokeRect(box.x + 1, box.y + 1, box.width - 1, box.height - 1);
+    context.setLineDash([]);
   }
   context.restore();
 

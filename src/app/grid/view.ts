@@ -58,6 +58,15 @@ export interface ViewState {
   readonly zoom: number;
   /** Whether End was pressed, so that the next arrow jumps as Ctrl+arrow. */
   readonly endMode: boolean;
+  /** The cells copied or cut, to paste, or `null` when there are none. */
+  readonly copied: Copied | null;
+}
+
+/** A range copied or cut, which a moving border shows until it is forgotten. */
+export interface Copied {
+  readonly sheet: string;
+  readonly range: Range;
+  readonly cut: boolean;
 }
 
 /**
@@ -70,6 +79,8 @@ export class View {
   private readonly listeners = new Set<() => void>();
   /** The sheets in tab order as of the last change to the workbook. */
   private sheetIds: string[];
+  /** Whether a paste is running, which keeps what was copied. */
+  private pasting = false;
 
   /**
    * Make it right after the workbook, so that it hears of each change
@@ -77,13 +88,18 @@ export class View {
    */
   constructor(private readonly workbook: Workbook) {
     this.sheetIds = workbook.sheets.map((sheet) => sheet.id);
-    workbook.subscribe(() => this.keepSheet());
+    workbook.subscribe(() => {
+      this.keepSheet();
+      // Any other change forgets what was copied, as in Excel.
+      if (!this.pasting && this.current.copied) this.change({ copied: null });
+    });
     this.current = {
       sheet: workbook.sheets[0]!.id,
       selection: single(START),
       entry: null,
       zoom: 1,
       endMode: false,
+      copied: null,
     };
   }
 
@@ -272,6 +288,49 @@ export class View {
   }
 
   /**
+   * Copies the selected range, the last one, to paste, after committing a
+   * waiting entry.
+   */
+  copy(): void {
+    this.copyRange(false);
+  }
+
+  /** Cuts the selected range, to move it with the next paste. */
+  cut(): void {
+    this.copyRange(true);
+  }
+
+  /**
+   * Pastes the cells copied or cut at the selected range, after committing
+   * a waiting entry, and selects them. `only` pastes the values, the
+   * formulas or the formats of a copy. Cut cells are pasted once.
+   */
+  paste(only?: 'values' | 'formulas' | 'formats'): void {
+    const { copied } = this.current;
+    if (!copied) return;
+    this.commit();
+    const { sheet, selection } = this.current;
+    const target = selection.ranges[selection.ranges.length - 1]!;
+    this.pasting = true;
+    try {
+      const change = this.workbook.execute({
+        type: 'paste',
+        sheet,
+        target,
+        source: { sheet: copied.sheet, range: copied.range },
+        ...(copied.cut ? { cut: true } : only && { only }),
+      });
+      this.change({
+        selection: covering([change.ranges[0]!]),
+        endMode: false,
+        ...(copied.cut && { copied: null }),
+      });
+    } finally {
+      this.pasting = false;
+    }
+  }
+
+  /**
    * Undoes the last change, abandoning the entry, and selects the cells it
    * changed.
    */
@@ -284,10 +343,17 @@ export class View {
     this.reverse(() => this.workbook.redo());
   }
 
-  /** Abandons the entry, and shows its cell's sheet again. */
+  /**
+   * Abandons the entry, and shows its cell's sheet again; without an entry,
+   * forgets what was copied.
+   */
   cancel(): void {
     const { entry, sheet } = this.current;
-    this.change({ entry: null, sheet: entry?.sheet ?? sheet });
+    this.change(
+      entry
+        ? { entry: null, sheet: entry.sheet }
+        : { entry: null, sheet, copied: null },
+    );
   }
 
   /** Sets the zoom, kept between 50% and 200% and in whole percents. */
@@ -296,6 +362,13 @@ export class View {
       Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom)) * 100,
     );
     this.change({ zoom: percent / 100 });
+  }
+
+  private copyRange(cut: boolean): void {
+    this.commit();
+    const { sheet, selection } = this.current;
+    const range = selection.ranges[selection.ranges.length - 1]!;
+    this.change({ copied: { sheet, range, cut } });
   }
 
   private edited({ text, caret }: Edit): void {

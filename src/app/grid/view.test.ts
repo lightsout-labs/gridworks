@@ -21,6 +21,7 @@ describe('View', () => {
       entry: null,
       zoom: 1,
       endMode: false,
+      copied: null,
     });
   });
 
@@ -416,5 +417,118 @@ describe('View', () => {
     unsubscribe();
     view.type('1');
     expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  describe('cut, copy and paste', () => {
+    const range = (top: number, left: number, bottom = top, right = left) => ({
+      top,
+      left,
+      bottom,
+      right,
+    });
+    const selecting = (
+      view: View,
+      top: number,
+      left: number,
+      bottom = top,
+      right = left,
+    ) =>
+      view.select({
+        ...single({ row: top, col: left }),
+        ranges: [range(top, left, bottom, right)],
+        focus: { row: bottom, col: right },
+      });
+
+    it('copies the selection, and pastes it at the selection, which then holds the cells pasted', () => {
+      const { workbook, view, sheet } = setup();
+      workbook.execute({ type: 'setCell', sheet, row: 0, col: 0, input: '1' });
+      workbook.execute({
+        type: 'setCell',
+        sheet,
+        row: 1,
+        col: 0,
+        input: '=A1+1',
+      });
+      selecting(view, 0, 0, 1, 0);
+      view.copy();
+      expect(view.state.copied).toEqual({
+        sheet,
+        range: range(0, 0, 1, 0),
+        cut: false,
+      });
+      view.select(single({ row: 4, col: 2 }));
+      view.paste();
+      expect(workbook.cell(sheet, 5, 2).formula).toBe('=C5+1');
+      expect(view.state.selection.ranges).toEqual([range(4, 2, 5, 2)]);
+      // A copy can be pasted again, here as values only.
+      view.select(single({ row: 0, col: 4 }));
+      view.paste('values');
+      expect(workbook.cell(sheet, 1, 4)).toMatchObject({
+        value: 2,
+        formula: null,
+      });
+      expect(view.state.copied).not.toBeNull();
+    });
+
+    it('fills a larger selection with one cell copied', () => {
+      const { workbook, view, sheet } = setup();
+      workbook.execute({ type: 'setCell', sheet, row: 0, col: 0, input: 'x' });
+      view.copy();
+      selecting(view, 2, 1, 4, 2);
+      view.paste();
+      expect(workbook.cell(sheet, 4, 2).value).toBe('x');
+      expect(view.state.selection.ranges).toEqual([range(2, 1, 4, 2)]);
+    });
+
+    it('moves cut cells once, to another sheet too', () => {
+      const { workbook, view, sheet } = setup();
+      workbook.execute({ type: 'setCell', sheet, row: 0, col: 0, input: '7' });
+      workbook.execute({ type: 'addSheet', index: 1 });
+      const other = workbook.sheets[1]!.id;
+      view.cut();
+      expect(view.state.copied).toMatchObject({ cut: true });
+      view.showSheet(other);
+      view.select(single({ row: 1, col: 1 }));
+      view.paste();
+      expect(workbook.cell(sheet, 0, 0).value).toBeNull();
+      expect(workbook.cell(other, 1, 1).value).toBe(7);
+      expect(view.state.copied).toBeNull();
+      view.paste();
+      expect(workbook.canUndo).toBe(true);
+      view.undo();
+      expect(workbook.cell(sheet, 0, 0).value).toBe(7);
+    });
+
+    it('forgets what was copied on Escape, on another change, and on undo', () => {
+      const { workbook, view, sheet } = setup();
+      view.copy();
+      view.cancel();
+      expect(view.state.copied).toBeNull();
+
+      view.copy();
+      view.type('1');
+      // An entry being typed keeps it, until it changes a cell.
+      view.cancel();
+      expect(view.state.copied).not.toBeNull();
+      view.type('1');
+      view.commit();
+      expect(view.state.copied).toBeNull();
+
+      view.copy();
+      view.undo();
+      expect(view.state.copied).toBeNull();
+      expect(workbook.cell(sheet, 0, 0).value).toBeNull();
+    });
+
+    it('commits the entry before copying or pasting', () => {
+      const { workbook, view, sheet } = setup();
+      view.type('5');
+      view.copy();
+      expect(workbook.cell(sheet, 0, 0).value).toBe(5);
+      view.select(single({ row: 1, col: 0 }));
+      view.type('6');
+      view.paste();
+      expect(workbook.cell(sheet, 1, 0).value).toBe(5);
+    });
   });
 });

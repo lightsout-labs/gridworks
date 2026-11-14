@@ -391,6 +391,12 @@
   color: var(--accent);
 }
 
+.menuEnd {
+  margin-left: auto;
+  padding-left: 16px;
+  color: var(--muted);
+}
+
 .swatch {
   box-sizing: border-box;
   width: 14px;

@@ -520,7 +520,7 @@ Notes:
 
 ## S12: Cut, copy and paste inside Gridworks
 
-Status: Todo
+Status: In progress
 
 Acceptance criteria:
 - Ctrl/Cmd+C, X and V, the ribbon and the cell context menu copy, cut and
