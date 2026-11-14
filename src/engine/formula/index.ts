@@ -100,9 +100,9 @@ export interface Context {
 }
 
 /**
- * A change to the workbook that references follow: a sheet renamed, or the
+ * A change to the workbook that references follow: a sheet renamed; the
  * formula moved by rows and columns, which moves its relative references
- * as Excel's shared formulas and copies do.
+ * as Excel's shared formulas and copies do; or cells cut and pasted.
  */
 export type Move =
   | {
@@ -110,7 +110,24 @@ export type Move =
       readonly from: string;
       readonly to: string;
     }
-  | { readonly type: 'offset'; readonly rows: number; readonly cols: number };
+  | { readonly type: 'offset'; readonly rows: number; readonly cols: number }
+  | {
+      /**
+       * The cells of `range` on the sheet named `sheet` moved by `rows` and
+       * `cols` to the sheet named `to`. A reference to cells all among them
+       * follows them, absolute or not; any other stays. `own` is the sheet
+       * of the formula, and `newOwn` the one it is on after the move, which
+       * differs when the formula is among the cells moved to another sheet.
+       */
+      readonly type: 'moveCells';
+      readonly sheet: string;
+      readonly range: Area;
+      readonly to: string;
+      readonly rows: number;
+      readonly cols: number;
+      readonly own: string;
+      readonly newOwn: string;
+    };
 
 /** A reference as written in a formula. */
 export type ReferenceAst = Extract<Ast, { type: 'range' }>;
@@ -606,7 +623,11 @@ function corner({ row, col, rowAbsolute, colAbsolute }: Corner): string {
  */
 export function shift(ast: Ast, move: Move): Ast {
   const range =
-    move.type === 'offset' ? offset(move) : renamed(move.from, move.to);
+    move.type === 'offset'
+      ? offset(move)
+      : move.type === 'moveCells'
+        ? movedCells(move)
+        : renamed(move.from, move.to);
   const visit = (node: Ast): Ast => {
     switch (node.type) {
       case 'range':
@@ -667,6 +688,52 @@ function offset({ rows, cols }: { rows: number; cols: number }) {
     const end = node.end && move(node.end);
     if (!start || end === null) return { type: 'error', value: error('#REF!') };
     return { ...node, start, ...(end && { end }) };
+  };
+}
+
+/** Moves references to cells cut and pasted, naming sheets as needed. */
+function movedCells(move: Extract<Move, { type: 'moveCells' }>) {
+  const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+  const { range, rows, cols, own, newOwn } = move;
+  return (node: ReferenceAst): Ast => {
+    const target = node.sheet ?? own;
+    const area = areaOf(node);
+    const inside =
+      same(target, move.sheet) &&
+      area.top >= range.top &&
+      area.bottom <= range.bottom &&
+      area.left >= range.left &&
+      area.right <= range.right;
+    if (!inside) {
+      // A formula moved to another sheet keeps reading its old one.
+      return node.sheet === undefined && !same(own, newOwn)
+        ? { ...node, sheet: own }
+        : node;
+    }
+    const corner = (corner: Corner): Corner | null => {
+      const row = corner.row === null ? null : corner.row + rows;
+      const col = corner.col === null ? null : corner.col + cols;
+      const fits =
+        (row === null || (row >= 0 && row < SHEET_ROWS)) &&
+        (col === null || (col >= 0 && col < SHEET_COLUMNS));
+      return fits ? { ...corner, row, col } : null;
+    };
+    const start = corner(node.start);
+    const end = node.end && corner(node.end);
+    if (!start || end === null) return { type: 'error', value: error('#REF!') };
+    // Within a sheet, the sheet is written as before; across sheets, when
+    // the cells are on another sheet than the formula.
+    const sheet = same(move.sheet, move.to)
+      ? node.sheet
+      : same(move.to, newOwn)
+        ? undefined
+        : move.to;
+    return {
+      type: 'range',
+      ...(sheet !== undefined && { sheet }),
+      start,
+      ...(end && { end }),
+    };
   };
 }
 

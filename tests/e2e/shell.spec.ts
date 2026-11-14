@@ -243,11 +243,12 @@ test.describe('the controls', () => {
 
   test('each have a tooltip', async ({ page }) => {
     await openApp(page);
-    // Two changes and an undo enable both Undo and Redo.
+    // Two changes and an undo enable both Undo and Redo, and a copy Paste.
     await clickCell(page, 0, 0);
     await enter(page, '1');
     await enter(page, '2');
     await page.getByRole('button', { name: 'Undo' }).click();
+    await page.keyboard.press('ControlOrMeta+c');
     const check = async (
       tooltips: readonly (readonly [
         'tab' | 'button' | 'slider' | 'textbox',
@@ -257,7 +258,7 @@ test.describe('the controls', () => {
       buttons: number,
     ) => {
       for (const [role, name, tooltip] of tooltips) {
-        await page.getByRole(role, { name }).hover();
+        await page.getByRole(role, { name, exact: true }).hover();
         // By name, as the tooltip before may still be fading out.
         await expect(
           page.getByRole('tooltip', { name: tooltip }),
@@ -283,9 +284,29 @@ test.describe('the controls', () => {
         ['tab', 'View', 'Appearance and language'],
         ['button', 'Undo', /^Undo the last change \((Ctrl\+|⌘)Z\)$/],
         ['button', 'Redo', /^Redo the last change undone \((Ctrl\+|⌘)Y\)$/],
+        [
+          'button',
+          'Paste',
+          /^Paste what was cut or copied at the selection \((Ctrl\+|⌘)V\)$/,
+        ],
+        [
+          'button',
+          'Paste special',
+          'Paste only the values, formulas or formatting',
+        ],
+        [
+          'button',
+          'Cut',
+          /^Cut the selection, to move it where you paste \((Ctrl\+|⌘)X\)$/,
+        ],
+        [
+          'button',
+          'Copy',
+          /^Copy the selection, to paste it elsewhere \((Ctrl\+|⌘)C\)$/,
+        ],
         ...statusBar,
       ],
-      5,
+      9,
     );
     await page.getByRole('tab', { name: 'View' }).click();
     await clickCell(page, 5, 5); // Away from the tab and its tooltip.

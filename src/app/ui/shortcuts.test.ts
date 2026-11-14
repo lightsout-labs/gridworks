@@ -19,6 +19,13 @@ describe('shortcut', () => {
     expect(shortcut(press('Z', { ctrl: true }), false)).toBe('undo');
   });
 
+  it('copies with Ctrl+C, cuts with Ctrl+X and pastes with Ctrl+V', () => {
+    expect(shortcut(press('c', { ctrl: true }), false)).toBe('copy');
+    expect(shortcut(press('x', { ctrl: true }), false)).toBe('cut');
+    expect(shortcut(press('v', { ctrl: true }), false)).toBe('paste');
+    expect(shortcut(press('v', { meta: true }), true)).toBe('paste');
+  });
+
   it('uses Cmd in place of Ctrl on a Mac', () => {
     expect(shortcut(press('z', { meta: true }), true)).toBe('undo');
     expect(shortcut(press('y', { meta: true }), true)).toBe('redo');
@@ -28,7 +35,7 @@ describe('shortcut', () => {
 
   it('ignores other keys and other modifiers', () => {
     expect(shortcut(press('z'), false)).toBeNull();
-    expect(shortcut(press('x', { ctrl: true }), false)).toBeNull();
+    expect(shortcut(press('q', { ctrl: true }), false)).toBeNull();
     expect(shortcut(press('z', { ctrl: true, alt: true }), false)).toBeNull();
     expect(shortcut(press('y', { ctrl: true, shift: true }), false)).toBeNull();
   });

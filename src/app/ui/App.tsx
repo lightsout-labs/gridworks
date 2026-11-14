@@ -6,6 +6,7 @@ import { Grid, MAC } from '../grid/Grid';
 import { View } from '../grid/view';
 import type { Platform } from '../platform';
 import { restoreWorkbook, startAutosave } from './autosave';
+import { CellMenu } from './CellMenu';
 import { Translation } from './controls';
 import { droppedMessage, workbookName } from './files';
 import { startingLanguage, translator, type Language } from './i18n';
@@ -99,8 +100,8 @@ export function App({ platform }: { platform: Platform }) {
     };
   }, [platform, open]);
 
-  // Undo and redo work wherever the focus is, but an entry being typed
-  // undoes its own typing.
+  // Undo, redo, cut, copy and paste work wherever the focus is, but an
+  // entry being typed undoes, copies and pastes its own text.
   useEffect(() => {
     if (!open) return;
     const { view } = open;
@@ -209,7 +210,7 @@ export function App({ platform }: { platform: Platform }) {
           )}
           <FormulaBar {...open} />
           <main className={styles.grid}>
-            <Grid {...open} />
+            <Grid {...open} menu={<CellMenu view={open.view} />} />
           </main>
           <SheetTabs {...open} />
           <StatusBar {...open} />

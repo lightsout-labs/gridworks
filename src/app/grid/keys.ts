@@ -11,7 +11,7 @@ export type EntryMode = 'enter' | 'edit';
 export type KeyAction =
   /** Moves the selection, committing the entry first. */
   | { type: 'navigate'; navigation: Navigation }
-  /** Abandons the entry. */
+  /** Abandons the entry, or without one forgets what was copied. */
   | { type: 'cancel' }
   /** Edits the contents of the active cell, or switches to Edit mode. */
   | { type: 'edit' }
@@ -42,7 +42,7 @@ export function keyAction(
   const back = shift ? -1 : 1;
   if (plain && key === 'Enter') return step(back, 0);
   if (plain && key === 'Tab') return step(0, back);
-  if (key === 'Escape') return mode ? { type: 'cancel' } : null;
+  if (key === 'Escape') return { type: 'cancel' };
   if (key === 'F2') return mode === 'edit' ? null : { type: 'edit' };
   if (key === 'F4') return mode ? { type: 'cycleReference' } : null;
   if (mode === 'edit') return null;

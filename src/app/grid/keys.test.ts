@@ -36,10 +36,10 @@ describe('keyAction', () => {
     },
   );
 
-  it('cancels an entry with Escape', () => {
+  it('cancels an entry, or else what was copied, with Escape', () => {
     expect(action(press('Escape'), 'enter')).toEqual({ type: 'cancel' });
     expect(action(press('Escape'), 'edit')).toEqual({ type: 'cancel' });
-    expect(action(press('Escape'), null)).toBeNull();
+    expect(action(press('Escape'), null)).toEqual({ type: 'cancel' });
   });
 
   it('cycles the reference at the caret of an entry with F4', () => {

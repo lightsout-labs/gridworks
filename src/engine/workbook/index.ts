@@ -1,6 +1,15 @@
 import { editText, formatValue, GENERAL, parseInput } from '../format';
-import { columnName, parse, print, shift, type Ast } from '../formula';
-import type { Value } from '../value';
+import {
+  columnName,
+  parse,
+  print,
+  shift,
+  SHEET_COLUMNS,
+  SHEET_ROWS,
+  type Ast,
+  type Move,
+} from '../formula';
+import { isError, type Value } from '../value';
 import {
   Calculation,
   emptySheet,
@@ -42,15 +51,32 @@ export type Command =
       readonly sheet: string;
       readonly ranges: readonly Range[];
     }
+  | Restore
   | {
       /**
-       * Makes ranges hold exactly the cells listed, with their contents and
-       * styles, and nothing else: how the workbook undoes and redoes.
+       * Copies the cells of a range, or moves them when `cut`, to a sheet.
+       * A target made of whole copies of the source is filled with them;
+       * any other gets one copy at its top left, and a cut always one. A
+       * copy moves the relative references of its formulas; a cut moves
+       * every reference to its cells. `only` pastes the values (formula
+       * results among them), the formulas and values, or the formats,
+       * keeping the rest of the target. It gives the cells pasted first,
+       * and listeners get it as a `group`.
        */
-      readonly type: 'restore';
+      readonly type: 'paste';
       readonly sheet: string;
-      readonly ranges: readonly Range[];
-      readonly cells: readonly CellContents[];
+      readonly target: Range;
+      readonly source: { readonly sheet: string; readonly range: Range };
+      readonly cut?: boolean;
+      readonly only?: 'values' | 'formulas' | 'formats';
+    }
+  | {
+      /**
+       * Restores of different cells made as one change: how a paste is
+       * recorded, undone and redone. It gives the cells of the first.
+       */
+      readonly type: 'group';
+      readonly restores: readonly Restore[];
     }
   | {
       /**
@@ -92,6 +118,17 @@ export type SheetNameProblem = 'empty' | 'tooLong' | 'character' | 'taken';
 
 /** Excel's limit on the length of a sheet name. */
 const SHEET_NAME_LIMIT = 31;
+
+/**
+ * Makes ranges hold exactly the cells listed, with their contents and
+ * styles, and nothing else: how the workbook undoes and redoes.
+ */
+export interface Restore {
+  readonly type: 'restore';
+  readonly sheet: string;
+  readonly ranges: readonly Range[];
+  readonly cells: readonly CellContents[];
+}
 
 /** A cell's contents and style, as a `restore` command puts them back. */
 export interface CellContents {
@@ -186,7 +223,7 @@ export interface Snapshot {
   readonly styles?: Style[];
 }
 
-type Restore = Extract<Command, { type: 'restore' }>;
+type Paste = Extract<Command, { type: 'paste' }>;
 
 /** The name of a cell, as in `A1`. */
 export function cellName(row: number, col: number): string {
@@ -431,6 +468,25 @@ export class Workbook {
       applied = this.changeCells(command);
       this.calc.changed(this.sheet(command.sheet), applied.change.ranges);
       this.calc.settle();
+    } else if (command.type === 'paste' || command.type === 'group') {
+      const restores =
+        command.type === 'paste' ? this.pasted(command) : command.restores;
+      const each = restores.map((restore) => {
+        const done = this.changeCells(restore);
+        this.calc.changed(this.sheet(restore.sheet), done.change.ranges);
+        return done;
+      });
+      this.calc.settle();
+      if (each.length === 0) throw new Error('An empty group');
+      // The restores change different cells, so they undo in any order.
+      applied = {
+        executed: { type: 'group', restores },
+        reverse: {
+          type: 'group',
+          restores: each.map((done) => done.reverse as Restore),
+        },
+        change: each[0]!.change,
+      };
     } else {
       applied = this.changeSheets(command);
       // References to sheets by name may now find another sheet, or none.
@@ -548,6 +604,179 @@ export class Workbook {
         return { executed: command, reverse, change: shown(sheet.id) };
       }
     }
+  }
+
+  /** The restores that make a paste, read before any of them runs. */
+  private pasted(command: Paste): Restore[] {
+    const { target, source, cut, only } = command;
+    const from = this.sheet(source.sheet);
+    const to = this.sheet(command.sheet);
+    const { range } = source;
+    const height = range.bottom - range.top + 1;
+    const width = range.right - range.left + 1;
+    const whole =
+      !cut &&
+      (target.bottom - target.top + 1) % height === 0 &&
+      (target.right - target.left + 1) % width === 0;
+    // A cut keeps every cell, moved back from the edges of the sheet; a
+    // copy keeps what fits.
+    const top = cut ? Math.min(target.top, SHEET_ROWS - height) : target.top;
+    const left = cut
+      ? Math.min(target.left, SHEET_COLUMNS - width)
+      : target.left;
+    const area: Range = {
+      top,
+      left,
+      bottom: Math.min(
+        SHEET_ROWS - 1,
+        whole ? target.bottom : top + height - 1,
+      ),
+      right: Math.min(
+        SHEET_COLUMNS - 1,
+        whole ? target.right : left + width - 1,
+      ),
+    };
+    const cells = this.contents(from, [range]);
+    if (cut) return this.moved(from, range, to, area, cells);
+
+    // What the target keeps: its formats when contents are pasted, its
+    // contents when formats are, and nothing when both are.
+    const pasted = new Map<string, CellContents>();
+    if (only) {
+      for (const cell of this.contents(to, [area])) {
+        const { row, col, value, formula, style } = cell;
+        pasted.set(
+          key(row, col),
+          only === 'formats'
+            ? { row, col, value, ...(formula !== undefined && { formula }) }
+            : { row, col, value: null, ...(style && { style }) },
+        );
+      }
+    }
+    for (let top = area.top; top <= area.bottom; top += height) {
+      for (let left = area.left; left <= area.right; left += width) {
+        const rows = top - range.top;
+        const cols = left - range.left;
+        for (const cell of cells) {
+          const row = cell.row + rows;
+          const col = cell.col + cols;
+          if (row > area.bottom || col > area.right) continue;
+          const kept = pasted.get(key(row, col));
+          let contents: Pick<CellContents, 'value' | 'formula'>;
+          if (only === 'formats') {
+            contents = kept ?? { value: null };
+          } else if (cell.formula === undefined) {
+            contents = { value: cell.value };
+          } else if (only === 'values') {
+            const value = this.calc.cell(from, cell.row, cell.col);
+            // Gridworks has no error constants, so an error is kept as text.
+            contents = { value: isError(value) ? value.error : value };
+          } else {
+            const { ast } = from.formulas.get(key(cell.row, cell.col))!;
+            const moved = shift(ast, { type: 'offset', rows, cols });
+            contents = { value: null, formula: `=${print(moved)}` };
+          }
+          const style =
+            only === 'values' || only === 'formulas' ? kept?.style : cell.style;
+          pasted.set(key(row, col), {
+            row,
+            col,
+            ...contents,
+            ...(style && { style }),
+          });
+        }
+      }
+    }
+    const filled = [...pasted.values()].filter(
+      ({ value, formula, style }) =>
+        value !== null || formula !== undefined || style !== undefined,
+    );
+    return [{ type: 'restore', sheet: to.id, ranges: [area], cells: filled }];
+  }
+
+  /**
+   * The restores that move cut cells to an area, and rewrite the formulas
+   * elsewhere that refer to them.
+   */
+  private moved(
+    from: Sheet,
+    range: Range,
+    to: Sheet,
+    area: Range,
+    cells: readonly CellContents[],
+  ): Restore[] {
+    const rows = area.top - range.top;
+    const cols = area.left - range.left;
+    const move = (own: Sheet, newOwn: Sheet): Move => ({
+      type: 'moveCells',
+      sheet: from.name,
+      range,
+      to: to.name,
+      rows,
+      cols,
+      own: own.name,
+      newOwn: newOwn.name,
+    });
+    const inside = (
+      cell: { row: number; col: number },
+      { top, left, bottom, right }: Range,
+    ) =>
+      cell.row >= top &&
+      cell.row <= bottom &&
+      cell.col >= left &&
+      cell.col <= right;
+    const placed = cells.map((cell) => {
+      const row = cell.row + rows;
+      const col = cell.col + cols;
+      if (cell.formula === undefined) return { ...cell, row, col };
+      const { ast } = from.formulas.get(key(cell.row, cell.col))!;
+      const formula = `=${print(shift(ast, move(from, to)))}`;
+      return { ...cell, row, col, formula };
+    });
+    const restores: Restore[] =
+      from === to
+        ? [
+            {
+              type: 'restore',
+              sheet: to.id,
+              ranges: [area, range],
+              cells: placed,
+            },
+          ]
+        : [
+            { type: 'restore', sheet: to.id, ranges: [area], cells: placed },
+            { type: 'restore', sheet: from.id, ranges: [range], cells: [] },
+          ];
+    for (const sheet of this.sheetList) {
+      const changed: CellContents[] = [];
+      for (const { row, col, ast } of sheet.formulas.values()) {
+        if (sheet === from && inside({ row, col }, range)) continue;
+        if (sheet === to && inside({ row, col }, area)) continue;
+        const moved = shift(ast, move(sheet, sheet));
+        if (moved === ast) continue;
+        const id = sheet.styleIds[col]?.[row] ?? 0;
+        changed.push({
+          row,
+          col,
+          value: null,
+          formula: `=${print(moved)}`,
+          ...(id !== 0 && { style: this.styles[id] }),
+        });
+      }
+      if (changed.length === 0) continue;
+      restores.push({
+        type: 'restore',
+        sheet: sheet.id,
+        ranges: changed.map(({ row, col }) => ({
+          top: row,
+          left: col,
+          bottom: row,
+          right: col,
+        })),
+        cells: changed,
+      });
+    }
+    return restores;
   }
 
   /** Renames a sheet, and the references to it in every formula. */

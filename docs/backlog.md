@@ -520,7 +520,8 @@ Notes:
 
 ## S12: Cut, copy and paste inside Gridworks
 
-Status: Todo
+Status: Done
+PR: #16
 
 Acceptance criteria:
 - Ctrl/Cmd+C, X and V, the ribbon and the cell context menu copy, cut and
@@ -534,6 +535,18 @@ Acceptance criteria:
 - Paste special offers values only, formulas only and formatting only. (R6)
 - Pasting one cell into a larger selection fills the selection. (R6)
 - Each of these changes can be undone and redone. (R5)
+
+Notes:
+- The engine's `paste` command (source range, target, `cut`, `only`) is
+  recorded and undone as a `group` of `restore` commands; S13 can paste
+  cells read from the system clipboard as `restore`s or `setCell`s.
+- `shift` has a `moveCells` move, which S15 can reuse when rows and
+  columns are inserted or deleted.
+- What was copied is `View.state.copied`; `view.copy`, `cut` and `paste`
+  are also window shortcuts in `shortcuts.ts`, handled on keydown. S13
+  must move Ctrl/Cmd+C, X and V to the clipboard events of `Platform`.
+- `<Grid menu>` takes the content of the cell context menu
+  (`ui/CellMenu.tsx`); the headers have none yet (S15).
 
 ## S13: Copy and paste with other applications
 

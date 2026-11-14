@@ -792,3 +792,210 @@ describe('recalculation', () => {
     expect(workbook.cell(sheet, 0, 0).formula).toBe('=SUM(A1:B2)');
   });
 });
+
+describe('paste', () => {
+  const range = (top: number, left: number, bottom = top, right = left) => ({
+    top,
+    left,
+    bottom,
+    right,
+  });
+
+  function pasting() {
+    const { workbook, sheet, set, show } = setup();
+    const formula = (row: number, col: number) =>
+      workbook.cell(sheet, row, col).formula;
+    const paste = (
+      source: ReturnType<typeof range>,
+      target: ReturnType<typeof range>,
+      options: { cut?: boolean; only?: 'values' | 'formulas' | 'formats' } = {},
+    ) =>
+      workbook.execute({
+        type: 'paste',
+        sheet,
+        target,
+        source: { sheet, range: source },
+        ...options,
+      });
+    return { workbook, sheet, set, show, formula, paste };
+  }
+
+  it('copies values and formulas, moving relative references and keeping absolute ones', () => {
+    const { set, show, formula, paste } = pasting();
+    set(0, 0, '1');
+    set(1, 0, '2');
+    set(0, 1, '=A1+$A$2+A$1+$A1');
+    set(1, 1, 'text');
+    const change = paste(range(0, 0, 1, 1), range(4, 2));
+    expect(change.ranges).toEqual([range(4, 2, 5, 3)]);
+    expect(show(4, 2)).toBe('1');
+    expect(formula(4, 3)).toBe('=C5+$A$2+C$1+$A5');
+    expect(show(5, 3)).toBe('text');
+    // The source stays as it was.
+    expect(formula(0, 1)).toBe('=A1+$A$2+A$1+$A1');
+    // A reference moved off the sheet becomes #REF!.
+    paste(range(0, 1), range(0, 4));
+    paste(range(0, 4), range(0, 0));
+    expect(formula(0, 0)).toBe('=#REF!+$A$2+#REF!+$A1');
+  });
+
+  it('carries formats with the values, and empties cells copied from empty ones', () => {
+    const { workbook, sheet, set, show, paste } = pasting();
+    set(0, 0, '12%');
+    set(0, 2, 'old');
+    set(1, 2, '1/2/2026');
+    paste(range(0, 0, 1, 0), range(0, 2));
+    expect(show(0, 2)).toBe('12%');
+    expect(workbook.cell(sheet, 1, 2).value).toBeNull();
+    set(1, 2, '3');
+    expect(show(1, 2)).toBe('3');
+  });
+
+  it('fills a target of whole copies of the source, and puts one copy at any other', () => {
+    const { set, show, formula, paste } = pasting();
+    set(0, 0, '=B1*2');
+    const change = paste(range(0, 0), range(2, 2, 4, 3));
+    expect(change.ranges).toEqual([range(2, 2, 4, 3)]);
+    expect(formula(2, 2)).toBe('=D3*2');
+    expect(formula(4, 3)).toBe('=E5*2');
+    set(10, 0, '1');
+    set(11, 0, '2');
+    paste(range(10, 0, 11, 0), range(10, 5, 12, 5));
+    expect(show(10, 5)).toBe('1');
+    expect(show(11, 5)).toBe('2');
+    expect(show(12, 5)).toBe('');
+    // A copy at the edge of the sheet keeps what fits.
+    paste(range(10, 0, 11, 0), range(SHEET_ROWS - 1, 6));
+    expect(show(SHEET_ROWS - 1, 6)).toBe('1');
+  });
+
+  it('pastes only the values, formula results among them, keeping the formats there', () => {
+    const { workbook, sheet, set, show, formula, paste } = pasting();
+    set(0, 0, '0.25');
+    set(0, 1, '=A1*2');
+    set(0, 2, '=1/0');
+    set(1, 0, '10%');
+    set(1, 1, '10%');
+    set(1, 2, '10%');
+    paste(range(0, 0, 0, 2), range(1, 0), { only: 'values' });
+    expect(show(1, 0)).toBe('25%');
+    expect(show(1, 1)).toBe('50%');
+    expect(formula(1, 1)).toBeNull();
+    // Gridworks has no error constants, so an error is kept as its text.
+    expect(workbook.cell(sheet, 1, 2).value).toBe('#DIV/0!');
+  });
+
+  it('pastes only the formulas and values, keeping the formats there', () => {
+    const { set, show, formula, paste } = pasting();
+    set(0, 0, '300%');
+    set(0, 1, '=A1*2');
+    set(1, 0, '1/2/2026');
+    set(1, 1, 'kept?');
+    paste(range(0, 0, 0, 1), range(1, 0), { only: 'formulas' });
+    expect(show(1, 0)).toBe('1/3/1900');
+    expect(formula(1, 1)).toBe('=A2*2');
+  });
+
+  it('pastes only the formats, keeping the contents there', () => {
+    const { workbook, set, show, paste } = pasting();
+    set(0, 0, '12%');
+    set(1, 0, '0.5');
+    set(1, 1, '=A2');
+    paste(range(0, 0), range(1, 0, 1, 1), { only: 'formats' });
+    expect(show(1, 0)).toBe('50%');
+    expect(show(1, 1)).toBe('50%');
+    workbook.undo();
+    expect(show(1, 0)).toBe('0.5');
+    workbook.redo();
+    expect(show(1, 1)).toBe('50%');
+  });
+
+  it('moves cut cells, and the references to them, leaving the source empty', () => {
+    const { workbook, sheet, set, show, formula, paste } = pasting();
+    set(0, 0, '1');
+    set(1, 0, '12%');
+    set(2, 0, '=A1+A2+B1');
+    set(0, 3, '=SUM(A1:A2)+A1+$A$2+SUM(A1:A5)');
+    const change = paste(range(0, 0, 2, 0), range(4, 1, 9, 9), {
+      cut: true,
+    });
+    expect(change.ranges[0]).toEqual(range(4, 1, 6, 1));
+    expect(workbook.cell(sheet, 0, 0).value).toBeNull();
+    expect(workbook.cell(sheet, 2, 0).formula).toBeNull();
+    expect(show(5, 1)).toBe('12%');
+    // References inside the moved cells follow them; others stay.
+    expect(formula(6, 1)).toBe('=B5+B6+B1');
+    expect(formula(0, 3)).toBe('=SUM(B5:B6)+B5+$B$6+SUM(A1:A5)');
+    // Setting the old place does not change the formulas.
+    set(0, 0, '100');
+    expect(show(6, 1)).toBe('1.12');
+    // A cut pasted at the edge of the sheet moves back to keep every cell.
+    paste(range(4, 1, 5, 1), range(SHEET_ROWS - 1, 0), { cut: true });
+    expect(show(SHEET_ROWS - 2, 0)).toBe('1');
+    expect(show(SHEET_ROWS - 1, 0)).toBe('12%');
+  });
+
+  it('moves cut cells to another sheet, with the references to and from them', () => {
+    const { workbook, sheet, set, formula } = pasting();
+    workbook.execute({ type: 'addSheet', index: 1, name: 'Data' });
+    const data = workbook.sheets[1]!.id;
+    set(0, 0, '1');
+    set(1, 0, '=A1+C1');
+    set(0, 1, '=A2*2');
+    workbook.execute({
+      type: 'setCell',
+      sheet: data,
+      row: 0,
+      col: 0,
+      input: '=Sheet1!A1',
+    });
+    workbook.execute({
+      type: 'paste',
+      sheet: data,
+      target: range(5, 2),
+      source: { sheet, range: range(0, 0, 1, 0) },
+      cut: true,
+    });
+    expect(formula(0, 1)).toBe('=Data!C7*2');
+    expect(workbook.cell(data, 6, 2).formula).toBe('=C6+Sheet1!C1');
+    expect(workbook.cell(data, 0, 0).formula).toBe('=C6');
+    expect(workbook.cell(data, 6, 2).value).toBe(1);
+    workbook.undo();
+    expect(formula(0, 1)).toBe('=A2*2');
+    expect(formula(1, 0)).toBe('=A1+C1');
+    expect(workbook.cell(data, 0, 0).formula).toBe('=Sheet1!A1');
+    expect(workbook.cell(data, 6, 2).formula).toBeNull();
+    workbook.redo();
+    expect(formula(0, 1)).toBe('=Data!C7*2');
+    expect(workbook.cell(data, 0, 0).formula).toBe('=C6');
+  });
+
+  it('undoes and redoes a paste, selecting the cells it changed, and tells listeners a command that replays it', () => {
+    const { workbook, set, show, formula, paste } = pasting();
+    const replay = createWorkbook();
+    workbook.subscribe((command) => replay.execute(command));
+    set(0, 0, '1');
+    set(0, 1, '=A1+1');
+    set(1, 0, '=TODAY()');
+    set(3, 0, 'under');
+    paste(range(1, 0), range(5, 5), { only: 'values' });
+    paste(range(0, 0, 0, 1), range(0, 0, 3, 1));
+    paste(range(0, 0, 1, 1), range(1, 0), { cut: true });
+    expect(formula(2, 1)).toBe('=A3+1');
+    const change = workbook.undo()!;
+    expect(change.ranges).toEqual([range(1, 0, 2, 1), range(0, 0, 1, 1)]);
+    expect(formula(0, 1)).toBe('=A1+1');
+    expect(show(3, 0)).toBe('1');
+    workbook.undo();
+    workbook.undo();
+    expect(show(3, 0)).toBe('under');
+    workbook.redo();
+    workbook.redo();
+    workbook.redo();
+    expect(formula(2, 1)).toBe('=A3+1');
+    const stored = JSON.parse(JSON.stringify(replay.toSnapshot()));
+    expect(Workbook.fromSnapshot(stored).toSnapshot()).toEqual(
+      workbook.toSnapshot(),
+    );
+  });
+});
