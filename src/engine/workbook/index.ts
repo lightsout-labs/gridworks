@@ -618,16 +618,22 @@ export class Workbook {
       !cut &&
       (target.bottom - target.top + 1) % height === 0 &&
       (target.right - target.left + 1) % width === 0;
+    // A cut keeps every cell, moved back from the edges of the sheet; a
+    // copy keeps what fits.
+    const top = cut ? Math.min(target.top, SHEET_ROWS - height) : target.top;
+    const left = cut
+      ? Math.min(target.left, SHEET_COLUMNS - width)
+      : target.left;
     const area: Range = {
-      top: target.top,
-      left: target.left,
+      top,
+      left,
       bottom: Math.min(
         SHEET_ROWS - 1,
-        whole ? target.bottom : target.top + height - 1,
+        whole ? target.bottom : top + height - 1,
       ),
       right: Math.min(
         SHEET_COLUMNS - 1,
-        whole ? target.right : target.left + width - 1,
+        whole ? target.right : left + width - 1,
       ),
     };
     const cells = this.contents(from, [range]);
@@ -719,14 +725,13 @@ export class Workbook {
       cell.row <= bottom &&
       cell.col >= left &&
       cell.col <= right;
-    const placed = cells.flatMap((cell) => {
+    const placed = cells.map((cell) => {
       const row = cell.row + rows;
       const col = cell.col + cols;
-      if (!inside({ row, col }, area)) return [];
-      if (cell.formula === undefined) return [{ ...cell, row, col }];
+      if (cell.formula === undefined) return { ...cell, row, col };
       const { ast } = from.formulas.get(key(cell.row, cell.col))!;
       const formula = `=${print(shift(ast, move(from, to)))}`;
-      return [{ ...cell, row, col, formula }];
+      return { ...cell, row, col, formula };
     });
     const restores: Restore[] =
       from === to

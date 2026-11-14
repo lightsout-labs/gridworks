@@ -97,6 +97,22 @@ test('cuts with the ribbon and pastes with the cell menu, moving the cells and t
   await expectCell(page, 0, 0, 'A1 5');
   await expectCell(page, 0, 2, 'C1 6');
   await expect(formulaBar(page)).toHaveValue('=A1+1');
+
+  // The keyboard cuts too, and the ribbon pastes.
+  await clickCell(page, 0, 0);
+  await page.keyboard.press('ControlOrMeta+x');
+  await clickCell(page, 1, 0);
+  await page.getByRole('button', { name: 'Paste', exact: true }).click();
+  await expectCell(page, 0, 2, 'C1 6');
+  await expect(formulaBar(page)).toHaveValue('=A2+1');
+
+  // The cell menu cuts, and copies.
+  await rightClickCell(page, 1, 0);
+  await page.getByRole('menuitem', { name: 'Cut' }).click();
+  await expect(grid(page)).toHaveAttribute('data-copied', 'A2');
+  await rightClickCell(page, 0, 2);
+  await page.getByRole('menuitem', { name: 'Copy' }).click();
+  await expect(grid(page)).toHaveAttribute('data-copied', 'C1');
 });
 
 test('fills a selection with one cell, and pastes only values, formulas or formatting', async ({
@@ -110,7 +126,7 @@ test('fills a selection with one cell, and pastes only values, formulas or forma
 
   // One cell pasted into a larger selection fills it.
   await clickCell(page, 0, 1);
-  await page.keyboard.press('ControlOrMeta+c');
+  await page.getByRole('button', { name: 'Copy' }).click();
   await clickCell(page, 0, 3);
   await page.keyboard.press('Shift+ArrowDown');
   await page.keyboard.press('Shift+ArrowDown');

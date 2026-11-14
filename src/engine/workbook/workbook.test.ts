@@ -897,12 +897,16 @@ describe('paste', () => {
   });
 
   it('pastes only the formats, keeping the contents there', () => {
-    const { set, show, paste } = pasting();
+    const { workbook, set, show, paste } = pasting();
     set(0, 0, '12%');
     set(1, 0, '0.5');
     set(1, 1, '=A2');
     paste(range(0, 0), range(1, 0, 1, 1), { only: 'formats' });
     expect(show(1, 0)).toBe('50%');
+    expect(show(1, 1)).toBe('50%');
+    workbook.undo();
+    expect(show(1, 0)).toBe('0.5');
+    workbook.redo();
     expect(show(1, 1)).toBe('50%');
   });
 
@@ -925,6 +929,10 @@ describe('paste', () => {
     // Setting the old place does not change the formulas.
     set(0, 0, '100');
     expect(show(6, 1)).toBe('1.12');
+    // A cut pasted at the edge of the sheet moves back to keep every cell.
+    paste(range(4, 1, 5, 1), range(SHEET_ROWS - 1, 0), { cut: true });
+    expect(show(SHEET_ROWS - 2, 0)).toBe('1');
+    expect(show(SHEET_ROWS - 1, 0)).toBe('12%');
   });
 
   it('moves cut cells to another sheet, with the references to and from them', () => {
@@ -952,6 +960,14 @@ describe('paste', () => {
     expect(workbook.cell(data, 6, 2).formula).toBe('=C6+Sheet1!C1');
     expect(workbook.cell(data, 0, 0).formula).toBe('=C6');
     expect(workbook.cell(data, 6, 2).value).toBe(1);
+    workbook.undo();
+    expect(formula(0, 1)).toBe('=A2*2');
+    expect(formula(1, 0)).toBe('=A1+C1');
+    expect(workbook.cell(data, 0, 0).formula).toBe('=Sheet1!A1');
+    expect(workbook.cell(data, 6, 2).formula).toBeNull();
+    workbook.redo();
+    expect(formula(0, 1)).toBe('=Data!C7*2');
+    expect(workbook.cell(data, 0, 0).formula).toBe('=C6');
   });
 
   it('undoes and redoes a paste, selecting the cells it changed, and tells listeners a command that replays it', () => {

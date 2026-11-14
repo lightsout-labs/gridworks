@@ -351,21 +351,27 @@ export function Grid({
             />
           </div>
           {entry !== null && entry.sheet === sheet && (
-            <FormulaEditor
-              view={view}
-              place="cell"
-              label={cellName(active.row, active.col)}
-              className={styles.editorBox}
-              inputClassName={styles.editor}
-              mirrorClassName={styles.editorMirror}
-              style={{
-                left: editor.x,
-                top: editor.y,
-                width: editor.width + 1,
-                height: editor.height + 1,
-                fontSize: FONT_SIZE * zoom,
-              }}
-            />
+            // The editor keeps the browser's menu for its text.
+            <div
+              className={styles.editorMenu}
+              onContextMenu={(event) => event.stopPropagation()}
+            >
+              <FormulaEditor
+                view={view}
+                place="cell"
+                label={cellName(active.row, active.col)}
+                className={styles.editorBox}
+                inputClassName={styles.editor}
+                mirrorClassName={styles.editorMirror}
+                style={{
+                  left: editor.x,
+                  top: editor.y,
+                  width: editor.width + 1,
+                  height: editor.height + 1,
+                  fontSize: FONT_SIZE * zoom,
+                }}
+              />
+            </div>
           )}
           <div role="status" className={styles.announcement}>
             {`${cellName(active.row, active.col)} ${activeDisplay}`.trim()}

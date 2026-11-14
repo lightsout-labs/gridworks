@@ -104,7 +104,13 @@ Decisions that are cheap to reverse, with their reasons:
   the source again (a value pasted from `TODAY()` stays the same), and
   undo needs nothing of its own. Paste special pastes values (formula
   results, errors as their text), formulas and values, or formats, and
-  keeps the rest of the target.
+  keeps the rest of the target. Unlike Excel, a copy at the edge of the
+  sheet keeps what fits and a cut moves back from the edge, where Excel
+  refuses both; and references to the cells a cut lands on keep reading
+  them, where Excel turns them into `#REF!`. A restore lists every cell
+  it fills, so pasting one cell over a whole column is 100,000 cells in
+  one recorded change; over a whole sheet it would be too many, which
+  nothing prevents yet.
 - **What was copied lives in the view**, not the workbook: a range and
   whether it was cut. Pasting reads the source as it is then. Escape,
   undo and any change to the workbook other than a paste forget it, as
