@@ -14,6 +14,25 @@ export interface ChosenFile {
   readonly bytes: Uint8Array;
 }
 
+/** What a copy puts on the system clipboard. */
+export interface ClipboardContents {
+  /** Tab-separated text. */
+  readonly text: string;
+  /** An HTML table. */
+  readonly html: string;
+}
+
+/**
+ * The app's answers to the user's copy, cut and paste outside a text box,
+ * which text boxes leave to the system.
+ */
+export interface ClipboardListener {
+  /** What to put on the clipboard, or `null` to leave it to the system. */
+  copy(cut: boolean): ClipboardContents | null;
+  /** Pastes the text on the clipboard, and gives whether it did. */
+  paste(text: string): boolean;
+}
+
 /**
  * Everything the app needs from the system it runs on. Only an
  * implementation of this interface may touch files, storage, the clipboard
@@ -42,6 +61,16 @@ export interface Platform {
      */
     save(id: string, snapshot: Snapshot): Promise<void>;
   };
+  /**
+   * Calls `listener` when the user copies, cuts or pastes with the system
+   * clipboard, which other applications share, by the keyboard or the
+   * browser's menu, until the returned function is called.
+   */
+  listenToClipboard(listener: ClipboardListener): () => void;
+  /**
+   * Puts contents on the system clipboard, as a button that copies does.
+   */
+  writeClipboard(contents: ClipboardContents): void;
   /** The user's choices, such as the language, that outlive the page. */
   readonly preferences: {
     /** The remembered value, or `null` when there is none. */

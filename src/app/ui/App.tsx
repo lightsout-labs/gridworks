@@ -4,7 +4,7 @@ import type { Dropped } from '../../engine/io';
 import { Workbook } from '../../engine/workbook';
 import { Grid, MAC } from '../grid/Grid';
 import { View } from '../grid/view';
-import type { Platform } from '../platform';
+import type { ClipboardContents, Platform } from '../platform';
 import { restoreWorkbook, startAutosave } from './autosave';
 import { CellMenu } from './CellMenu';
 import { Translation } from './controls';
@@ -100,8 +100,23 @@ export function App({ platform }: { platform: Platform }) {
     };
   }, [platform, open]);
 
-  // Undo, redo, cut, copy and paste work wherever the focus is, but an
-  // entry being typed undoes, copies and pastes its own text.
+  // Copy, cut and paste work wherever the focus is, with the system
+  // clipboard, but an entry being typed copies and pastes its own text.
+  useEffect(() => {
+    if (!open) return;
+    const { view } = open;
+    return platform.listenToClipboard({
+      copy: (cut) => (view.state.entry ? null : cut ? view.cut() : view.copy()),
+      paste: (text) => {
+        if (view.state.entry) return false;
+        view.pasteText(text);
+        return true;
+      },
+    });
+  }, [platform, open]);
+
+  // Undo and redo work wherever the focus is, but an entry being typed
+  // undoes its own typing.
   useEffect(() => {
     if (!open) return;
     const { view } = open;
@@ -125,6 +140,9 @@ export function App({ platform }: { platform: Platform }) {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [open]);
+
+  const copyToClipboard = (contents: ClipboardContents) =>
+    platform.writeClipboard(contents);
 
   const openFile = async () => {
     const file = await platform.openFile();
@@ -194,6 +212,7 @@ export function App({ platform }: { platform: Platform }) {
             busy={busy}
             onOpen={() => void openFile()}
             onSave={() => void saveFile(open.workbook)}
+            onCopy={copyToClipboard}
           />
           {message && (
             <MessageBar
@@ -210,7 +229,10 @@ export function App({ platform }: { platform: Platform }) {
           )}
           <FormulaBar {...open} />
           <main className={styles.grid}>
-            <Grid {...open} menu={<CellMenu view={open.view} />} />
+            <Grid
+              {...open}
+              menu={<CellMenu view={open.view} onCopy={copyToClipboard} />}
+            />
           </main>
           <SheetTabs {...open} />
           <StatusBar {...open} />

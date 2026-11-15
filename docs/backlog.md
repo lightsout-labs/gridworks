@@ -550,7 +550,7 @@ Notes:
 
 ## S13: Copy and paste with other applications
 
-Status: Todo
+Status: In progress
 
 Acceptance criteria:
 - A range copied in Excel or Google Sheets pastes into Gridworks as the same grid

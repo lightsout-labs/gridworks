@@ -327,6 +327,71 @@ describe('workbook', () => {
   });
 });
 
+describe('setCells', () => {
+  it('sets a block of typed inputs as one change, recognizing each as typed', () => {
+    const { workbook, sheet, show } = setup();
+    const replay = createWorkbook();
+    workbook.subscribe((command) => replay.execute(command));
+    const change = workbook.execute({
+      type: 'setCells',
+      sheet,
+      row: 1,
+      col: 1,
+      inputs: [
+        ['12%', '1,234.5', '=B2*2'],
+        ['2024-01-02', 'TRUE'],
+        ['', 'text'],
+      ],
+    });
+    expect(change).toEqual({
+      sheet,
+      ranges: [{ top: 1, left: 1, bottom: 3, right: 3 }],
+    });
+    expect(show(1, 1)).toBe('12%');
+    expect(workbook.cell(sheet, 1, 2).value).toBe(1234.5);
+    expect(workbook.cell(sheet, 1, 3).value).toBe(0.24);
+    expect(workbook.cell(sheet, 2, 1).input).toBe('1/2/2024');
+    expect(workbook.cell(sheet, 2, 2).value).toBe(true);
+    expect(workbook.cell(sheet, 3, 2).value).toBe('text');
+    expect(Workbook.fromSnapshot(replay.toSnapshot()).toSnapshot()).toEqual(
+      workbook.toSnapshot(),
+    );
+
+    workbook.undo();
+    expect(workbook.extent(sheet)).toEqual({ rows: 0, cols: 0 });
+    expect(workbook.canUndo).toBe(false);
+    workbook.redo();
+    expect(show(1, 1)).toBe('12%');
+  });
+
+  it('keeps what fits at the edge of the sheet, and the year of a date typed without one', () => {
+    const { workbook, sheet } = setup();
+    const listener = vi.fn();
+    workbook.subscribe(listener);
+    const change = workbook.execute({
+      type: 'setCells',
+      sheet,
+      row: SHEET_ROWS - 1,
+      col: SHEET_COLUMNS - 1,
+      inputs: [
+        ['2-Jan', 'beyond'],
+        ['beyond', 'beyond'],
+      ],
+    });
+    const edge = { top: SHEET_ROWS - 1, left: SHEET_COLUMNS - 1 };
+    expect(change.ranges).toEqual([
+      { ...edge, bottom: edge.top, right: edge.left },
+    ]);
+    expect(workbook.extent(sheet)).toEqual({
+      rows: SHEET_ROWS,
+      cols: SHEET_COLUMNS,
+    });
+    expect(listener.mock.calls[0]![0]).toMatchObject({
+      year: new Date().getFullYear(),
+    });
+  });
+});
+
 describe('undo and redo', () => {
   it('undoes a change to a value, a formula or a format, and redo it', () => {
     const { workbook, sheet, set, show } = setup();

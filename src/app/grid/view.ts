@@ -13,6 +13,8 @@ import {
   pickable,
   type Edit,
 } from './formula';
+import type { ClipboardContents } from '../platform';
+import { fromClipboard, toClipboard } from './clipboard';
 import type { EntryMode } from './keys';
 import { navigate, type Navigation, type SheetContents } from './navigation';
 import { covering, single, type Selection } from './selection';
@@ -289,15 +291,16 @@ export class View {
 
   /**
    * Copies the selected range, the last one, to paste, after committing a
-   * waiting entry.
+   * waiting entry, and gives its cells as they are shown, for the system
+   * clipboard.
    */
-  copy(): void {
-    this.copyRange(false);
+  copy(): ClipboardContents {
+    return this.copyRange(false);
   }
 
-  /** Cuts the selected range, to move it with the next paste. */
-  cut(): void {
-    this.copyRange(true);
+  /** Cuts the selected range, to move it with the next paste, as `copy`. */
+  cut(): ClipboardContents {
+    return this.copyRange(true);
   }
 
   /**
@@ -328,6 +331,33 @@ export class View {
     } finally {
       this.pasting = false;
     }
+  }
+
+  /**
+   * Pastes text from the system clipboard at the selected range. Text that
+   * `copy` or `cut` gave for the cells copied pastes those cells; other
+   * text, from another application, sets the cells from the top left of
+   * the range as if typed, a row for each line and a cell for each tab.
+   */
+  pasteText(text: string): void {
+    const { copied } = this.current;
+    if (copied && text === this.contents(copied).text) {
+      this.paste();
+      return;
+    }
+    if (text === '') return;
+    this.commit();
+    const { sheet, selection } = this.current;
+    const { top: row, left: col } =
+      selection.ranges[selection.ranges.length - 1]!;
+    const change = this.workbook.execute({
+      type: 'setCells',
+      sheet,
+      row,
+      col,
+      inputs: fromClipboard(text),
+    });
+    this.change({ selection: covering(change.ranges), endMode: false });
   }
 
   /**
@@ -364,11 +394,27 @@ export class View {
     this.change({ zoom: percent / 100 });
   }
 
-  private copyRange(cut: boolean): void {
+  private copyRange(cut: boolean): ClipboardContents {
     this.commit();
     const { sheet, selection } = this.current;
     const range = selection.ranges[selection.ranges.length - 1]!;
-    this.change({ copied: { sheet, range, cut } });
+    const copied = { sheet, range, cut };
+    this.change({ copied });
+    return this.contents(copied);
+  }
+
+  /** The cells of a range as they are shown, for the system clipboard. */
+  private contents({ sheet, range }: Copied): ClipboardContents {
+    const { top, left, bottom, right } = range;
+    const rows: string[][] = [];
+    for (let row = top; row <= bottom; row++) {
+      const cells: string[] = [];
+      for (let col = left; col <= right; col++) {
+        cells.push(this.workbook.cell(sheet, row, col).display);
+      }
+      rows.push(cells);
+    }
+    return toClipboard(rows);
   }
 
   private edited({ text, caret }: Edit): void {

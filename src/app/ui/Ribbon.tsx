@@ -24,6 +24,7 @@ import {
 import type { Workbook } from '../../engine/workbook';
 import { MAC } from '../grid/Grid';
 import type { View } from '../grid/view';
+import type { ClipboardContents } from '../platform';
 import { PASTE_SPECIAL, useCopied } from './CellMenu';
 import { Tooltip, useTranslation } from './controls';
 import type { Language } from './i18n';
@@ -47,6 +48,7 @@ export function Ribbon({
   busy,
   onOpen,
   onSave,
+  onCopy,
 }: {
   workbook: Workbook;
   view: View;
@@ -58,6 +60,8 @@ export function Ribbon({
   busy: boolean;
   onOpen: () => void;
   onSave: () => void;
+  /** Puts the cells copied or cut on the system clipboard. */
+  onCopy: (contents: ClipboardContents) => void;
 }) {
   const t = useTranslation();
   return (
@@ -115,7 +119,7 @@ export function Ribbon({
           <History workbook={workbook} view={view} />
         </Group>
         <Group label={t('clipboard')}>
-          <Clipboard view={view} />
+          <Clipboard view={view} onCopy={onCopy} />
         </Group>
       </Tabs.Content>
       <Tabs.Content className={styles.ribbonPanel} value="formulas">
@@ -211,7 +215,13 @@ function History({ workbook, view }: { workbook: Workbook; view: View }) {
 }
 
 /** Paste, paste special, cut and copy. */
-function Clipboard({ view }: { view: View }) {
+function Clipboard({
+  view,
+  onCopy,
+}: {
+  view: View;
+  onCopy: (contents: ClipboardContents) => void;
+}) {
   const t = useTranslation();
   const copied = useCopied(view);
   const key = MAC ? '⌘' : 'Ctrl+';
@@ -261,14 +271,14 @@ function Clipboard({ view }: { view: View }) {
         label={t('cut')}
         tooltip={`${t('cut.tooltip')} (${key}X)`}
         disabled={false}
-        onRun={() => view.cut()}
+        onRun={() => onCopy(view.cut())}
       />
       <Command
         icon={Copy}
         label={t('copy')}
         tooltip={`${t('copy.tooltip')} (${key}C)`}
         disabled={false}
-        onRun={() => view.copy()}
+        onRun={() => onCopy(view.copy())}
       />
     </>
   );

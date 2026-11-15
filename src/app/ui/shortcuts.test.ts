@@ -19,11 +19,10 @@ describe('shortcut', () => {
     expect(shortcut(press('Z', { ctrl: true }), false)).toBe('undo');
   });
 
-  it('copies with Ctrl+C, cuts with Ctrl+X and pastes with Ctrl+V', () => {
-    expect(shortcut(press('c', { ctrl: true }), false)).toBe('copy');
-    expect(shortcut(press('x', { ctrl: true }), false)).toBe('cut');
-    expect(shortcut(press('v', { ctrl: true }), false)).toBe('paste');
-    expect(shortcut(press('v', { meta: true }), true)).toBe('paste');
+  it('leaves Ctrl+C, X and V to the clipboard events', () => {
+    expect(shortcut(press('c', { ctrl: true }), false)).toBeNull();
+    expect(shortcut(press('x', { ctrl: true }), false)).toBeNull();
+    expect(shortcut(press('v', { meta: true }), true)).toBeNull();
   });
 
   it('uses Cmd in place of Ctrl on a Mac', () => {

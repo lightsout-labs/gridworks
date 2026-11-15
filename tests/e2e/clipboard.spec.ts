@@ -3,6 +3,8 @@ import { cellRect } from '../../src/app/grid/geometry';
 import { clickCell, enter, expectCell, openApp } from './grid';
 
 test.use({ locale: 'en-US' });
+// The tests share the system clipboard.
+test.describe.configure({ mode: 'serial' });
 
 /** The element that scrolls the grid, which holds the canvas. */
 const grid = (page: Page) => page.locator('canvas').locator('../..');
@@ -15,6 +17,36 @@ async function typeRow(page: Page, ...entries: string[]) {
     await page.keyboard.type(entry);
     await page.keyboard.press('Tab');
   }
+}
+
+/**
+ * Puts text on the system clipboard as another application does, by
+ * copying it from a text box outside the app.
+ */
+async function copyElsewhere(page: Page, text: string) {
+  const box = await page.evaluateHandle((text) => {
+    const box = document.createElement('textarea');
+    box.value = text;
+    document.body.append(box);
+    box.select();
+    return box;
+  }, text);
+  await page.keyboard.press('ControlOrMeta+c');
+  await box.evaluate((box) => box.remove());
+}
+
+/** The text on the system clipboard, as another application pastes it. */
+async function pasteElsewhere(page: Page): Promise<string> {
+  const box = await page.evaluateHandle(() => {
+    const box = document.createElement('textarea');
+    document.body.append(box);
+    box.focus();
+    return box;
+  });
+  await page.keyboard.press('ControlOrMeta+v');
+  const text = await box.evaluate((box) => box.value);
+  await box.evaluate((box) => box.remove());
+  return text;
 }
 
 /** Right-clicks a cell, opening the cell menu. */
@@ -157,4 +189,69 @@ test('fills a selection with one cell, and pastes only values, formulas or forma
   await page.getByRole('menuitem', { name: 'Paste special' }).click();
   await page.getByRole('menuitem', { name: 'Formatting' }).click();
   await expectCell(page, 8, 0, 'A9 50%');
+});
+
+test('pastes a range copied in another application as cells with typed values, with undo', async ({
+  page,
+}) => {
+  await openApp(page);
+  // As Excel and Google Sheets put a range on the clipboard.
+  await copyElsewhere(page, '12%\t1,234\r\n2024-01-02\ttext\r\n');
+  await clickCell(page, 1, 1);
+  await page.keyboard.press('ControlOrMeta+v');
+  await expect(page.getByRole('status')).toHaveText('B2 12%');
+  await expectCell(page, 1, 2, 'C2 1,234');
+  await expectCell(page, 2, 1, 'B3 1/2/2024');
+  await expect(formulaBar(page)).toHaveValue('1/2/2024');
+  await expectCell(page, 2, 2, 'C3 text');
+
+  await page.keyboard.press('ControlOrMeta+z');
+  await expectCell(page, 1, 1, 'B2');
+  await expectCell(page, 2, 2, 'C3');
+  await page.keyboard.press('ControlOrMeta+y');
+  await expectCell(page, 1, 2, 'C2 1,234');
+});
+
+test('pastes plain text one line per row', async ({ page }) => {
+  await openApp(page);
+  await copyElsewhere(page, 'first line\nsecond line\n42');
+  await clickCell(page, 0, 0);
+  await page.keyboard.press('ControlOrMeta+v');
+  await expectCell(page, 0, 0, 'A1 first line');
+  await expectCell(page, 1, 0, 'A2 second line');
+  await expectCell(page, 2, 0, 'A3 42');
+  await expectCell(page, 0, 1, 'B1');
+});
+
+test('copies a range to the system clipboard as tab-separated text and an HTML table', async ({
+  page,
+}) => {
+  await openApp(page);
+  await clickCell(page, 0, 0);
+  await typeRow(page, '12%', '=A1*2');
+  await clickCell(page, 0, 0);
+  await page.keyboard.press('Shift+ArrowRight');
+  await page.keyboard.press('Shift+ArrowDown');
+  await page.keyboard.press('ControlOrMeta+c');
+  expect(await pasteElsewhere(page)).toBe('12%\t0.24\n\t');
+
+  // The ribbon copies to the system clipboard too.
+  await clickCell(page, 0, 1);
+  await page.getByRole('button', { name: 'Copy' }).click();
+  expect(await pasteElsewhere(page)).toBe('0.24');
+
+  // A page that takes HTML pastes a table.
+  const box = await page.evaluateHandle(() => {
+    const box = document.createElement('div');
+    box.contentEditable = 'true';
+    document.body.append(box);
+    box.focus();
+    return box;
+  });
+  await page.keyboard.press('ControlOrMeta+v');
+  expect(
+    await box.evaluate((box) =>
+      [...box.querySelectorAll('td')].map((cell) => cell.textContent),
+    ),
+  ).toEqual(['0.24']);
 });

@@ -64,7 +64,7 @@ because a requirement needs it.
 | `engine/formula` | `parse(text)`, `print(ast, { file })` (with the `_xlfn.` prefix of newer functions for a file), `evaluate(ast, context)`, `references(ast)`, `shift(ast, move)` (a sheet renamed, the formula moved by rows and columns, or cells cut and pasted), `calculable(ast)`, `functions` (the names of the library), `tokenize(text)` (the tokens of a formula still being typed, with their places), `argumentHint(name, index)`, `quoteSheetName(name)` | Tokenizer and parser; operators and coercion rules; the error values; the library of at least 150 functions and the names of their arguments (R11–R13, R16). Used by `engine/workbook`, by `engine/io` to check and fill in the formulas of files, and `functions`, `tokenize` and `argumentHint` by the help while typing a formula; the workbook re-exports `quoteSheetName` for the app. |
 | `engine/format` | `formatValue(value, code)`, `parseInput(text)`, `parseDate(text)`, `editText(value, code)`, `builtinFormat(id)` | Excel format codes, date serial numbers, and recognition of typed numbers, dates, times, percentages and booleans, on top of `numfmt` (R4, R18). |
 | `engine/io` | `readXlsx(bytes, name)` (a snapshot and what was dropped), `writeXlsx(snapshot)`, `readCsv(text)`, `writeCsv(snapshot, sheet)` | Reading the parts of an `.xlsx` file; shared formulas; the mapping from a workbook snapshot to ExcelJS; the list of dropped features reported on import; CSV quoting (R30–R32). |
-| `app/platform` | The `Platform` interface: `openFile()`, `saveFile(name, bytes)`, `workbooks` (list, load, record a change, save, rename, delete), `preferences` (get, set), `clipboard` (read, write), `print(document)`; and `webPlatform`, its one implementation | File inputs and downloads; the IndexedDB schema; clipboard events and the asynchronous clipboard API with their browser differences; the print frame (R33, R34, R51). |
+| `app/platform` | The `Platform` interface: `openFile()`, `saveFile(name, bytes)`, `workbooks` (list, load, record a change, save, rename, delete), `preferences` (get, set), `listenToClipboard(listener)` (the user's copy, cut and paste outside a text box), `writeClipboard(contents)` (tab-separated text and an HTML table), `print(document)`; and `webPlatform`, its one implementation | File inputs and downloads; the IndexedDB schema; clipboard events and the copy command; the print frame (R33, R34, R51). |
 | `app/grid` | `<Grid workbook view menu />` and the `View` it edits (active sheet, selection, zoom, entry, End mode, the cells copied or cut); `<FormulaEditor>` and `keyAction`, which the formula bar shares to edit the same entry | Canvas drawing and virtualization; frozen panes; hit testing; text measurement, alignment and overflow; selection, resize, fill-handle and reference-picking gestures; the moving border of the cells copied; the in-cell editor and its Enter and Edit modes; function completion, the argument hint, reference colors and F4 (`formula.ts`); keyboard navigation and editing keys as in Excel (R2, R3, R4, R8, R9, R16, R21, R45). |
 | `app/ui` | `<App platform />` | The start screen, ribbon, formula bar and name box, sheet tabs, status bar, context menus (the cell menu is the `menu` of the grid), dialogs and side panels; shortcuts; translation dictionaries; themes; autosave timing; building the printable document (R34, R36–R44). |
 
@@ -114,8 +114,25 @@ Decisions that are cheap to reverse, with their reasons:
 - **What was copied lives in the view**, not the workbook: a range and
   whether it was cut. Pasting reads the source as it is then. Escape,
   undo and any change to the workbook other than a paste forget it, as
-  Excel does, and a cut is pasted once. The system clipboard is not used
-  yet: Ctrl/Cmd+C, X and V are window shortcuts like undo.
+  Excel does, and a cut is pasted once.
+- **Copy and paste go through the system clipboard.** Ctrl/Cmd+C, X and V
+  are not shortcuts but the browser's clipboard events, which the
+  platform hears on the whole document, outside text boxes, in every
+  browser and without a permission; the asynchronous clipboard API would
+  ask one in Firefox and Safari to read. A copy or cut remembers the range
+  in the view and puts its cells, as they are shown, on the clipboard as
+  tab-separated text and an HTML table, as Excel does. The Cut and Copy
+  buttons and menu items do the same through `writeClipboard`, which runs
+  the browser's copy command, finished when it returns. A paste reads the
+  plain text: if it is the text of the cells copied, Gridworks pastes
+  those cells, formulas and formats and all; any other text, from another
+  application, is a `setCells` command that sets the cells from the top
+  left of the selection as if each were typed (R4), a row for each line
+  and a cell for each tab, with Excel's quoting. The HTML of other
+  applications is not read: Excel and Google Sheets put the same cells on
+  the clipboard as text. The Paste button and menu item paste only the
+  cells copied in Gridworks, since reading the clipboard from a button
+  needs that permission.
 - **The view follows the sheets.** `View` subscribes to the workbook when
   it is made, right after the workbook and before anything else, so that
   when the sheet it shows is deleted, by a command or an undo, it shows the
@@ -339,7 +356,8 @@ CI runs both on every pull request as the required checks `check` and `e2e`.
 | Unit | The engine through its four interfaces: every command and its undo, every function against results taken from Excel's documentation, reference rewriting, recalculation and its time limit (R46), number formats, XLSX and CSV round trips and the 10 MB open time (R47) | Vitest in the Node environment, with no DOM available |
 | Unit | App logic that needs no browser: grid geometry, selection and keyboard navigation, the status bar summary, translation completeness for both languages, shortcut tables, the printable document | Vitest |
 | End to end | Each slice's user flow in the built app: keyboard and mouse on the grid, the ribbon, menus and dialogs, storage across reloads, file open and save, both themes and languages, offline use | Playwright on Chromium, Firefox and WebKit |
-| End to end, Chromium only | The system clipboard (R7), and scrolling speed (R45), measured as the time to draw each frame, one scroll step a frame, while scrolling a sheet of 100,000 by 100 populated cells stored directly in IndexedDB; every frame must draw within 16 ms | Playwright |
+| End to end | The system clipboard (R7), with another application played by a text box outside the app, in a file whose tests run one at a time as they share the clipboard | Playwright |
+| End to end, Chromium only | Scrolling speed (R45), measured as the time to draw each frame, one scroll step a frame, while scrolling a sheet of 100,000 by 100 populated cells stored directly in IndexedDB; every frame must draw within 16 ms | Playwright |
 | End to end | Recalculation time (R46): a chain of 100,000 formulas, stored directly in IndexedDB as for R45, whose start is edited | Playwright |
 
 Two requirements cannot be fully checked by automated tests and are checked
