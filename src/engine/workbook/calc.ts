@@ -32,6 +32,11 @@ interface Dependency {
 export interface Lines {
   readonly sizes: ReadonlyMap<number, number>;
   readonly hidden: ReadonlySet<number>;
+  /**
+   * For rows, the heights their text needs where it is not the standard
+   * one; a size set on a row overrides it. Absent until the rows are fitted.
+   */
+  readonly fitted?: ReadonlyMap<number, number>;
 }
 
 export const NO_LINES: Lines = { sizes: new Map(), hidden: new Set() };

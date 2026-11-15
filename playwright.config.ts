@@ -1,5 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const browsers = [
+  ['chromium', 'Desktop Chrome'],
+  ['firefox', 'Desktop Firefox'],
+  ['webkit', 'Desktop Safari'],
+] as const;
+const CLIPBOARD = /clipboard\.spec\.ts/;
+
 // GRIDWORKS_URL points the tests at a deployed app instead of a local build.
 const deployed = process.env.GRIDWORKS_URL;
 
@@ -14,9 +21,22 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
-    { name: 'webkit', use: { ...devices['Desktop Safari'] } },
+    ...browsers.map(([name, device]) => ({
+      name,
+      use: { ...devices[device] },
+      testIgnore: CLIPBOARD,
+    })),
+    // The system clipboard is shared by every test that copies, in every
+    // browser, so its tests run alone: after all others, a browser at a time.
+    ...browsers.map(([name, device], index) => ({
+      name: `${name}-clipboard`,
+      use: { ...devices[device] },
+      testMatch: CLIPBOARD,
+      dependencies:
+        index === 0
+          ? browsers.map(([each]) => each)
+          : [`${browsers[index - 1]![0]}-clipboard`],
+    })),
   ],
   webServer: deployed
     ? undefined

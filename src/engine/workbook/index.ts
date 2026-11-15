@@ -22,9 +22,34 @@ import {
   type SheetLayout,
 } from './calc';
 import { series } from './series';
+import {
+  cellHeight,
+  changedStyle,
+  estimatedWidth,
+  mayGrowRow,
+  STANDARD_COLUMN_WIDTH,
+  STANDARD_ROW_HEIGHT,
+  type Style,
+  type StyleChange,
+  type TextWidth,
+} from './style';
 
 export type { Value } from '../value';
 export type { Lines, SheetLayout } from './calc';
+export {
+  DEFAULT_FONT_SIZE,
+  FONT_SIZES,
+  FONTS,
+  fontPixels,
+  lineHeight,
+  STANDARD_COLUMN_WIDTH,
+  STANDARD_ROW_HEIGHT,
+  TEXT_PADDING,
+  wrapText,
+  type Style,
+  type StyleChange,
+  type TextWidth,
+} from './style';
 export {
   columnName,
   quoteSheetName,
@@ -63,6 +88,16 @@ export type Command =
       readonly inputs: readonly (readonly string[])[];
       /** As in `setCell`, for every date typed without a year. */
       readonly year?: number;
+    }
+  | {
+      /**
+       * Changes the style of the cells of ranges. Ranges over whole rows or
+       * columns change only the cells in use there.
+       */
+      readonly type: 'setStyle';
+      readonly sheet: string;
+      readonly ranges: readonly Range[];
+      readonly style: StyleChange;
     }
   | {
       /** Empties the cells of ranges, keeping their formats. */
@@ -267,12 +302,7 @@ export interface Cell {
   readonly display: string;
   /** The text that edits the cell, as the formula bar shows it. */
   readonly input: string;
-}
-
-/** How cells look. Cells that look the same share one. */
-export interface Style {
-  /** An Excel format code; `General` when absent. */
-  readonly numberFormat?: string;
+  readonly style: Style;
 }
 
 export interface SheetInfo {
@@ -367,6 +397,7 @@ export class Workbook {
     private readonly name: string,
     private readonly sheetList: Sheet[],
     private readonly styles: Style[],
+    private readonly measure: TextWidth,
   ) {
     this.styleIndex = new Map(
       styles.map((style, index) => [JSON.stringify(style), index]),
@@ -375,11 +406,13 @@ export class Workbook {
 
   /**
    * The workbook of a snapshot, with `changes` made after it replayed.
-   * There is nothing to undo in it.
+   * There is nothing to undo in it. `measure` gives the width of text, to
+   * fit rows to wrapped text; without fonts, a guess.
    */
   static fromSnapshot(
     snapshot: Snapshot,
     changes: readonly Command[] = [],
+    measure: TextWidth = estimatedWidth,
   ): Workbook {
     if (snapshot.version !== 1) {
       throw new Error(`Unknown snapshot version: ${String(snapshot.version)}`);
@@ -389,8 +422,10 @@ export class Workbook {
       snapshot.name,
       sheets,
       snapshot.styles ?? [{}],
+      measure,
     );
     workbook.calc.rebuild();
+    workbook.fitNewSheets();
     for (const command of changes) workbook.apply(command);
     return workbook;
   }
@@ -475,11 +510,12 @@ export class Workbook {
       sheet.formulas.size === 0
         ? null
         : (sheet.formulas.get(key(row, col))?.text ?? null);
-    const style = this.styles[sheet.styleIds[col]?.[row] ?? 0];
-    const code = style?.numberFormat ?? GENERAL;
+    const style = this.styles[sheet.styleIds[col]?.[row] ?? 0]!;
+    const code = style.numberFormat ?? GENERAL;
     return {
       value,
       formula,
+      style,
       display: formatValue(value, code),
       // Only the formula bar and the editor need it, not every drawn cell.
       get input() {
@@ -585,11 +621,14 @@ export class Workbook {
       command.type === 'setCell' ||
       command.type === 'setCells' ||
       command.type === 'clear' ||
-      command.type === 'restore'
+      command.type === 'restore' ||
+      command.type === 'setStyle'
     ) {
       applied = this.changeCells(command);
-      this.calc.changed(this.sheet(command.sheet), applied.change.ranges);
+      const sheet = this.sheet(command.sheet);
+      this.calc.changed(sheet, applied.change.ranges);
       this.calc.settle();
+      this.fitRows(sheet, applied.change.ranges);
     } else if (
       command.type === 'paste' ||
       command.type === 'fill' ||
@@ -607,6 +646,9 @@ export class Workbook {
         return done;
       });
       this.calc.settle();
+      for (const { change } of each) {
+        this.fitRows(this.sheet(change.sheet), change.ranges);
+      }
       if (each.length === 0) throw new Error('An empty group');
       // The restores change different cells, so they undo in any order.
       applied = {
@@ -628,10 +670,16 @@ export class Workbook {
           : this.moveLines(command);
       // Formulas have moved, so what each reads is found again.
       this.calc.rebuild();
+      this.fitNewSheets();
     } else if (command.type === 'setLines') {
       applied = this.setLines(command);
+      // Wrapped text takes more or fewer lines in another width.
+      if (command.direction === 'columns') {
+        this.fitRows(this.sheet(command.sheet));
+      }
     } else {
       applied = this.changeSheets(command);
+      this.fitNewSheets();
       // References to sheets by name may now find another sheet, or none.
       if (command.type !== 'setSheet' || command.name !== undefined) {
         this.calc.rebuild();
@@ -649,23 +697,25 @@ export class Workbook {
   private changeCells(
     command: Extract<
       Command,
-      { type: 'setCell' | 'setCells' | 'clear' | 'restore' }
+      { type: 'setCell' | 'setCells' | 'clear' | 'restore' | 'setStyle' }
     >,
   ): Applied {
     const sheet = this.sheet(command.sheet);
     const ranges =
-      command.type === 'setCell'
-        ? [
-            {
-              top: command.row,
-              left: command.col,
-              bottom: command.row,
-              right: command.col,
-            },
-          ]
-        : command.type === 'setCells'
-          ? [blockOf(command)]
-          : command.ranges;
+      command.type === 'setStyle'
+        ? command.ranges.flatMap((range) => this.inUse(sheet, range) ?? [])
+        : command.type === 'setCell'
+          ? [
+              {
+                top: command.row,
+                left: command.col,
+                bottom: command.row,
+                right: command.col,
+              },
+            ]
+          : command.type === 'setCells'
+            ? [blockOf(command)]
+            : command.ranges;
     const reverse: Restore = {
       type: 'restore',
       sheet: sheet.id,
@@ -682,6 +732,8 @@ export class Workbook {
       if (year !== undefined) executed = { ...command, year };
     } else if (command.type === 'clear') {
       for (const range of command.ranges) this.clear(sheet, range);
+    } else if (command.type === 'setStyle') {
+      for (const range of ranges) this.setStyle(sheet, range, command.style);
     } else {
       this.restore(sheet, command);
     }
@@ -885,7 +937,7 @@ export class Workbook {
         else if (span.hidden === false) hidden.delete(index);
       }
     }
-    sheet.layout = { ...sheet.layout, [direction]: { sizes, hidden } };
+    sheet.layout = { ...sheet.layout, [direction]: { ...old, sizes, hidden } };
     const ranges = command.spans.map((span) => lineRange(direction, span));
     return {
       executed: command,
@@ -1328,6 +1380,111 @@ export class Workbook {
       });
     });
     return year;
+  }
+
+  /** Changes the style of the cells of a range. */
+  private setStyle(sheet: Sheet, range: Range, change: StyleChange): void {
+    for (let col = range.left; col <= range.right; col++) {
+      const ids = (sheet.styleIds[col] ??= []);
+      for (let row = range.top; row <= range.bottom; row++) {
+        ids[row] = this.styleId(
+          changedStyle(this.styles[ids[row] ?? 0]!, change),
+        );
+      }
+    }
+  }
+
+  /**
+   * A range with its whole rows or columns cut down to the cells in use:
+   * those with a value, a formula or a style; `null` when there are none.
+   */
+  private inUse(sheet: Sheet, range: Range): Range | null {
+    let { bottom, right } = range;
+    if (range.top === 0 && bottom === SHEET_ROWS - 1) {
+      let rows = 0;
+      for (const column of [...sheet.columns, ...sheet.styleIds]) {
+        rows = Math.max(rows, column?.length ?? 0);
+      }
+      for (const { row } of sheet.formulas.values()) {
+        rows = Math.max(rows, row + 1);
+      }
+      if (rows === 0) return null;
+      bottom = rows - 1;
+    }
+    if (range.left === 0 && right === SHEET_COLUMNS - 1) {
+      let cols = Math.max(sheet.columns.length, sheet.styleIds.length);
+      for (const { col } of sheet.formulas.values()) {
+        cols = Math.max(cols, col + 1);
+      }
+      if (cols === 0) return null;
+      right = cols - 1;
+    }
+    return { ...range, bottom, right };
+  }
+
+  /** Fits the rows of every sheet that has not been fitted yet. */
+  private fitNewSheets(): void {
+    for (const sheet of this.sheetList) {
+      if (!sheet.layout.rows.fitted) this.fitRows(sheet);
+    }
+  }
+
+  /**
+   * Gives the rows of ranges, or every row of a sheet, the height their
+   * text needs, kept apart from the sizes set on rows.
+   */
+  private fitRows(sheet: Sheet, ranges?: readonly Range[]): void {
+    const { rows, columns } = sheet.layout;
+    const growing = this.styles.map(mayGrowRow);
+    const old = rows.fitted ?? new Map<number, number>();
+    if (!growing.includes(true) && old.size === 0) {
+      if (!rows.fitted) {
+        sheet.layout = { ...sheet.layout, rows: { ...rows, fitted: old } };
+      }
+      return;
+    }
+    const fitted = new Map(ranges ? old : []);
+    const heights = new Map<number, number>();
+    const height = (row: number, col: number, id: number) => {
+      const width = columns.hidden.has(col)
+        ? 0
+        : (columns.sizes.get(col) ?? STANDARD_COLUMN_WIDTH);
+      if (width === 0) return;
+      const { display } = this.cell(sheet.id, row, col);
+      const needed = cellHeight(display, this.styles[id]!, width, this.measure);
+      heights.set(row, Math.max(heights.get(row) ?? 0, needed));
+    };
+    sheet.styleIds.forEach((ids, col) => {
+      if (!ids) return;
+      if (!ranges) {
+        ids.forEach((id, row) => {
+          if (growing[id]) height(row, col, id);
+        });
+        return;
+      }
+      for (const { top, bottom } of ranges) {
+        const end = Math.min(bottom, ids.length - 1);
+        for (let row = top; row <= end; row++) {
+          const id = ids[row] ?? 0;
+          if (growing[id]) height(row, col, id);
+        }
+      }
+    });
+    for (const { top, bottom } of ranges ?? []) {
+      for (const row of old.keys()) {
+        if (row >= top && row <= bottom) fitted.delete(row);
+      }
+    }
+    for (const [row, needed] of heights) {
+      if (needed > STANDARD_ROW_HEIGHT) fitted.set(row, Math.ceil(needed));
+    }
+    const same =
+      rows.fitted !== undefined &&
+      fitted.size === old.size &&
+      [...fitted].every(([row, size]) => old.get(row) === size);
+    if (!same) {
+      sheet.layout = { ...sheet.layout, rows: { ...rows, fitted } };
+    }
   }
 
   /** Empties the cells of a range of a sheet, leaving their styles. */

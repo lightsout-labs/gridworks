@@ -637,7 +637,7 @@ Notes:
 
 ## S16: Fonts, colors and alignment
 
-Status: Todo
+Status: Done
 
 Acceptance criteria:
 - The user can set the font family, the font size, bold, italic, underline and
@@ -652,6 +652,26 @@ Acceptance criteria:
 - Its controls are in the ribbon or a context menu, are translated in both
   languages, look right in both themes, and have hover, focus and disabled
   states and tooltips. (R37, R41, R42, R43, R44)
+
+Notes:
+- Styles are `Style` in `src/engine/workbook/style.ts`; `setStyle` changes
+  properties of ranges (`null` resets one) and `changedStyle` keeps them in
+  one order so equal styles share an entry. S17 adds borders and S18 number
+  formats as more properties there, through the same command.
+- Whole rows or columns are formatted only where cells are in use: there are
+  no row or column styles. S28 (XLSX) must map Excel's row and column styles
+  onto cells, or add them.
+- Rows fit wrapped text and fonts larger than 10 points: `layout.rows.fitted`,
+  apart from `sizes`, computed with the app's `measureText` passed to
+  `fromSnapshot`. Fitted heights are not stored; S28 writes them as
+  non-custom heights if Excel needs them.
+- The HTML put on the clipboard still holds the shown text only (S13 note);
+  S17 may carry fonts and colors in it.
+- Clipboard e2e tests now run in their own Playwright projects, after the
+  others and a browser at a time: a copy in another test (the tooltip test
+  of `shell.spec.ts`) overwrote the system clipboard on macOS mid-test.
+- Disabled, hover and focus states come from the shared `.button` style; the
+  format controls are never disabled, as formatting is always possible.
 
 ## S17: Borders, merged cells and the format painter
 

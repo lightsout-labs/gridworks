@@ -7,6 +7,8 @@ import {
   type LineSpan,
   type Range,
   type Span,
+  type StyleChange,
+  type TextWidth,
   type Workbook,
   SHEET_COLUMNS,
   SHEET_ROWS,
@@ -306,6 +308,30 @@ export class View {
     if (command.type === 'addSheet') this.showSheet(change.sheet);
   }
 
+  /** Changes the style of the selected cells, after committing an entry. */
+  format(style: StyleChange): void {
+    this.commit();
+    const { sheet, selection } = this.current;
+    this.workbook.execute({
+      type: 'setStyle',
+      sheet,
+      ranges: selection.ranges,
+      style,
+    });
+  }
+
+  /**
+   * Turns a property on for the selected cells, or off when the active
+   * cell has it, as Excel does.
+   */
+  toggle(property: 'bold' | 'italic' | 'underline' | 'strike' | 'wrap'): void {
+    this.commit();
+    const { sheet, selection } = this.current;
+    const { row, col } = selection.active;
+    const on = this.workbook.cell(sheet, row, col).style[property] === true;
+    this.format({ [property]: on ? null : true });
+  }
+
   /** Empties the selected cells. */
   clear(): void {
     const { sheet, selection } = this.current;
@@ -518,14 +544,10 @@ export class View {
   /**
    * Fits a row or column, or every whole line selected with it, to its
    * contents, as a double-click on its border does: a column to its
-   * widest text shown, as `measure` gives it at 100%, and a row to the standard
-   * height, the only one its single line of text needs.
+   * widest text shown, as `measure` gives it at 100%, and a row to the
+   * height its text needs.
    */
-  fitLines(
-    direction: Direction,
-    index: number,
-    measure: (text: string) => number,
-  ): void {
+  fitLines(direction: Direction, index: number, measure: TextWidth): void {
     const { sheet } = this.current;
     const { rows } = this.workbook.extent(sheet);
     // The text of hidden rows is not shown, so it does not count.
@@ -536,8 +558,10 @@ export class View {
         let widest = 0;
         for (let row = 0; direction === 'columns' && row < rows; row++) {
           if (hidden.has(row)) continue;
-          const { display } = this.workbook.cell(sheet, row, line);
-          if (display !== '') widest = Math.max(widest, measure(display));
+          const { display, style } = this.workbook.cell(sheet, row, line);
+          if (display !== '' && !style.wrap) {
+            widest = Math.max(widest, measure(display, style));
+          }
         }
         const size = widest > 0 ? Math.ceil(widest + 2 * TEXT_PADDING) : null;
         spans.push({ start: line, end: line, size });

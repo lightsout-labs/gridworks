@@ -12,8 +12,12 @@ import {
 import {
   cellName,
   columnName,
+  fontPixels,
+  lineHeight,
   type Direction,
   type Range,
+  type Style,
+  type TextWidth,
   type Workbook,
   SHEET_COLUMNS,
   SHEET_ROWS,
@@ -42,11 +46,26 @@ import { FormulaEditor } from './FormulaEditor';
 import styles from './Grid.module.css';
 import { keyAction } from './keys';
 import { pick } from './selection';
-import { rowTexts, TEXT_PADDING } from './text';
+import {
+  cssFont,
+  rowTexts,
+  TEXT_PADDING,
+  textColorOn,
+  type RowText,
+} from './text';
 import type { Entry, View, ViewState } from './view';
 
 const FONT_SIZE = 13;
 export const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
+
+let measuring: CanvasRenderingContext2D | null = null;
+
+/** The width of a text in a cell's font at 100%, as the grid draws it. */
+export const measureText: TextWidth = (text: string, style: Style) => {
+  measuring ??= document.createElement('canvas').getContext('2d')!;
+  measuring.font = cssFont(style, 1);
+  return measuring.measureText(text).width;
+};
 
 /** How often the border of the cells copied moves, in milliseconds. */
 const MARCH = 100;
@@ -377,13 +396,7 @@ export function Grid({
   const onDoubleClick = (event: MouseEvent) => {
     const border = onBorder(event);
     if (border) {
-      const context = canvas.current!.getContext('2d')!;
-      context.font = `${FONT_SIZE}px ${getComputedStyle(canvas.current!).fontFamily}`;
-      view.fitLines(
-        border.direction,
-        border.index,
-        (text) => context.measureText(text).width,
-      );
+      view.fitLines(border.direction, border.index, measureText);
       return;
     }
     if (onFillHandle(event)) {
@@ -529,6 +542,63 @@ function rangeName({ top, left, bottom, right }: Range): string {
     : `${start}:${cellName(bottom, right)}`;
 }
 
+/**
+ * Draws the lines of a cell's text in its box, aligned as `align` says
+ * and as its style says vertically, underlined or struck through.
+ */
+function drawText(
+  context: CanvasRenderingContext2D,
+  lines: readonly string[],
+  style: Style,
+  align: RowText['align'],
+  box: { x: number; y: number; width: number; height: number },
+  {
+    zoom,
+    padding,
+    color,
+    setFont,
+  }: {
+    zoom: number;
+    padding: number;
+    color: string;
+    setFont: (style: Style) => void;
+  },
+): void {
+  setFont(style);
+  context.fillStyle = color;
+  context.textAlign = align;
+  const line = lineHeight(style) * zoom;
+  const size = fontPixels(style) * zoom;
+  const block = line * lines.length;
+  const top =
+    style.vertical === 'top'
+      ? box.y + padding
+      : style.vertical === 'middle'
+        ? box.y + (box.height - block) / 2
+        : box.y + box.height - padding - block;
+  const x =
+    align === 'left'
+      ? box.x + padding
+      : align === 'right'
+        ? box.x + box.width - padding
+        : box.x + box.width / 2;
+  const thickness = Math.max(1, Math.round(size / 14));
+  lines.forEach((text, index) => {
+    const y = top + line * (index + 0.5) + zoom;
+    context.fillText(text, x, y);
+    if (!style.underline && !style.strike) return;
+    const width = context.measureText(text).width;
+    const left =
+      align === 'left' ? x : align === 'right' ? x - width : x - width / 2;
+    if (style.underline) {
+      context.fillRect(left, Math.round(y + size * 0.4), width, thickness);
+    }
+    if (style.strike) {
+      context.fillRect(left, Math.round(y - size * 0.05), width, thickness);
+    }
+  });
+}
+
 function draw(
   canvas: HTMLCanvasElement,
   workbook: Workbook,
@@ -571,11 +641,58 @@ function draw(
   context.fillStyle = color('--background');
   context.fillRect(0, 0, width, height);
 
+  // The texts of each row, and the fills of the cells read for them.
+  let cellFont = '';
+  const setFont = (each: Style) => {
+    const wanted = cssFont(each, zoom);
+    if (wanted !== cellFont) context.font = cellFont = wanted;
+  };
+  const measure = (text: string, each: Style) => {
+    setFont(each);
+    return context.measureText(text).width / zoom;
+  };
+  const background = color('--background');
+  const fills = new Map<string, string>();
+  const rows: { row: number; texts: RowText[] }[] = [];
+  for (let row = range.top; row <= range.bottom; row++) {
+    const texts = rowTexts(
+      (col) => {
+        const cell = workbook.cell(sheet, row, col);
+        fills.set(`${row},${col}`, cell.style.fill ?? '');
+        return cell;
+      },
+      range.left,
+      range.right,
+      measure,
+      (col) => layout.cols.size(col),
+    );
+    rows.push({ row, texts });
+  }
+  // The texts read every visible cell; a cell outside them, such as an
+  // active cell scrolled away, is read here.
+  const fillOf = (row: number, col: number) => {
+    const key = `${row},${col}`;
+    if (!fills.has(key)) {
+      fills.set(key, workbook.cell(sheet, row, col).style.fill ?? '');
+    }
+    return fills.get(key) || background;
+  };
+
   // The cells, kept out of the headers.
   context.save();
   context.beginPath();
   context.rect(headerWidth, headerHeight, width, height);
   context.clip();
+
+  for (let row = range.top; row <= range.bottom; row++) {
+    for (let col = range.left; col <= range.right; col++) {
+      const fill = fillOf(row, col);
+      if (fill === background) continue;
+      const box = rect({ row, col });
+      context.fillStyle = fill;
+      context.fillRect(box.x, box.y, box.width, box.height);
+    }
+  }
 
   // While a formula picks references on another sheet, the selection is
   // that of the formula's sheet.
@@ -588,7 +705,7 @@ function draw(
   if (selected && (ranges.length > 1 || !isSingleCell(ranges[0]!))) {
     // The active cell is not shaded, as in Excel.
     const box = rect(active);
-    context.fillStyle = color('--background');
+    context.fillStyle = fillOf(active.row, active.col);
     context.fillRect(box.x, box.y, box.width, box.height);
   }
 
@@ -607,20 +724,10 @@ function draw(
   }
   context.stroke();
 
-  context.font = font;
   context.textBaseline = 'middle';
-  context.fillStyle = color('--text');
-  const measure = (text: string) => context.measureText(text).width / zoom;
   const padding = TEXT_PADDING * zoom;
-  for (let row = range.top; row <= range.bottom; row++) {
-    const texts = rowTexts(
-      (col) => workbook.cell(sheet, row, col),
-      range.left,
-      range.right,
-      measure,
-      (col) => layout.cols.size(col),
-    );
-    for (const { col, text, align, from, to } of texts) {
+  for (const { row, texts } of rows) {
+    for (const { col, lines, style: look, align, from, to } of texts) {
       const box = rect({ row, col });
       const start = rect({ row, col: from }).x;
       const end = rect({ row, col: to + 1 }).x;
@@ -637,20 +744,21 @@ function draw(
             (r) =>
               row >= r.top && row <= r.bottom && c >= r.left && c <= r.right,
           );
-        context.fillStyle = color(
-          shaded(each - 1) && shaded(each) ? '--selection' : '--background',
-        );
+        context.fillStyle = fillOf(row, each - 1);
         context.fillRect(x, box.y + 1, 1, box.height - 1);
+        if (shaded(each - 1) && shaded(each)) {
+          context.fillStyle = color('--selection');
+          context.fillRect(x, box.y + 1, 1, box.height - 1);
+        }
       }
-      context.fillStyle = color('--text');
-      context.textAlign = align;
-      const x =
-        align === 'left'
-          ? box.x + padding
-          : align === 'right'
-            ? box.x + box.width - padding
-            : box.x + box.width / 2;
-      context.fillText(text, x, box.y + box.height / 2 + zoom);
+      drawText(context, lines, look, align, box, {
+        zoom,
+        padding,
+        color:
+          look.color ??
+          (look.fill !== undefined ? textColorOn(look.fill) : color('--text')),
+        setFont,
+      });
       context.restore();
     }
   }
@@ -751,6 +859,7 @@ function draw(
   context.lineTo(Math.round(headerWidth) + 0.5, height);
   context.stroke();
 
+  context.font = font;
   context.textAlign = 'center';
   context.fillStyle = color('--muted');
   context.save();

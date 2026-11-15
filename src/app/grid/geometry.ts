@@ -42,7 +42,13 @@ export class Axis {
     private readonly standard: number,
     private readonly layout: Lines,
   ) {
-    this.lines = [...new Set([...layout.sizes.keys(), ...layout.hidden])]
+    this.lines = [
+      ...new Set([
+        ...layout.sizes.keys(),
+        ...layout.hidden,
+        ...(layout.fitted?.keys() ?? []),
+      ]),
+    ]
       .filter((index) => index < count)
       .sort((a, b) => a - b);
     this.extra = [0];
@@ -55,7 +61,11 @@ export class Axis {
 
   size(index: number): number {
     if (this.layout.hidden.has(index)) return 0;
-    return this.layout.sizes.get(index) ?? this.standard;
+    return (
+      this.layout.sizes.get(index) ??
+      this.layout.fitted?.get(index) ??
+      this.standard
+    );
   }
 
   /** Where a line starts. */

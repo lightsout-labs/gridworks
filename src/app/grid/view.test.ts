@@ -846,6 +846,15 @@ describe('View', () => {
       // An empty column gets the standard width.
       expect(sizes.has(3)).toBe(false);
 
+      // Wrapped text fits its column, so it does not widen it.
+      view.select(single({ row: 0, col: 4 }));
+      view.type('a long wrapped text');
+      view.commit();
+      view.select(single({ row: 0, col: 4 }));
+      view.toggle('wrap');
+      view.fitLines('columns', 4, measure);
+      expect(workbook.layout(sheet).columns.sizes.has(4)).toBe(false);
+
       selectLines(view, 'row', 0);
       view.previewResize('rows', 0, 60);
       view.resize();
@@ -863,6 +872,50 @@ describe('View', () => {
         { top: 0, left: 2, bottom: SHEET_ROWS - 1, right: 2 },
       ]);
       expect(workbook.canRedo).toBe(true);
+    });
+  });
+
+  describe('formats', () => {
+    it('formats the selected cells, after committing a waiting entry', () => {
+      const { workbook, view, sheet } = setup();
+      view.select(single({ row: 1, col: 1 }));
+      view.type('x');
+      view.select(
+        pick(view.state.selection, { kind: 'cell', row: 3, col: 2 }, 'add', {
+          row: 0,
+          col: 0,
+        }),
+      );
+      view.format({ fill: '#ffff00', horizontal: 'right' });
+      expect(workbook.cell(sheet, 1, 1)).toMatchObject({
+        display: 'x',
+        style: { fill: '#ffff00', horizontal: 'right' },
+      });
+      expect(workbook.cell(sheet, 3, 2).style.fill).toBe('#ffff00');
+      expect(workbook.cell(sheet, 2, 2).style).toEqual({});
+    });
+
+    it('toggles bold, italic, underline and wrap by the active cell, as Excel does', () => {
+      const { workbook, view, sheet } = setup();
+      view.select(single({ row: 1, col: 0 }));
+      view.toggle('bold');
+      // The active cell is bold, so the whole selection stops being bold.
+      view.select(
+        pick(view.state.selection, { kind: 'cell', row: 0, col: 0 }, 'extend', {
+          row: 0,
+          col: 0,
+        }),
+      );
+      view.toggle('bold');
+      expect(workbook.cell(sheet, 1, 0).style.bold).toBeUndefined();
+      view.toggle('bold');
+      expect(workbook.cell(sheet, 0, 0).style.bold).toBe(true);
+      expect(workbook.cell(sheet, 1, 0).style.bold).toBe(true);
+      view.toggle('wrap');
+      expect(workbook.cell(sheet, 0, 0).style).toEqual({
+        bold: true,
+        wrap: true,
+      });
     });
   });
 });

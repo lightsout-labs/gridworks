@@ -60,12 +60,12 @@ because a requirement needs it.
 
 | Module | Interface | Hides |
 |---|---|---|
-| `engine/workbook` | `execute(command)`, `undo()`, `redo()` (each giving the cells it changed), `canUndo`, `canRedo`, `cell(sheet, row, col)` (value, formula, display text, text to edit, style, note, link), the sheet size, queries (`find`, `aggregate`, `extent`, `circularReference`, sheet and name lists, `layout`: the sizes of rows and columns and those hidden), `calculations` (a count, to measure recalculation), `subscribe(listener)`, `toSnapshot()`, `fromSnapshot(snapshot, changes)` | Column-oriented cell storage; the dependency graph and on-demand recalculation; circular-reference detection; rewriting references when cells, rows, columns and sheets move; pasting cells copied or cut, all or only their values, formulas or formats; inverse patches for undo; fill series; sort; filters; merges; data validation; conditional format evaluation; named ranges (R1, R5, R6, R8–R10, R14, R15, R19–R27). |
+| `engine/workbook` | `execute(command)`, `undo()`, `redo()` (each giving the cells it changed), `canUndo`, `canRedo`, `cell(sheet, row, col)` (value, formula, display text, text to edit, style, note, link), the sheet size, queries (`find`, `aggregate`, `extent`, `circularReference`, sheet and name lists, `layout`: the sizes of rows and columns and those hidden), `calculations` (a count, to measure recalculation), `subscribe(listener)`, `toSnapshot()`, `fromSnapshot(snapshot, changes, measure)` (`measure` the `TextWidth` that fits rows); for drawing cells, `FONTS`, `FONT_SIZES`, `fontPixels`, `lineHeight`, `wrapText` and the standard sizes | Column-oriented cell storage; the dependency graph and on-demand recalculation; circular-reference detection; rewriting references when cells, rows, columns and sheets move; pasting cells copied or cut, all or only their values, formulas or formats; inverse patches for undo; fitting rows to wrapped text and large fonts; fill series; sort; filters; merges; data validation; conditional format evaluation; named ranges (R1, R5, R6, R8–R10, R14, R15, R17, R19–R27). |
 | `engine/formula` | `parse(text)`, `print(ast, { file })` (with the `_xlfn.` prefix of newer functions for a file), `evaluate(ast, context)`, `references(ast)`, `shift(ast, move)` (a sheet renamed, the formula moved by rows and columns, or cells cut and pasted), `calculable(ast)`, `functions` (the names of the library), `tokenize(text)` (the tokens of a formula still being typed, with their places), `argumentHint(name, index)`, `quoteSheetName(name)` | Tokenizer and parser; operators and coercion rules; the error values; the library of at least 150 functions and the names of their arguments (R11–R13, R16). Used by `engine/workbook`, by `engine/io` to check and fill in the formulas of files, and `functions`, `tokenize` and `argumentHint` by the help while typing a formula; the workbook re-exports `quoteSheetName` for the app. |
 | `engine/format` | `formatValue(value, code)`, `parseInput(text)`, `parseDate(text)`, `editText(value, code)`, `builtinFormat(id)`, `isDateFormat(code)`, `dateSerial(year, month, day)`, `dateParts(serial)` | Excel format codes, date serial numbers, and recognition of typed numbers, dates, times, percentages and booleans, on top of `numfmt` (R4, R18). |
 | `engine/io` | `readXlsx(bytes, name)` (a snapshot and what was dropped), `writeXlsx(snapshot)`, `readCsv(text)`, `writeCsv(snapshot, sheet)` | Reading the parts of an `.xlsx` file; shared formulas; the mapping from a workbook snapshot to ExcelJS; the list of dropped features reported on import; CSV quoting (R30–R32). |
 | `app/platform` | The `Platform` interface: `openFile()`, `saveFile(name, bytes)`, `workbooks` (list, load, record a change, save, rename, delete), `preferences` (get, set), `listenToClipboard(listener)` (the user's copy, cut and paste outside a text box), `writeClipboard(contents)` (tab-separated text and an HTML table), `print(document)`; and `webPlatform`, its one implementation | File inputs and downloads; the IndexedDB schema; clipboard events and the copy command; the print frame (R33, R34, R51). |
-| `app/grid` | `<Grid workbook view menu />` and the `View` it edits (active sheet, selection, zoom, entry, End mode, the cells copied or cut, the range the fill handle is dragged over); `<FormulaEditor>` and `keyAction`, which the formula bar shares to edit the same entry | Canvas drawing and virtualization; frozen panes; hit testing; text measurement, alignment and overflow; selection, resize, fill-handle and reference-picking gestures; the moving border of the cells copied; the in-cell editor and its Enter and Edit modes; function completion, the argument hint, reference colors and F4 (`formula.ts`); keyboard navigation and editing keys as in Excel (R2, R3, R4, R8, R9, R16, R21, R45). |
+| `app/grid` | `<Grid workbook view menu />` and the `View` it edits (active sheet, selection, zoom, entry, End mode, the cells copied or cut, the range the fill handle is dragged over); `<FormulaEditor>` and `keyAction`, which the formula bar shares to edit the same entry | Canvas drawing and virtualization; frozen panes; hit testing; text measurement, fonts, colors, fills, alignment, wrapping and overflow; selection, resize, fill-handle and reference-picking gestures; the moving border of the cells copied; the in-cell editor and its Enter and Edit modes; function completion, the argument hint, reference colors and F4 (`formula.ts`); keyboard navigation and editing keys as in Excel (R2, R3, R4, R8, R9, R16, R21, R45). |
 | `app/ui` | `<App platform />` | The start screen, ribbon, formula bar and name box, sheet tabs, status bar, context menus (the cell menu is the `menu` of the grid), dialogs and side panels; shortcuts; translation dictionaries; themes; autosave timing; building the printable document (R34, R36–R44). |
 
 Boundaries, enforced by the build so that R50 and R51 cannot erode:
@@ -157,11 +157,39 @@ Decisions that are cheap to reverse, with their reasons:
   a line of size 0, which hit testing passes over. Dragging a header
   border resizes its line, or every whole line selected with it, and
   dragged to nothing hides them, as in Excel; a double-click fits a column
-  to its widest text, and a row to the standard height, the only one a
-  line of text needs until fonts have sizes. The context menu of the row
+  to its widest text, and gives a row back its fitted height. The context menu of the row
   and column headers inserts, deletes, hides and shows the selected
   lines; the ribbon has no row and column commands. `.xlsx` files keep
   sizes and hidden lines from S28 on.
+- **Rows fit their text.** The workbook keeps, beside the sizes set on
+  rows, the `fitted` height of each row whose wrapped text or font larger
+  than the default needs more than the standard 24 pixels, and a size set
+  on a row overrides it, as Excel's custom heights do. It fits the rows a
+  change of cells touches, every row of a sheet when column widths change
+  or the sheet is rebuilt, and none when no style can grow a row. Text is
+  measured by a `TextWidth` function the app gives `fromSnapshot`, which
+  measures with the canvas in the fonts the grid draws with, so the
+  engine's wrapping (`wrapText`, also used by the grid) and the drawn lines
+  agree; without one, as in Node, it guesses. Fitted heights are not
+  stored: a sheet is fitted when it is opened. A formula whose result grows
+  after a change elsewhere does not refit its row until its own row
+  changes.
+- **A format is a style change.** `setStyle` gives the cells of ranges
+  properties of their style (font, size, bold, italic, underline,
+  strikethrough, text and fill colors, horizontal and vertical alignment,
+  wrap), `null` taking one back to the default, and keeps the rest; undo
+  restores the cells like any other change. Styles are kept with their
+  properties in one order, so that cells that look the same share one.
+  Ranges of whole rows or columns change only the cells in use there, as
+  formatting the lines themselves would need row and column styles, which
+  Gridworks does not have: a cell typed later below a bold column is not
+  bold. The ribbon shows the style of the active cell, and Bold, Italic,
+  Underline, Strikethrough and Wrap text turn their property off for the
+  selection when the active cell has it and on otherwise, as in Excel.
+  Explicit colors are the same in both themes; text with no color of its
+  own on a fill is black or white, whichever shows on the fill, and
+  otherwise the theme's. Text aligned center or right, and wrapped text,
+  do not run over into other cells.
 - **What was copied lives in the view**, not the workbook: a range and
   whether it was cut. Pasting reads the source as it is then. Escape,
   undo and any change to the workbook other than a paste forget it, as
@@ -191,8 +219,8 @@ Decisions that are cheap to reverse, with their reasons:
   one. Switching to another sheet selects A1 there; each sheet's selection
   is not remembered.
 - **Window shortcuts are handled on the window**, not by the grid, so that
-  Ctrl/Cmd+Z, Ctrl/Cmd+Y, Ctrl/Cmd+D and Ctrl/Cmd+R work after a click on
-  the ribbon too. During an
+  Ctrl/Cmd+Z, Ctrl/Cmd+Y, Ctrl/Cmd+D, Ctrl/Cmd+R and Ctrl/Cmd+B, I and U
+  work after a click on the ribbon too. During an
   entry they are left to the editor, which undoes its own typing.
 - **Recalculation follows a dependency graph.** Each sheet keeps, for
   each cell, the formulas that read it alone, and for each column, the
@@ -266,8 +294,8 @@ Decisions that are cheap to reverse, with their reasons:
   plain number keeps the format the cell has, and Delete clears values
   and formulas but not formats, as in Excel. The formula bar and the
   editor start from `editText`, which reads back as the same value.
-- **Cells align by the type of their value**, as Excel's General
-  alignment does: numbers right, text left, booleans and errors centered.
+- **Cells align by the type of their value** unless their style aligns
+  them, as Excel's General alignment does: numbers right, text left, booleans and errors centered.
   Text that is too long runs over the empty cells to its right.
 - **An entry has two modes**, as in Excel. Typing starts Enter mode, where
   an arrow commits and moves; F2, a double-click and the formula bar start
@@ -326,8 +354,11 @@ Decisions that are cheap to reverse, with their reasons:
   features of R30 are read by the slices that build them, and until then
   are left out without a word. A file saved by Gridworks has no formula
   results in it, and asks to be calculated when it is opened.
-- **Cell fonts are a fixed list of fonts present on all three desktop
-  systems**, with fallbacks, so that nothing is downloaded.
+- **Cell fonts are a fixed list of fonts present on Windows and macOS**
+  (Arial, Courier New, Georgia, Times New Roman, Trebuchet MS, Verdana),
+  each with fallbacks for Linux, so that nothing is downloaded. A cell
+  without a font has the interface's system font, and sizes are in points
+  with 10 as the default, drawn at 4/3 pixels a point.
 - **Printing builds a plain HTML table** of the sheet or selection with
   print CSS for page size, orientation and margins, and rows that do not
   break across pages (R36). The canvas itself cannot be paginated.
@@ -409,7 +440,7 @@ CI runs both on every pull request as the required checks `check` and `e2e`.
 | Unit | The engine through its four interfaces: every command and its undo, every function against results taken from Excel's documentation, reference rewriting, recalculation and its time limit (R46), number formats, XLSX and CSV round trips and the 10 MB open time (R47) | Vitest in the Node environment, with no DOM available |
 | Unit | App logic that needs no browser: grid geometry, selection and keyboard navigation, the status bar summary, translation completeness for both languages, shortcut tables, the printable document | Vitest |
 | End to end | Each slice's user flow in the built app: keyboard and mouse on the grid, the ribbon, menus and dialogs, storage across reloads, file open and save, both themes and languages, offline use | Playwright on Chromium, Firefox and WebKit |
-| End to end | The system clipboard (R7), with another application played by a text box outside the app, in a file whose tests run one at a time as they share the clipboard | Playwright |
+| End to end | The system clipboard (R7), with another application played by a text box outside the app, in a file whose tests run alone, after all others and one browser at a time, in Playwright projects of their own, as every copy in any test shares the system clipboard | Playwright |
 | End to end, Chromium only | Scrolling speed (R45), measured as the time to draw each frame, one scroll step a frame, while scrolling a sheet of 100,000 by 100 populated cells stored directly in IndexedDB; every frame must draw within 16 ms | Playwright |
 | End to end | Recalculation time (R46): a chain of 100,000 formulas, stored directly in IndexedDB as for R45, whose start is edited | Playwright |
 

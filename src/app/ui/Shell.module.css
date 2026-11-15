@@ -501,3 +501,73 @@
 .messageText {
   flex: 1;
 }
+
+/* A button that shows a value, such as the font, and opens its menu. */
+.picker {
+  justify-content: space-between;
+  min-width: 56px;
+  border: 1px solid var(--border);
+}
+
+.picker.wide {
+  width: 148px;
+}
+
+.pickerValue {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scrollingMenu {
+  max-height: min(360px, var(--radix-dropdown-menu-content-available-height));
+  overflow-y: auto;
+}
+
+/* The icon of a color button, over a bar of the color chosen. */
+.colorIcon {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.colorBar {
+  width: 16px;
+  height: 4px;
+  border: 1px solid var(--border);
+  border-radius: 1px;
+}
+
+.palette {
+  display: grid;
+  grid-template-columns: repeat(7, 20px);
+  gap: 4px;
+  padding: 4px 8px;
+}
+
+.swatch {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  outline: none;
+  cursor: pointer;
+}
+
+.swatch[data-highlighted],
+.swatch[data-chosen] {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* The color picker's input, opened from the menu, takes no space. */
+.colorInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}

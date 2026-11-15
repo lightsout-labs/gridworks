@@ -226,6 +226,23 @@ describe('grid geometry', () => {
     });
   });
 
+  it('gives rows the height their text needs, unless they have a size of their own', () => {
+    const layout = layoutOf({
+      rows: {
+        sizes: new Map([[2, 30]]),
+        hidden: new Set<number>(),
+        fitted: new Map([
+          [1, 56],
+          [2, 40],
+        ]),
+      },
+      columns: { sizes: new Map(), hidden: new Set<number>() },
+    });
+    expect(layout.rows.size(1)).toBe(56);
+    expect(layout.rows.size(2)).toBe(30);
+    expect(layout.rows.start(3)).toBe(ROW_HEIGHT + 56 + 30);
+  });
+
   it('finds the border of a row or column header near a point, to resize it', () => {
     const layout = layoutOf({
       rows: { sizes: new Map(), hidden: new Set([2]) },

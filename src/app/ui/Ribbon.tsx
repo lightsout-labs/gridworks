@@ -27,6 +27,7 @@ import type { View } from '../grid/view';
 import type { ClipboardContents } from '../platform';
 import { PASTE_SPECIAL, useCopied } from './CellMenu';
 import { Tooltip, useTranslation } from './controls';
+import { AlignmentControls, FontControls } from './Format';
 import type { Language } from './i18n';
 import styles from './Shell.module.css';
 import type { Theme } from './theme';
@@ -120,6 +121,12 @@ export function Ribbon({
         </Group>
         <Group label={t('clipboard')}>
           <Clipboard view={view} onCopy={onCopy} />
+        </Group>
+        <Group label={t('font')}>
+          <FontControls workbook={workbook} view={view} />
+        </Group>
+        <Group label={t('alignment')}>
+          <AlignmentControls workbook={workbook} view={view} />
         </Group>
       </Tabs.Content>
       <Tabs.Content className={styles.ribbonPanel} value="formulas">
