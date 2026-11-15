@@ -682,7 +682,10 @@ describe('View', () => {
       const { workbook, view, sheet } = setup();
       set(workbook, sheet, { '0,0': '1', '0,1': '=A1+1' });
       selecting(view, 0, 0, 2, 1);
+      view.copy();
       view.fillDown();
+      // Unlike a paste, a fill forgets what was copied, as in Excel.
+      expect(view.state.copied).toBeNull();
       expect(workbook.cell(sheet, 2, 0).value).toBe(1);
       expect(workbook.cell(sheet, 2, 1).formula).toBe('=A3+1');
       expect(view.state.selection.ranges).toEqual([range(0, 0, 2, 1)]);
