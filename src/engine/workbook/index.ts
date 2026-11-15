@@ -703,7 +703,7 @@ export class Workbook {
     const sheet = this.sheet(command.sheet);
     const ranges =
       command.type === 'setStyle'
-        ? command.ranges.map((range) => this.inUse(sheet, range))
+        ? command.ranges.flatMap((range) => this.inUse(sheet, range) ?? [])
         : command.type === 'setCell'
           ? [
               {
@@ -1396,9 +1396,9 @@ export class Workbook {
 
   /**
    * A range with its whole rows or columns cut down to the cells in use:
-   * those with a value, a formula or a style.
+   * those with a value, a formula or a style; `null` when there are none.
    */
-  private inUse(sheet: Sheet, range: Range): Range {
+  private inUse(sheet: Sheet, range: Range): Range | null {
     let { bottom, right } = range;
     if (range.top === 0 && bottom === SHEET_ROWS - 1) {
       let rows = 0;
@@ -1408,14 +1408,16 @@ export class Workbook {
       for (const { row } of sheet.formulas.values()) {
         rows = Math.max(rows, row + 1);
       }
-      bottom = Math.max(0, rows - 1);
+      if (rows === 0) return null;
+      bottom = rows - 1;
     }
     if (range.left === 0 && right === SHEET_COLUMNS - 1) {
       let cols = Math.max(sheet.columns.length, sheet.styleIds.length);
       for (const { col } of sheet.formulas.values()) {
         cols = Math.max(cols, col + 1);
       }
-      right = Math.max(0, cols - 1);
+      if (cols === 0) return null;
+      right = cols - 1;
     }
     return { ...range, bottom, right };
   }

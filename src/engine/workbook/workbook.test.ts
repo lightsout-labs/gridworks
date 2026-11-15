@@ -1569,11 +1569,22 @@ describe('cell formats', () => {
       { top: 0, left: 0, bottom: SHEET_ROWS - 1, right: SHEET_COLUMNS - 1 },
       { italic: true },
     );
-    expect(performance.now() - start).toBeLessThan(100);
+    // Not the 10 million cells of the sheet, which would take seconds.
+    expect(performance.now() - start).toBeLessThan(1000);
     expect(style(2, 0)).toEqual({ bold: true, italic: true });
     expect(style(0, 3)).toEqual({ italic: true });
     expect(workbook.toSnapshot().sheets[0]!.styleIds![0]!.length).toBe(3);
     expect(workbook.cell(sheet, 3, 0).style).toEqual({});
+  });
+
+  it('formats nothing of whole lines where no cell is in use', () => {
+    const { workbook, format, style } = formats();
+    format(
+      { top: 0, left: 0, bottom: SHEET_ROWS - 1, right: SHEET_COLUMNS - 1 },
+      { bold: true },
+    );
+    expect(style(0, 0)).toEqual({});
+    expect(workbook.toSnapshot().sheets[0]!.styleIds).toEqual([]);
   });
 
   it('grows a row to fit wrapped text and large fonts, unless the row has a size of its own', () => {

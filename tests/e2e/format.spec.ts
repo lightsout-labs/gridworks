@@ -100,8 +100,8 @@ test('colors text and fills from the palette or a custom color', async ({
   // A custom color, chosen in the color picker.
   await clickCell(page, 1, 1);
   await button(page, 'Fill color').click();
-  await page.getByLabel('Custom color').fill('#123456');
-  await page.keyboard.press('Escape');
+  await page.getByRole('menuitem', { name: 'Custom color' }).click();
+  await page.getByLabel('Fill color: Custom color').fill('#123456');
   await clickCell(page, 4, 4);
   expect(await cellBackground(page, 1, 1)).toEqual([18, 52, 86]);
 
@@ -111,6 +111,12 @@ test('colors text and fills from the palette or a custom color', async ({
   await expect(
     button(page, 'Font color').locator('span span').last(),
   ).toHaveCSS('background-color', 'rgb(255, 0, 0)');
+  await button(page, 'Font color').click();
+  await page.getByRole('menuitem', { name: 'Custom color' }).click();
+  await page.getByLabel('Font color: Custom color').fill('#00ff00');
+  await expect(
+    button(page, 'Font color').locator('span span').last(),
+  ).toHaveCSS('background-color', 'rgb(0, 255, 0)');
 
   await button(page, 'Fill color').click();
   await page.getByRole('menuitem', { name: 'No fill' }).click();

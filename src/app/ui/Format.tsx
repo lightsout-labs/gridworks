@@ -340,66 +340,75 @@ function ColorMenu({
   useEffect(() => {
     latest.current = onColor;
   });
-  // The color is taken once it is chosen, not at each step of the picker,
-  // so it listens to `change` rather than React's `onChange`.
-  const custom = useCallback((input: HTMLInputElement | null) => {
-    if (!input) return;
+  // The color picker's input stays outside the menu, which closes when the
+  // picker opens. The color is taken once it is chosen, not at each step
+  // of the picker, so it listens to `change` rather than React's `onChange`.
+  const custom = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const input = custom.current!;
     const choose = () => latest.current(input.value);
     input.addEventListener('change', choose);
     return () => input.removeEventListener('change', choose);
   }, []);
   return (
-    <DropdownMenu.Root>
-      <Tooltip text={tooltip}>
-        <DropdownMenu.Trigger asChild>
-          <button type="button" className={styles.button} aria-label={label}>
-            <span className={styles.colorIcon}>
-              <Icon size={ICON_SIZE} aria-hidden />
-              <span
-                className={styles.colorBar}
-                style={{ background: color ?? 'transparent' }}
-              />
-            </span>
-            <ChevronDown size={12} aria-hidden />
-          </button>
-        </DropdownMenu.Trigger>
-      </Tooltip>
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content
-          className={styles.menu}
-          align="start"
-          sideOffset={4}
-        >
-          <DropdownMenu.Item
-            className={styles.menuItem}
-            onSelect={() => onColor(null)}
-          >
-            {none}
-          </DropdownMenu.Item>
-          <div className={styles.palette}>
-            {PALETTE.map(([value, name]) => (
-              <Tooltip key={value} text={t(name)}>
-                <DropdownMenu.Item
-                  className={styles.swatch}
-                  style={{ background: value }}
-                  aria-label={t(name)}
-                  data-chosen={color === value || undefined}
-                  onSelect={() => onColor(value)}
+    <>
+      <input
+        ref={custom}
+        type="color"
+        className={styles.colorInput}
+        aria-label={`${label}: ${t('color.custom')}`}
+        tabIndex={-1}
+        defaultValue={color ?? '#000000'}
+      />
+      <DropdownMenu.Root>
+        <Tooltip text={tooltip}>
+          <DropdownMenu.Trigger asChild>
+            <button type="button" className={styles.button} aria-label={label}>
+              <span className={styles.colorIcon}>
+                <Icon size={ICON_SIZE} aria-hidden />
+                <span
+                  className={styles.colorBar}
+                  style={{ background: color ?? 'transparent' }}
                 />
-              </Tooltip>
-            ))}
-          </div>
-          <label className={styles.menuItem}>
-            <input
-              ref={custom}
-              type="color"
-              className={styles.colorInput}
-              defaultValue={color ?? '#000000'}
-            />
-            {t('color.custom')}
-          </label>
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Root>
+              </span>
+              <ChevronDown size={12} aria-hidden />
+            </button>
+          </DropdownMenu.Trigger>
+        </Tooltip>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content
+            className={styles.menu}
+            align="start"
+            sideOffset={4}
+          >
+            <DropdownMenu.Item
+              className={styles.menuItem}
+              onSelect={() => onColor(null)}
+            >
+              {none}
+            </DropdownMenu.Item>
+            <div className={styles.palette}>
+              {PALETTE.map(([value, name]) => (
+                <Tooltip key={value} text={t(name)}>
+                  <DropdownMenu.Item
+                    className={styles.swatch}
+                    style={{ background: value }}
+                    aria-label={t(name)}
+                    data-chosen={color === value || undefined}
+                    onSelect={() => onColor(value)}
+                  />
+                </Tooltip>
+              ))}
+            </div>
+            <DropdownMenu.Item
+              className={styles.menuItem}
+              onSelect={() => custom.current!.click()}
+            >
+              {t('color.custom')}
+            </DropdownMenu.Item>
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
+    </>
   );
 }

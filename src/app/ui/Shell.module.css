@@ -561,17 +561,13 @@
   outline-offset: 1px;
 }
 
+/* The color picker's input, opened from the menu, takes no space. */
 .colorInput {
-  width: 20px;
-  height: 20px;
+  position: absolute;
+  width: 1px;
+  height: 1px;
   padding: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: transparent;
-  cursor: pointer;
-}
-
-.colorInput:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
 }

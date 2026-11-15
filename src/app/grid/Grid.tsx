@@ -651,15 +651,14 @@ function draw(
     setFont(each);
     return context.measureText(text).width / zoom;
   };
+  const background = color('--background');
   const fills = new Map<string, string>();
   const rows: { row: number; texts: RowText[] }[] = [];
   for (let row = range.top; row <= range.bottom; row++) {
     const texts = rowTexts(
       (col) => {
         const cell = workbook.cell(sheet, row, col);
-        if (cell.style.fill !== undefined && col >= range.left) {
-          fills.set(`${row},${col}`, cell.style.fill);
-        }
+        fills.set(`${row},${col}`, cell.style.fill ?? '');
         return cell;
       },
       range.left,
@@ -669,14 +668,14 @@ function draw(
     );
     rows.push({ row, texts });
   }
-  // Text that runs over reads the cells it covers only to the first that
-  // is not empty, so the fills of the empty ones are read here.
+  // The texts read every visible cell; a cell outside them, such as an
+  // active cell scrolled away, is read here.
   const fillOf = (row: number, col: number) => {
     const key = `${row},${col}`;
     if (!fills.has(key)) {
       fills.set(key, workbook.cell(sheet, row, col).style.fill ?? '');
     }
-    return fills.get(key) || color('--background');
+    return fills.get(key) || background;
   };
 
   // The cells, kept out of the headers.
@@ -688,7 +687,7 @@ function draw(
   for (let row = range.top; row <= range.bottom; row++) {
     for (let col = range.left; col <= range.right; col++) {
       const fill = fillOf(row, col);
-      if (fill === color('--background')) continue;
+      if (fill === background) continue;
       const box = rect({ row, col });
       context.fillStyle = fill;
       context.fillRect(box.x, box.y, box.width, box.height);

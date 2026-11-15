@@ -846,6 +846,15 @@ describe('View', () => {
       // An empty column gets the standard width.
       expect(sizes.has(3)).toBe(false);
 
+      // Wrapped text fits its column, so it does not widen it.
+      view.select(single({ row: 0, col: 4 }));
+      view.type('a long wrapped text');
+      view.commit();
+      view.select(single({ row: 0, col: 4 }));
+      view.toggle('wrap');
+      view.fitLines('columns', 4, measure);
+      expect(workbook.layout(sheet).columns.sizes.has(4)).toBe(false);
+
       selectLines(view, 'row', 0);
       view.previewResize('rows', 0, 60);
       view.resize();
