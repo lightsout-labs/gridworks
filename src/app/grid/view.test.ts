@@ -759,6 +759,19 @@ describe('View', () => {
       expect(column()).toEqual(['1', '2', '3', '4', '5', '', '', '']);
       workbook.undo();
       workbook.undo();
+      // With whole rows selected, cells selected beside them are left out.
+      selectLines(view, 'row', 0);
+      view.select(
+        pick(
+          view.state.selection,
+          { kind: 'cell', row: 3, col: 1 },
+          'add',
+          origin,
+        ),
+      );
+      view.deleteLines('rows');
+      expect(column().slice(0, 4)).toEqual(['2', '3', '4', '5']);
+      workbook.undo();
       selectLines(view, 'column', 0);
       view.insertLines('columns');
       expect(workbook.cell(sheet, 0, 1).display).toBe('1');
@@ -767,9 +780,11 @@ describe('View', () => {
     it('hides and shows again the selected rows or columns', () => {
       const { workbook, view, sheet } = setup();
       selectLines(view, 'column', 1, 2);
+      expect(view.hasHidden('columns')).toBe(false);
       view.hideLines('columns', true);
       expect([...workbook.layout(sheet).columns.hidden]).toEqual([1, 2]);
       selectLines(view, 'column', 0, 3);
+      expect(view.hasHidden('columns')).toBe(true);
       view.hideLines('columns', false);
       expect(workbook.layout(sheet).columns.hidden.size).toBe(0);
     });
@@ -814,6 +829,14 @@ describe('View', () => {
       set(0, 1, 'abc');
       set(3, 1, 'abcdefghij');
       set(0, 2, 'x');
+      // Text in a hidden row does not count.
+      set(6, 2, 'hidden text');
+      workbook.execute({
+        type: 'setLines',
+        sheet,
+        direction: 'rows',
+        spans: [{ start: 6, end: 6, hidden: true }],
+      });
       const measure = (text: string) => text.length * 10;
       selectLines(view, 'column', 1, 3);
       view.fitLines('columns', 2, measure);
@@ -823,6 +846,7 @@ describe('View', () => {
       // An empty column gets the standard width.
       expect(sizes.has(3)).toBe(false);
 
+      selectLines(view, 'row', 0);
       view.previewResize('rows', 0, 60);
       view.resize();
       view.fitLines('rows', 0, measure);

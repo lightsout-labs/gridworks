@@ -1433,4 +1433,31 @@ describe('rows and columns', () => {
     workbook.redo();
     expect(replay.toSnapshot()).toEqual(workbook.toSnapshot());
   });
+
+  it('refuses spans outside the sheet or that end before they start', () => {
+    const { workbook, sheet } = lines();
+    for (const spans of [
+      [{ start: -1, end: 0 }],
+      [{ start: 3, end: 2 }],
+      [{ start: 0, end: SHEET_COLUMNS }],
+    ]) {
+      expect(() =>
+        workbook.execute({
+          type: 'deleteLines',
+          sheet,
+          direction: 'columns',
+          spans,
+        }),
+      ).toThrow();
+      expect(() =>
+        workbook.execute({
+          type: 'setLines',
+          sheet,
+          direction: 'columns',
+          spans,
+        }),
+      ).toThrow();
+    }
+    expect(workbook.canUndo).toBe(false);
+  });
 });

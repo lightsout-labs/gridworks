@@ -121,6 +121,7 @@ export function CellMenu({
             <MenuItem
               icon={Eye}
               label={t(`${lines}.unhide`)}
+              disabled={!view.hasHidden(lines)}
               onSelect={() => view.hideLines(lines, false)}
             />
           </>

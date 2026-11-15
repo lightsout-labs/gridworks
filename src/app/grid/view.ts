@@ -518,7 +518,7 @@ export class View {
   /**
    * Fits a row or column, or every whole line selected with it, to its
    * contents, as a double-click on its border does: a column to its
-   * widest text, as `measure` gives it at 100%, and a row to the standard
+   * widest text shown, as `measure` gives it at 100%, and a row to the standard
    * height, the only one its single line of text needs.
    */
   fitLines(
@@ -528,11 +528,14 @@ export class View {
   ): void {
     const { sheet } = this.current;
     const { rows } = this.workbook.extent(sheet);
+    // The text of hidden rows is not shown, so it does not count.
+    const { hidden } = this.workbook.layout(sheet).rows;
     const spans: LineSpan[] = [];
     for (const { start, end } of this.linesWith(direction, index)) {
       for (let line = start; line <= end; line++) {
         let widest = 0;
         for (let row = 0; direction === 'columns' && row < rows; row++) {
+          if (hidden.has(row)) continue;
           const { display } = this.workbook.cell(sheet, row, line);
           if (display !== '') widest = Math.max(widest, measure(display));
         }
@@ -584,11 +587,42 @@ export class View {
   }
 
   /** The rows or columns that the ranges of the selection span. */
+  /**
+   * The rows or columns that the whole lines selected span, as a header's
+   * menu selects them, or else those of every range selected.
+   */
   private selectedSpans(direction: Direction): Span[] {
-    return this.current.selection.ranges.map((range) =>
-      direction === 'rows'
-        ? { start: range.top, end: range.bottom }
-        : { start: range.left, end: range.right },
+    const whole = this.wholeSpans(direction);
+    return whole.length > 0
+      ? whole
+      : this.current.selection.ranges.map((range) =>
+          direction === 'rows'
+            ? { start: range.top, end: range.bottom }
+            : { start: range.left, end: range.right },
+        );
+  }
+
+  /** The spans of the selected ranges that are whole rows or columns. */
+  private wholeSpans(direction: Direction): Span[] {
+    const rows = direction === 'rows';
+    return this.current.selection.ranges
+      .filter((range) =>
+        rows
+          ? range.left === 0 && range.right === SHEET_COLUMNS - 1
+          : range.top === 0 && range.bottom === SHEET_ROWS - 1,
+      )
+      .map((range) =>
+        rows
+          ? { start: range.top, end: range.bottom }
+          : { start: range.left, end: range.right },
+      );
+  }
+
+  /** Whether any of the rows or columns selected is hidden, to show again. */
+  hasHidden(direction: Direction): boolean {
+    const { hidden } = this.workbook.layout(this.current.sheet)[direction];
+    return this.selectedSpans(direction).some(({ start, end }) =>
+      [...hidden].some((index) => index >= start && index <= end),
     );
   }
 
@@ -597,17 +631,7 @@ export class View {
    * those: the lines a drag or double-click on its border changes.
    */
   private linesWith(direction: Direction, index: number): Span[] {
-    const rows = direction === 'rows';
-    const whole = this.current.selection.ranges.filter((range) =>
-      rows
-        ? range.left === 0 && range.right === SHEET_COLUMNS - 1
-        : range.top === 0 && range.bottom === SHEET_ROWS - 1,
-    );
-    const spans = whole.map((range) =>
-      rows
-        ? { start: range.top, end: range.bottom }
-        : { start: range.left, end: range.right },
-    );
+    const spans = this.wholeSpans(direction);
     return spans.some((span) => index >= span.start && index <= span.end)
       ? spans
       : [{ start: index, end: index }];

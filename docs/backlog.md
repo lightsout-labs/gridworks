@@ -605,7 +605,7 @@ Notes:
 
 ## S15: Rows and columns
 
-Status: In progress
+Status: Done
 
 Acceptance criteria:
 - The user can insert and delete rows and columns, and formulas that refer to
@@ -621,6 +621,19 @@ Acceptance criteria:
 - Its controls are in the ribbon or a context menu, are translated in both
   languages, look right in both themes, and have hover, focus and disabled
   states and tooltips. (R37, R41, R42, R43, R44)
+
+Notes:
+- Row and column sizes are in each sheet's `layout` (CSS pixels at 100%,
+  with the hidden lines); `geometry.ts` places everything through an
+  `Axis` built from it with `layoutOf`. S19 (freeze panes) adds its
+  offsets there; S28 reads and writes sizes and hidden lines in `.xlsx`.
+- Keyboard navigation does not yet skip hidden rows and columns: the
+  active cell can move onto one. S23 (filtering hides rows) must make
+  `navigate` skip them.
+- Fitting a row gives the standard height; S16 (font sizes) must make it
+  fit the largest font of the row.
+- The system clipboard e2e test failed once in a full parallel run and
+  passed on every rerun.
 
 ## S16: Fonts, colors and alignment
 

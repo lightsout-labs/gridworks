@@ -762,7 +762,7 @@ export class Workbook {
     const { direction } = command;
     const rows = direction === 'rows';
     const limit = rows ? SHEET_ROWS : SHEET_COLUMNS;
-    const spans = merged(command.spans);
+    const spans = merged(checked(command));
     const insert = command.type === 'insertLines';
     // From the last span to the first, so that each keeps its place.
     const shifts = spans
@@ -797,7 +797,6 @@ export class Workbook {
 
     const before: SheetSnapshot[] = [];
     this.sheetList.forEach((each, index) => {
-      const snapshot = snapshotOf(each);
       const formulas: [number, number, string][] = [];
       let changed = each === sheet;
       for (const { row, col, ast, text } of each.formulas.values()) {
@@ -813,6 +812,7 @@ export class Workbook {
         formulas.push(rows ? [place, col, formula] : [row, place, formula]);
       }
       if (!changed) return;
+      const snapshot = snapshotOf(each);
       before.push(snapshot);
       const after: SheetSnapshot =
         each === sheet
@@ -865,7 +865,7 @@ export class Workbook {
     const hidden = new Set(old.hidden);
     // The lines as they were, in runs that look the same.
     const reverse: LineSpan[] = [];
-    for (const span of command.spans) {
+    for (const span of checked(command)) {
       for (let index = span.start; index <= span.end; index++) {
         const size = old.sizes.get(index) ?? null;
         const hides = old.hidden.has(index);
@@ -1391,6 +1391,28 @@ function merged(spans: readonly Span[]): Span[] {
     }
   }
   return result;
+}
+
+/**
+ * The spans of a command, which must lie within the sheet, each from its
+ * start to its end: a damaged command read back from storage fails.
+ */
+function checked<T extends Span>(command: {
+  readonly direction: Direction;
+  readonly spans: readonly T[];
+}): readonly T[] {
+  const limit = command.direction === 'rows' ? SHEET_ROWS : SHEET_COLUMNS;
+  for (const { start, end } of command.spans) {
+    if (!(
+      Number.isInteger(start) &&
+      start >= 0 &&
+      start <= end &&
+      end < limit
+    )) {
+      throw new Error(`Invalid span: ${start} to ${end}`);
+    }
+  }
+  return command.spans;
 }
 
 /** The cells of whole rows or columns. */

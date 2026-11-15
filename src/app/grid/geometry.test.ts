@@ -195,6 +195,18 @@ describe('grid geometry', () => {
       height: ROW_HEIGHT,
     });
     expect(cellRect({ row: 3, col: 0 }, at).height).toBe(0);
+    // The cells shown, and the scroll that shows a cell, follow the sizes.
+    expect(
+      visibleRange(
+        ROW_HEADER_WIDTH + 30 + COLUMN_WIDTH,
+        COLUMN_HEADER_HEIGHT + 75,
+        at,
+      ),
+    ).toEqual({ top: 0, left: 0, bottom: 2, right: 1 });
+    expect(
+      scrollToShow({ row: 5, col: 0 }, at, 500, COLUMN_HEADER_HEIGHT + 75)
+        .scrollY,
+    ).toBe(47);
     expect(cellRect({ row: 5, col: 0 }, at).y).toBe(
       COLUMN_HEADER_HEIGHT + 2 * ROW_HEIGHT + 50,
     );
