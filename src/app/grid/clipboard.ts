@@ -8,7 +8,9 @@ import type { ClipboardContents } from '../platform';
 export function toClipboard(
   rows: readonly (readonly string[])[],
 ): ClipboardContents {
-  const text = rows.map((row) => row.map(quoted).join('\t')).join('\n');
+  // Every row ends with a line break, as in Excel, so that a last row of
+  // one empty cell is kept.
+  const text = rows.map((row) => row.map(quoted).join('\t') + '\n').join('');
   const html =
     '<table>' +
     rows
@@ -33,7 +35,8 @@ export function fromClipboard(text: string): string[][] {
   let at = 0;
   for (;;) {
     let cell = '';
-    if (text[at] === '"') {
+    // A quote that is never closed starts plain text.
+    if (text[at] === '"' && text.indexOf('"', at + 1) >= 0) {
       // A quoted cell, where "" is a quote, then anything up to the next
       // tab or line break.
       at++;

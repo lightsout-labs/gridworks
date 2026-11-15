@@ -533,7 +533,7 @@ describe('View', () => {
         ],
       });
       selecting(view, 0, 0, 1, 1);
-      expect(view.copy().text).toBe('12%\t0.24\n\tx');
+      expect(view.copy().text).toBe('12%\t0.24\n\tx\n');
       expect(view.cut().html).toContain('<td>0.24</td>');
     });
 
@@ -566,7 +566,8 @@ describe('View', () => {
       selecting(view, 0, 0, 0, 1);
       const { text } = view.copy();
       view.select(single({ row: 2, col: 0 }));
-      view.pasteText(text);
+      // As Windows puts it on the clipboard.
+      view.pasteText(text.replaceAll('\n', '\r\n'));
       expect(workbook.cell(sheet, 2, 1).formula).toBe('=A3+1');
       // Other text is pasted as typed, even with cells copied.
       view.select(single({ row: 4, col: 0 }));

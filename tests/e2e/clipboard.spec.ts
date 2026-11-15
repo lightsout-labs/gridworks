@@ -233,12 +233,21 @@ test('copies a range to the system clipboard as tab-separated text and an HTML t
   await page.keyboard.press('Shift+ArrowRight');
   await page.keyboard.press('Shift+ArrowDown');
   await page.keyboard.press('ControlOrMeta+c');
-  expect(await pasteElsewhere(page)).toBe('12%\t0.24\n\t');
+  expect(await pasteElsewhere(page)).toBe('12%\t0.24\n\t\n');
 
-  // The ribbon copies to the system clipboard too.
+  // The ribbon and the cell menu cut and copy to the system clipboard too.
+  await clickCell(page, 0, 0);
+  await page.getByRole('button', { name: 'Cut' }).click();
+  expect(await pasteElsewhere(page)).toBe('12%\n');
+  await rightClickCell(page, 0, 0);
+  await page.getByRole('menuitem', { name: 'Cut' }).click();
+  expect(await pasteElsewhere(page)).toBe('12%\n');
+  await rightClickCell(page, 0, 1);
+  await page.getByRole('menuitem', { name: 'Copy' }).click();
+  expect(await pasteElsewhere(page)).toBe('0.24\n');
   await clickCell(page, 0, 1);
   await page.getByRole('button', { name: 'Copy' }).click();
-  expect(await pasteElsewhere(page)).toBe('0.24');
+  expect(await pasteElsewhere(page)).toBe('0.24\n');
 
   // A page that takes HTML pastes a table.
   const box = await page.evaluateHandle(() => {

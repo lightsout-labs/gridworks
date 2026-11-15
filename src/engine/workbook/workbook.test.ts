@@ -364,6 +364,16 @@ describe('setCells', () => {
     expect(show(1, 1)).toBe('12%');
   });
 
+  it('refuses an empty block', () => {
+    const { workbook, sheet } = setup();
+    for (const inputs of [[], [[]]]) {
+      expect(() =>
+        workbook.execute({ type: 'setCells', sheet, row: 0, col: 0, inputs }),
+      ).toThrow();
+    }
+    expect(workbook.canUndo).toBe(false);
+  });
+
   it('keeps what fits at the edge of the sheet, and the year of a date typed without one', () => {
     const { workbook, sheet } = setup();
     const listener = vi.fn();

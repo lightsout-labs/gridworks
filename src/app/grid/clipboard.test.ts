@@ -9,7 +9,7 @@ describe('toClipboard', () => {
         ['', '3'],
       ]),
     ).toEqual({
-      text: '12%\t<b> & co\n\t3',
+      text: '12%\t<b> & co\n\t3\n',
       html:
         '<table><tr><td>12%</td><td>&lt;b&gt; &amp; co</td></tr>' +
         '<tr><td></td><td>3</td></tr></table>',
@@ -18,7 +18,7 @@ describe('toClipboard', () => {
 
   it('quotes text with tabs, line breaks or a leading quote, as Excel does', () => {
     expect(toClipboard([['a\tb', 'two\nlines', '"q"', 'x"y']]).text).toBe(
-      '"a\tb"\t"two\nlines"\t"""q"""\tx"y',
+      '"a\tb"\t"two\nlines"\t"""q"""\tx"y\n',
     );
   });
 });
@@ -48,11 +48,12 @@ describe('fromClipboard', () => {
     ]);
   });
 
+  it('reads a quote that is never closed as plain text', () => {
+    expect(fromClipboard('"abc\ndef')).toEqual([['"abc'], ['def']]);
+  });
+
   it('reads back what it writes', () => {
-    const cells = [
-      ['a\tb', '"', ''],
-      ['two\nlines', 'x', 'y'],
-    ];
+    const cells = [['a\tb', '"', ''], ['two\nlines', 'x', 'y'], ['']];
     expect(fromClipboard(toClipboard(cells).text)).toEqual(cells);
   });
 });

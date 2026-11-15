@@ -242,7 +242,8 @@ type Paste = Extract<Command, { type: 'paste' }>;
 /** The cells a `setCells` command sets, inside the sheet. */
 function blockOf(command: Extract<Command, { type: 'setCells' }>): Range {
   const { row, col, inputs } = command;
-  const width = Math.max(...inputs.map((each) => each.length));
+  const width = Math.max(0, ...inputs.map((each) => each.length));
+  if (width === 0) throw new Error('An empty block');
   return {
     top: row,
     left: col,

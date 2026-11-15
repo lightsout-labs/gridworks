@@ -341,7 +341,9 @@ export class View {
    */
   pasteText(text: string): void {
     const { copied } = this.current;
-    if (copied && text === this.contents(copied).text) {
+    // Windows ends lines with CR LF on the clipboard.
+    const lines = (text: string) => text.replace(/\r\n?/g, '\n');
+    if (copied && lines(text) === lines(this.contents(copied).text)) {
       this.paste();
       return;
     }

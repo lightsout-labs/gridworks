@@ -40,6 +40,18 @@ const platformBoundary = {
   'no-restricted-syntax': [
     'error',
     {
+      // document.addEventListener('paste', ...)
+      selector:
+        "CallExpression[callee.property.name='addEventListener'][arguments.0.value=/^(copy|cut|paste)$/]",
+      message: viaPlatform,
+    },
+    {
+      // <div onPaste={...}>
+      selector:
+        'JSXOpeningElement[name.name=/^[a-z]/] > JSXAttribute[name.name=/^on(Copy|Cut|Paste)(Capture)?$/]',
+      message: viaPlatform,
+    },
+    {
       // <input type="file">
       selector:
         "JSXOpeningElement[name.name='input'] > JSXAttribute[name.name='type'][value.value='file']",

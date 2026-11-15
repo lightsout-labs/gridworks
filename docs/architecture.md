@@ -73,7 +73,8 @@ Boundaries, enforced by the build so that R50 and R51 cannot erode:
 - `src/engine` compiles with its own `tsconfig` that excludes the DOM
   library, and ESLint forbids it from importing `src/app`.
 - ESLint forbids `indexedDB`, `localStorage`, `navigator.clipboard`,
-  `window.print`, file inputs and download links everywhere except
+  `clipboardData`, the copy command, listeners for the copy, cut and paste
+  events, `window.print`, file inputs and download links everywhere except
   `src/app/platform/web`. A desktop shell such as Tauri or Electron would
   add a second implementation of `Platform` beside it and reuse everything
   else.
