@@ -304,9 +304,32 @@ test.describe('the controls', () => {
           'Copy',
           /^Copy the selection, to paste it elsewhere \((Ctrl\+|⌘)C\)$/,
         ],
+        ['button', 'Font', 'Change the font'],
+        ['button', 'Font size', 'Change the size of the text'],
+        ['button', 'Bold', /^Make the text bold \((Ctrl\+|⌘)B\)$/],
+        ['button', 'Italic', /^Make the text italic \((Ctrl\+|⌘)I\)$/],
+        ['button', 'Underline', /^Underline the text \((Ctrl\+|⌘)U\)$/],
+        ['button', 'Strikethrough', 'Draw a line through the text'],
+        ['button', 'Font color', 'Change the color of the text'],
+        ['button', 'Fill color', 'Color the background of the cells'],
+        ['button', 'Align left', 'Align the text to the left'],
+        ['button', 'Center', 'Center the text'],
+        ['button', 'Align right', 'Align the text to the right'],
+        ['button', 'Top align', 'Align the text to the top of the cell'],
+        [
+          'button',
+          'Middle align',
+          'Center the text between the top and bottom',
+        ],
+        ['button', 'Bottom align', 'Align the text to the bottom of the cell'],
+        [
+          'button',
+          'Wrap text',
+          'Show long text on more lines, and make the row taller',
+        ],
         ...statusBar,
       ],
-      9,
+      24,
     );
     await page.getByRole('tab', { name: 'View' }).click();
     await clickCell(page, 5, 5); // Away from the tab and its tooltip.

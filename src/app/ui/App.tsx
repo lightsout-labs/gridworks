@@ -2,7 +2,7 @@ import { Provider as TooltipProvider } from '@radix-ui/react-tooltip';
 import { useEffect, useLayoutEffect, useState } from 'react';
 import type { Dropped } from '../../engine/io';
 import { Workbook } from '../../engine/workbook';
-import { Grid, MAC } from '../grid/Grid';
+import { Grid, MAC, measureText } from '../grid/Grid';
 import { View } from '../grid/view';
 import type { ClipboardContents, Platform } from '../platform';
 import { restoreWorkbook, startAutosave } from './autosave';
@@ -67,7 +67,7 @@ export function App({ platform }: { platform: Platform }) {
     const id = platform.preferences.get('workbook') ?? FIRST_WORKBOOK_ID;
     void platform.workbooks.load(id).then((stored) => {
       if (!current) return;
-      const workbook = restoreWorkbook(stored);
+      const workbook = restoreWorkbook(stored, measureText);
       setOpen({ id, workbook, view: new View(workbook) });
     });
     return () => {
@@ -135,7 +135,15 @@ export function App({ platform }: { platform: Platform }) {
       );
       if (!command) return;
       event.preventDefault();
-      view[command]();
+      if (
+        command === 'bold' ||
+        command === 'italic' ||
+        command === 'underline'
+      ) {
+        view.toggle(command);
+      } else {
+        view[command]();
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -154,7 +162,7 @@ export function App({ platform }: { platform: Platform }) {
         file.bytes,
         workbookName(file.name),
       );
-      const workbook = Workbook.fromSnapshot(snapshot);
+      const workbook = Workbook.fromSnapshot(snapshot, [], measureText);
       setOpen({
         id: crypto.randomUUID(),
         workbook,

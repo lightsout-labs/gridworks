@@ -25,6 +25,12 @@ describe('shortcut', () => {
     expect(shortcut(press('d', { meta: true }), true)).toBe('fillDown');
   });
 
+  it('toggles bold, italic and underline with Ctrl+B, I and U', () => {
+    expect(shortcut(press('b', { ctrl: true }), false)).toBe('bold');
+    expect(shortcut(press('i', { ctrl: true }), false)).toBe('italic');
+    expect(shortcut(press('u', { meta: true }), true)).toBe('underline');
+  });
+
   it('leaves Ctrl+C, X and V to the clipboard events', () => {
     expect(shortcut(press('c', { ctrl: true }), false)).toBeNull();
     expect(shortcut(press('x', { ctrl: true }), false)).toBeNull();

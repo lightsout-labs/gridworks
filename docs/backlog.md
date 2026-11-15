@@ -637,7 +637,7 @@ Notes:
 
 ## S16: Fonts, colors and alignment
 
-Status: Todo
+Status: In progress
 
 Acceptance criteria:
 - The user can set the font family, the font size, bold, italic, underline and

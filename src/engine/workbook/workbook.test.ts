@@ -5,6 +5,7 @@ import {
   SHEET_COLUMNS,
   SHEET_ROWS,
   Workbook,
+  type StyleChange,
 } from './index';
 
 function setup() {
@@ -32,12 +33,14 @@ describe('workbook', () => {
       formula: '=A1+1',
       display: '3',
       input: '=A1+1',
+      style: {},
     });
     expect(workbook.cell(sheet, 0, 0)).toEqual({
       value: 2,
       formula: null,
       display: '2',
       input: '2',
+      style: {},
     });
   });
 
@@ -59,6 +62,7 @@ describe('workbook', () => {
       formula: null,
       display: 'text',
       input: 'text',
+      style: {},
     });
     set(0, 0, '');
     expect(workbook.cell(sheet, 0, 0).value).toBeNull();
@@ -72,6 +76,7 @@ describe('workbook', () => {
       formula: null,
       display: '=A1+',
       input: '=A1+',
+      style: {},
     });
   });
 
@@ -82,6 +87,7 @@ describe('workbook', () => {
       formula: null,
       display: '',
       input: '',
+      style: {},
     });
   });
 
@@ -226,6 +232,7 @@ describe('workbook', () => {
       formula: null,
       display: '1/2/2026',
       input: '1/2/2026',
+      style: { numberFormat: 'm/d/yyyy' },
     });
     expect(workbook.cell(sheet, 1, 0)).toMatchObject({
       value: 0.12,
@@ -1459,5 +1466,161 @@ describe('rows and columns', () => {
       ).toThrow();
     }
     expect(workbook.canUndo).toBe(false);
+  });
+});
+
+describe('cell formats', () => {
+  /** Ten pixels a character, whatever the font: wraps at 8 in a column. */
+  const measure = (text: string) => text.length * 10;
+
+  function formats() {
+    const workbook = Workbook.fromSnapshot(
+      createWorkbook().toSnapshot(),
+      [],
+      measure,
+    );
+    const sheet = workbook.sheets[0]!.id;
+    const set = (row: number, col: number, input: string) =>
+      workbook.execute({ type: 'setCell', sheet, row, col, input });
+    const format = (
+      range: { top: number; left: number; bottom: number; right: number },
+      style: StyleChange,
+    ) => workbook.execute({ type: 'setStyle', sheet, ranges: [range], style });
+    const style = (row: number, col: number) =>
+      workbook.cell(sheet, row, col).style;
+    const fitted = (row: number) =>
+      workbook.layout(sheet).rows.fitted?.get(row);
+    return { workbook, sheet, set, format, style, fitted };
+  }
+  const A1B2 = { top: 0, left: 0, bottom: 1, right: 1 };
+
+  it('sets the font, colors and alignment of ranges, keeping values and number formats', () => {
+    const { workbook, sheet, set, format, style } = formats();
+    set(0, 0, '50%');
+    format(A1B2, { bold: true, font: 'Georgia', size: 14, color: '#c00000' });
+    format(A1B2, {
+      fill: '#ffff00',
+      horizontal: 'center',
+      vertical: 'top',
+      wrap: true,
+    });
+    expect(style(0, 0)).toEqual({
+      numberFormat: '0%',
+      bold: true,
+      font: 'Georgia',
+      size: 14,
+      color: '#c00000',
+      fill: '#ffff00',
+      horizontal: 'center',
+      vertical: 'top',
+      wrap: true,
+    });
+    expect(workbook.cell(sheet, 0, 0).display).toBe('50%');
+    expect(style(1, 1)).toEqual({ ...style(0, 0), numberFormat: undefined });
+    expect(style(2, 0)).toEqual({});
+
+    // `null` takes a property back to the default.
+    format(A1B2, { bold: null, fill: null, wrap: null });
+    expect(style(0, 0).bold).toBeUndefined();
+    expect(style(0, 0).fill).toBeUndefined();
+    expect(style(0, 0).italic).toBeUndefined();
+    expect(style(0, 0).size).toBe(14);
+  });
+
+  it('keeps one style for the cells that look the same, however it was set', () => {
+    const { workbook, format } = formats();
+    format({ top: 0, left: 0, bottom: 0, right: 0 }, { bold: true });
+    format({ top: 0, left: 0, bottom: 0, right: 0 }, { italic: true });
+    format(
+      { top: 1, left: 0, bottom: 1, right: 0 },
+      { italic: true, bold: true },
+    );
+    format({ top: 2, left: 0, bottom: 2, right: 0 }, { underline: true });
+    format({ top: 2, left: 0, bottom: 2, right: 0 }, { underline: null });
+    const { styles, sheets } = workbook.toSnapshot();
+    expect(sheets[0]!.styleIds![0]!.slice(0, 2)).toEqual([2, 2]);
+    expect(styles![sheets[0]!.styleIds![0]![2]!]).toEqual({});
+  });
+
+  it('undoes and redoes a change of format, which listeners can replay', () => {
+    const { workbook, sheet, set, format, style } = formats();
+    const replay = Workbook.fromSnapshot(workbook.toSnapshot());
+    workbook.subscribe((command) => replay.execute(command));
+    set(0, 0, '=1+1');
+    format(A1B2, { strike: true, underline: true });
+    expect(workbook.undo()).toEqual({ sheet, ranges: [A1B2] });
+    expect(style(0, 0)).toEqual({});
+    expect(workbook.cell(sheet, 0, 0).value).toBe(2);
+    workbook.redo();
+    expect(style(1, 0)).toEqual({ strike: true, underline: true });
+    expect(replay.toSnapshot()).toEqual(workbook.toSnapshot());
+  });
+
+  it('formats the cells in use of whole columns and rows, at once', () => {
+    const { workbook, sheet, set, format, style } = formats();
+    set(2, 0, 'x');
+    set(0, 3, 'y');
+    const start = performance.now();
+    format(
+      { top: 0, left: 0, bottom: SHEET_ROWS - 1, right: 0 },
+      { bold: true },
+    );
+    format(
+      { top: 0, left: 0, bottom: SHEET_ROWS - 1, right: SHEET_COLUMNS - 1 },
+      { italic: true },
+    );
+    expect(performance.now() - start).toBeLessThan(100);
+    expect(style(2, 0)).toEqual({ bold: true, italic: true });
+    expect(style(0, 3)).toEqual({ italic: true });
+    expect(workbook.toSnapshot().sheets[0]!.styleIds![0]!.length).toBe(3);
+    expect(workbook.cell(sheet, 3, 0).style).toEqual({});
+  });
+
+  it('grows a row to fit wrapped text and large fonts, unless the row has a size of its own', () => {
+    const { workbook, sheet, set, format, fitted } = formats();
+    set(0, 0, 'aaaa bbbb cccc');
+    expect(fitted(0)).toBeUndefined();
+    // Three lines of 16 pixels and the padding.
+    format({ top: 0, left: 0, bottom: 0, right: 0 }, { wrap: true });
+    expect(fitted(0)).toBe(56);
+    set(0, 0, 'aaaa bbbb');
+    expect(fitted(0)).toBe(40);
+    // A wider column takes the text on one line.
+    workbook.execute({
+      type: 'setLines',
+      sheet,
+      direction: 'columns',
+      spans: [{ start: 0, end: 0, size: 200 }],
+    });
+    expect(fitted(0)).toBeUndefined();
+
+    // A line of 20 points is 32 pixels high.
+    format({ top: 1, left: 1, bottom: 1, right: 1 }, { size: 20 });
+    expect(fitted(1)).toBe(40);
+    workbook.undo();
+    expect(fitted(1)).toBeUndefined();
+    workbook.redo();
+
+    // A size set on the row is kept apart, and overrides the fit.
+    workbook.execute({
+      type: 'setLines',
+      sheet,
+      direction: 'rows',
+      spans: [{ start: 1, end: 1, size: 30 }],
+    });
+    expect(workbook.layout(sheet).rows.sizes.get(1)).toBe(30);
+    expect(fitted(1)).toBe(40);
+
+    // Opened again, or with rows inserted, the rows are fitted again.
+    const reopened = Workbook.fromSnapshot(workbook.toSnapshot(), [], measure);
+    expect(reopened.layout(sheet).rows.fitted?.get(1)).toBe(40);
+    workbook.execute({
+      type: 'insertLines',
+      sheet,
+      direction: 'rows',
+      spans: [{ start: 0, end: 0 }],
+    });
+    expect(fitted(2)).toBe(40);
+    expect(fitted(1)).toBeUndefined();
   });
 });

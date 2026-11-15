@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { Value } from '../../engine/workbook';
+import type { Style, Value } from '../../engine/workbook';
 import { COLUMN_WIDTH } from './geometry';
-import { rowTexts } from './text';
+import { cssFont, DEFAULT_FAMILY, rowTexts, textColorOn } from './text';
 
-/** A row of cells from values, each shown as its text. */
-function row(values: Record<number, Value>) {
+/** A row of cells from values, each shown as its text, and their styles. */
+function row(
+  values: Record<number, Value>,
+  styles: Record<number, Style> = {},
+) {
   return (col: number) => {
     const value = values[col] ?? null;
     const display =
@@ -13,7 +16,7 @@ function row(values: Record<number, Value>) {
         : typeof value === 'object'
           ? value.error
           : String(value).toUpperCase();
-    return { value, display };
+    return { value, display, style: styles[col] ?? {} };
   };
 }
 
@@ -31,17 +34,31 @@ describe('rowTexts', () => {
       standard,
     );
     expect(texts).toEqual([
-      { col: 0, text: '1', align: 'right', from: 0, to: 0 },
-      { col: 1, text: 'A', align: 'left', from: 1, to: 1 },
-      { col: 2, text: 'TRUE', align: 'center', from: 2, to: 2 },
-      { col: 3, text: '#VALUE!', align: 'center', from: 3, to: 3 },
+      { col: 0, lines: ['1'], style: {}, align: 'right', from: 0, to: 0 },
+      { col: 1, lines: ['A'], style: {}, align: 'left', from: 1, to: 1 },
+      { col: 2, lines: ['TRUE'], style: {}, align: 'center', from: 2, to: 2 },
+      {
+        col: 3,
+        lines: ['#VALUE!'],
+        style: {},
+        align: 'center',
+        from: 3,
+        to: 3,
+      },
     ]);
   });
 
   it('lets long text run over the empty cells to its right, as far as it needs', () => {
     const long = 'x'.repeat(15); // One and a half columns.
     expect(rowTexts(row({ 1: long }), 0, 9, measure, standard)).toEqual([
-      { col: 1, text: long.toUpperCase(), align: 'left', from: 1, to: 2 },
+      {
+        col: 1,
+        lines: [long.toUpperCase()],
+        style: {},
+        align: 'left',
+        from: 1,
+        to: 2,
+      },
     ]);
   });
 
@@ -65,7 +82,14 @@ describe('rowTexts', () => {
   it('includes long text from the left of the visible columns that reaches them', () => {
     const long = 'x'.repeat(35); // Three and a half columns.
     expect(rowTexts(row({ 1: long }), 3, 9, measure, standard)).toEqual([
-      { col: 1, text: long.toUpperCase(), align: 'left', from: 1, to: 4 },
+      {
+        col: 1,
+        lines: [long.toUpperCase()],
+        style: {},
+        align: 'left',
+        from: 1,
+        to: 4,
+      },
     ]);
     expect(rowTexts(row({ 1: long }), 5, 9, measure, standard)).toEqual([]);
     expect(rowTexts(row({ 0: long, 1: 'b' }), 3, 9, measure, standard)).toEqual(
@@ -77,11 +101,95 @@ describe('rowTexts', () => {
     const long = 'x'.repeat(15);
     const wide = (col: number) => (col === 1 ? 2 * COLUMN_WIDTH : COLUMN_WIDTH);
     expect(rowTexts(row({ 1: long }), 0, 9, measure, wide)).toEqual([
-      { col: 1, text: long.toUpperCase(), align: 'left', from: 1, to: 1 },
+      {
+        col: 1,
+        lines: [long.toUpperCase()],
+        style: {},
+        align: 'left',
+        from: 1,
+        to: 1,
+      },
     ]);
     const hidden = (col: number) => (col === 2 ? 0 : COLUMN_WIDTH);
     expect(rowTexts(row({ 1: long, 2: 'b' }), 0, 9, measure, hidden)).toEqual([
-      { col: 1, text: long.toUpperCase(), align: 'left', from: 1, to: 1 },
+      {
+        col: 1,
+        lines: [long.toUpperCase()],
+        style: {},
+        align: 'left',
+        from: 1,
+        to: 1,
+      },
     ]);
+  });
+
+  it('aligns text as its style says, and lets only text aligned left run over', () => {
+    const long = 'x'.repeat(15);
+    const texts = rowTexts(
+      row(
+        { 0: 1, 1: long, 3: long },
+        { 0: { horizontal: 'left' }, 1: { horizontal: 'center' } },
+      ),
+      0,
+      9,
+      measure,
+      standard,
+    );
+    expect(texts.map(({ align, from, to }) => [align, from, to])).toEqual([
+      ['left', 0, 0],
+      ['center', 1, 1],
+      ['left', 3, 4],
+    ]);
+  });
+
+  it('wraps text onto lines that fit its column, which then does not run over', () => {
+    const texts = rowTexts(
+      row({ 0: 'aaaaa bbbbb cccc' }, { 0: { wrap: true } }),
+      0,
+      9,
+      measure,
+      standard,
+    );
+    expect(texts).toEqual([
+      {
+        col: 0,
+        lines: ['AAAAA', 'BBBBB', 'CCCC'],
+        style: { wrap: true },
+        align: 'left',
+        from: 0,
+        to: 0,
+      },
+    ]);
+  });
+
+  it('measures text in the font of its cell', () => {
+    const bold = (text: string, style: Style) =>
+      measure(text) * (style.bold ? 2 : 1);
+    const texts = rowTexts(
+      row({ 0: 'x'.repeat(8) }, { 0: { bold: true } }),
+      0,
+      9,
+      bold,
+      standard,
+    );
+    expect(texts[0]).toMatchObject({ from: 0, to: 1 });
+  });
+});
+
+describe('cssFont', () => {
+  it('gives the font of a style at a zoom, with fallbacks', () => {
+    expect(cssFont({}, 1)).toBe(`13.333px ${DEFAULT_FAMILY}`);
+    expect(
+      cssFont({ font: 'Courier New', size: 12, bold: true, italic: true }, 2),
+    ).toBe('italic bold 32px "Courier New", "Liberation Mono", monospace');
+  });
+});
+
+describe('textColorOn', () => {
+  it('gives black text on light fills and white text on dark ones', () => {
+    expect(textColorOn('#ffff00')).toBe('#000000');
+    expect(textColorOn('#ffffff')).toBe('#000000');
+    expect(textColorOn('#002060')).toBe('#ffffff');
+    expect(textColorOn('#c00000')).toBe('#ffffff');
   });
 });

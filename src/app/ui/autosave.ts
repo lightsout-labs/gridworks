@@ -3,6 +3,7 @@ import {
   Workbook,
   type Command,
   type Snapshot,
+  type TextWidth,
 } from '../../engine/workbook';
 import type { Stored } from '../platform';
 
@@ -54,11 +55,16 @@ export function startAutosave(workbook: Workbook, store: Store): Autosave {
 
 /**
  * The workbook as it was stored: the saved workbook, or a new one, with
- * the changes recorded after it replayed.
+ * the changes recorded after it replayed, its rows fitted to text as
+ * `measure` measures it.
  */
-export function restoreWorkbook(stored: Stored | null): Workbook {
+export function restoreWorkbook(
+  stored: Stored | null,
+  measure?: TextWidth,
+): Workbook {
   return Workbook.fromSnapshot(
     stored?.snapshot ?? createWorkbook().toSnapshot(),
     stored?.changes,
+    measure,
   );
 }
