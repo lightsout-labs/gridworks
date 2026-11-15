@@ -3,11 +3,16 @@ import {
   ChevronRight,
   ClipboardPaste,
   Copy,
+  Eye,
+  EyeOff,
+  Plus,
   Scissors,
+  Trash2,
   type LucideIcon,
 } from 'lucide-react';
 import { useSyncExternalStore } from 'react';
 import { MAC } from '../grid/Grid';
+import type { Direction } from '../../engine/workbook';
 import type { View } from '../grid/view';
 import type { ClipboardContents } from '../platform';
 import { useTranslation } from './controls';
@@ -28,14 +33,20 @@ export function useCopied(view: View) {
   return useSyncExternalStore(view.subscribe, () => view.state.copied);
 }
 
-/** The menu that right-clicking a cell opens. */
+/**
+ * The menu that right-clicking a cell opens, or a row or column header,
+ * with the actions on the rows or columns selected.
+ */
 export function CellMenu({
   view,
   onCopy,
+  lines,
 }: {
   view: View;
   /** Puts the cells copied or cut on the system clipboard. */
   onCopy: (contents: ClipboardContents) => void;
+  /** Whether the menu is that of row or column headers. */
+  lines?: Direction;
 }) {
   const t = useTranslation();
   const copied = useCopied(view);
@@ -89,6 +100,31 @@ export function CellMenu({
             </ContextMenu.SubContent>
           </ContextMenu.Portal>
         </ContextMenu.Sub>
+        {lines && (
+          <>
+            <ContextMenu.Separator className={styles.menuSeparator} />
+            <MenuItem
+              icon={Plus}
+              label={t(`${lines}.insert`)}
+              onSelect={() => view.insertLines(lines)}
+            />
+            <MenuItem
+              icon={Trash2}
+              label={t(`${lines}.delete`)}
+              onSelect={() => view.deleteLines(lines)}
+            />
+            <MenuItem
+              icon={EyeOff}
+              label={t(`${lines}.hide`)}
+              onSelect={() => view.hideLines(lines, true)}
+            />
+            <MenuItem
+              icon={Eye}
+              label={t(`${lines}.unhide`)}
+              onSelect={() => view.hideLines(lines, false)}
+            />
+          </>
+        )}
       </ContextMenu.Content>
     </ContextMenu.Portal>
   );
@@ -103,7 +139,7 @@ function MenuItem({
 }: {
   icon: LucideIcon;
   label: string;
-  keys: string;
+  keys?: string;
   disabled?: boolean;
   onSelect: () => void;
 }) {
@@ -115,9 +151,11 @@ function MenuItem({
     >
       <Icon size={ICON_SIZE} aria-hidden />
       {label}
-      <span className={styles.menuEnd} aria-hidden>
-        {keys}
-      </span>
+      {keys && (
+        <span className={styles.menuEnd} aria-hidden>
+          {keys}
+        </span>
+      )}
     </ContextMenu.Item>
   );
 }

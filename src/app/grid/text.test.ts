@@ -19,6 +19,7 @@ function row(values: Record<number, Value>) {
 
 // Each character is a tenth of a column wide.
 const measure = (text: string) => (text.length * COLUMN_WIDTH) / 10;
+const standard = () => COLUMN_WIDTH;
 
 describe('rowTexts', () => {
   it('aligns numbers right, text left, and booleans and errors in the middle', () => {
@@ -27,6 +28,7 @@ describe('rowTexts', () => {
       0,
       5,
       measure,
+      standard,
     );
     expect(texts).toEqual([
       { col: 0, text: '1', align: 'right', from: 0, to: 0 },
@@ -38,28 +40,48 @@ describe('rowTexts', () => {
 
   it('lets long text run over the empty cells to its right, as far as it needs', () => {
     const long = 'x'.repeat(15); // One and a half columns.
-    expect(rowTexts(row({ 1: long }), 0, 9, measure)).toEqual([
+    expect(rowTexts(row({ 1: long }), 0, 9, measure, standard)).toEqual([
       { col: 1, text: long.toUpperCase(), align: 'left', from: 1, to: 2 },
     ]);
   });
 
   it('stops long text at the next cell that is not empty', () => {
     const long = 'x'.repeat(35);
-    const texts = rowTexts(row({ 0: long, 2: 5 }), 0, 9, measure);
+    const texts = rowTexts(row({ 0: long, 2: 5 }), 0, 9, measure, standard);
     expect(texts[0]).toMatchObject({ col: 0, from: 0, to: 1 });
   });
 
   it('does not let numbers run over', () => {
-    const texts = rowTexts(row({ 0: 1234567890123456 }), 0, 9, measure);
+    const texts = rowTexts(
+      row({ 0: 1234567890123456 }),
+      0,
+      9,
+      measure,
+      standard,
+    );
     expect(texts[0]).toMatchObject({ from: 0, to: 0 });
   });
 
   it('includes long text from the left of the visible columns that reaches them', () => {
     const long = 'x'.repeat(35); // Three and a half columns.
-    expect(rowTexts(row({ 1: long }), 3, 9, measure)).toEqual([
+    expect(rowTexts(row({ 1: long }), 3, 9, measure, standard)).toEqual([
       { col: 1, text: long.toUpperCase(), align: 'left', from: 1, to: 4 },
     ]);
-    expect(rowTexts(row({ 1: long }), 5, 9, measure)).toEqual([]);
-    expect(rowTexts(row({ 0: long, 1: 'b' }), 3, 9, measure)).toEqual([]);
+    expect(rowTexts(row({ 1: long }), 5, 9, measure, standard)).toEqual([]);
+    expect(rowTexts(row({ 0: long, 1: 'b' }), 3, 9, measure, standard)).toEqual(
+      [],
+    );
+  });
+
+  it('runs text over columns by their widths, and hides the text of hidden ones', () => {
+    const long = 'x'.repeat(15);
+    const wide = (col: number) => (col === 1 ? 2 * COLUMN_WIDTH : COLUMN_WIDTH);
+    expect(rowTexts(row({ 1: long }), 0, 9, measure, wide)).toEqual([
+      { col: 1, text: long.toUpperCase(), align: 'left', from: 1, to: 1 },
+    ]);
+    const hidden = (col: number) => (col === 2 ? 0 : COLUMN_WIDTH);
+    expect(rowTexts(row({ 1: long, 2: 'b' }), 0, 9, measure, hidden)).toEqual([
+      { col: 1, text: long.toUpperCase(), align: 'left', from: 1, to: 1 },
+    ]);
   });
 });

@@ -3,6 +3,7 @@ import {
   useEffect,
   useLayoutEffect,
   useRef,
+  useState,
   useSyncExternalStore,
   type KeyboardEvent,
   type MouseEvent,
@@ -11,10 +12,14 @@ import {
 import {
   cellName,
   columnName,
+  type Direction,
   type Range,
   type Workbook,
+  SHEET_COLUMNS,
+  SHEET_ROWS,
 } from '../../engine/workbook';
 import {
+  borderAt,
   cellAt,
   cellRect,
   COLUMN_HEADER_HEIGHT,
@@ -22,6 +27,7 @@ import {
   FILL_HANDLE,
   hitTest,
   isOnFillHandle,
+  layoutOf,
   ROW_HEADER_WIDTH,
   ROW_HEIGHT,
   scrollToShow,
@@ -48,8 +54,10 @@ const MARCH = 100;
 /**
  * The cells of the sheet that the view shows, drawn on a canvas that stays
  * in place while the element around it scrolls over the whole sheet. The
- * mouse and the keyboard select and edit cells as in Excel. Right-clicking
- * a cell opens `menu`, the content of a context menu.
+ * mouse and the keyboard select and edit cells as in Excel, and dragging
+ * or double-clicking a header border resizes its row or column.
+ * Right-clicking a cell, or a row or column header, opens `menu` for it,
+ * the content of a context menu.
  */
 export function Grid({
   workbook,
@@ -58,10 +66,18 @@ export function Grid({
 }: {
   workbook: Workbook;
   view: View;
-  menu: ReactNode;
+  menu: (lines?: Direction) => ReactNode;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
+  /** The row or column whose border is dragged, and where it starts. */
+  const resizeDrag = useRef<{
+    direction: Direction;
+    index: number;
+    start: number;
+  } | null>(null);
+  /** Whose menu right-clicking opened: the cells', or the headers'. */
+  const [menuLines, setMenuLines] = useState<Direction | undefined>();
   /**
    * What a drag selects, the fill handle it drags, or the corner of the
    * range it picks for a formula.
@@ -70,6 +86,11 @@ export function Grid({
   const state = useSyncExternalStore(view.subscribe, () => view.state);
   const { sheet, selection, entry, zoom, copied } = state;
   const { active } = selection;
+  const layout = layoutOf(
+    useSyncExternalStore(workbook.subscribe.bind(workbook), () =>
+      workbook.layout(sheet),
+    ),
+  );
   const activeDisplay = useSyncExternalStore(
     workbook.subscribe.bind(workbook),
     () => workbook.cell(sheet, active.row, active.col).display,
@@ -79,7 +100,13 @@ export function Grid({
     scrollX: scroller.current!.scrollLeft,
     scrollY: scroller.current!.scrollTop,
     zoom: view.state.zoom,
+    layout: layoutOf(workbook.layout(view.state.sheet)),
   });
+  /** Where a mouse event is on the canvas. */
+  const point = (event: { clientX: number; clientY: number }) => {
+    const bounds = canvas.current!.getBoundingClientRect();
+    return { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
+  };
   const size = () => ({
     width: scroller.current!.clientWidth,
     height: scroller.current!.clientHeight,
@@ -166,6 +193,17 @@ export function Grid({
   // released.
   useEffect(() => {
     const onMove = (event: globalThis.MouseEvent) => {
+      const resizing = resizeDrag.current;
+      if (resizing) {
+        const { x, y } = point(event);
+        const at = resizing.direction === 'rows' ? y : x;
+        view.previewResize(
+          resizing.direction,
+          resizing.index,
+          (at - resizing.start) / view.state.zoom,
+        );
+        return;
+      }
       if (!drag.current || drag.current === 'all') return;
       const bounds = canvas.current!.getBoundingClientRect();
       // Past the headers or the edges, the drag reaches the cells beyond
@@ -204,11 +242,22 @@ export function Grid({
         return;
       }
       view.select(next);
-      show(next.focus);
+      // Over the headers, the grid scrolls along them only: the focus of
+      // a whole row is in its last column.
+      const shown = topLeft();
+      show(
+        drag.current === 'row'
+          ? { row: next.focus.row, col: shown.col }
+          : drag.current === 'column'
+            ? { row: shown.row, col: next.focus.col }
+            : next.focus,
+      );
     };
     const onUp = () => {
       if (drag.current === 'fill') view.fill();
+      if (resizeDrag.current) view.resize();
       drag.current = null;
+      resizeDrag.current = null;
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
@@ -231,8 +280,31 @@ export function Grid({
     );
   };
 
+  /** The header border under a mouse event, to resize its line. */
+  const onBorder = (event: MouseEvent) => {
+    if (view.state.entry) return null;
+    const { x, y } = point(event);
+    return borderAt(x, y, viewport());
+  };
+
   const onMouseDown = (event: MouseEvent) => {
     if (event.button !== 0) return;
+    const border = onBorder(event);
+    if (border) {
+      const { direction, index } = border;
+      const rect = cellRect(
+        direction === 'rows' ? { row: index, col: 0 } : { row: 0, col: index },
+        viewport(),
+      );
+      resizeDrag.current = {
+        direction,
+        index,
+        start: direction === 'rows' ? rect.y : rect.x,
+      };
+      event.preventDefault();
+      scroller.current!.focus();
+      return;
+    }
     if (onFillHandle(event)) {
       drag.current = 'fill';
       event.preventDefault();
@@ -266,32 +338,54 @@ export function Grid({
     scroller.current!.focus();
   };
 
-  // Right-clicking a cell outside the selection selects it first, as in
-  // Excel; the headers have no menu yet.
+  // Right-clicking a cell or header outside the selection selects it
+  // first, as in Excel; the corner has no menu.
   const onContextMenu = (event: MouseEvent) => {
-    const bounds = canvas.current!.getBoundingClientRect();
-    const target = hitTest(
-      event.clientX - bounds.left,
-      event.clientY - bounds.top,
-      viewport(),
-    );
-    if (target.kind !== 'cell') {
+    const { x, y } = point(event);
+    const target = hitTest(x, y, viewport());
+    if (target.kind === 'all') {
       event.preventDefault();
       return;
     }
-    const { row, col } = target;
+    const last = { row: SHEET_ROWS - 1, col: SHEET_COLUMNS - 1 };
+    // A header's menu is for its whole row or column.
+    const [top, left, bottom, right] =
+      target.kind === 'cell'
+        ? [target.row, target.col, target.row, target.col]
+        : target.kind === 'row'
+          ? [target.row, 0, target.row, last.col]
+          : [0, target.col, last.row, target.col];
     const inside = view.state.selection.ranges.some(
       (each) =>
-        row >= each.top &&
-        row <= each.bottom &&
-        col >= each.left &&
-        col <= each.right,
+        each.top <= top &&
+        each.bottom >= bottom &&
+        each.left <= left &&
+        each.right >= right,
     );
-    if (!inside)
+    if (!inside) {
       view.select(pick(view.state.selection, target, 'replace', topLeft()));
+    }
+    setMenuLines(
+      target.kind === 'row'
+        ? 'rows'
+        : target.kind === 'column'
+          ? 'columns'
+          : undefined,
+    );
   };
 
   const onDoubleClick = (event: MouseEvent) => {
+    const border = onBorder(event);
+    if (border) {
+      const context = canvas.current!.getContext('2d')!;
+      context.font = `${FONT_SIZE}px ${getComputedStyle(canvas.current!).fontFamily}`;
+      view.fitLines(
+        border.direction,
+        border.index,
+        (text) => context.measureText(text).width,
+      );
+      return;
+    }
     if (onFillHandle(event)) {
       view.autoFill();
       return;
@@ -361,8 +455,8 @@ export function Grid({
     }
   };
 
-  const sheetArea = sheetSize(zoom);
-  const editor = cellRect(active, { scrollX: 0, scrollY: 0, zoom });
+  const sheetArea = sheetSize({ zoom, layout });
+  const editor = cellRect(active, { scrollX: 0, scrollY: 0, zoom, layout });
   const shownCopy =
     copied && copied.sheet === sheet ? rangeName(copied.range) : undefined;
   return (
@@ -381,9 +475,14 @@ export function Grid({
               className={styles.canvas}
               onMouseDown={onMouseDown}
               onMouseMove={(event) => {
-                canvas.current!.style.cursor = onFillHandle(event)
-                  ? 'crosshair'
-                  : '';
+                const border = onBorder(event);
+                canvas.current!.style.cursor = border
+                  ? border.direction === 'rows'
+                    ? 'row-resize'
+                    : 'col-resize'
+                  : onFillHandle(event)
+                    ? 'crosshair'
+                    : '';
               }}
               onDoubleClick={onDoubleClick}
               onContextMenu={onContextMenu}
@@ -417,7 +516,7 @@ export function Grid({
           </div>
         </div>
       </ContextMenu.Trigger>
-      {menu}
+      {menu(menuLines)}
     </ContextMenu.Root>
   );
 }
@@ -433,7 +532,7 @@ function rangeName({ top, left, bottom, right }: Range): string {
 function draw(
   canvas: HTMLCanvasElement,
   workbook: Workbook,
-  { sheet, selection, entry, copied, filling }: ViewState,
+  { sheet, selection, entry, copied, filling, resizing }: ViewState,
   viewport: Viewport,
   width: number,
   height: number,
@@ -451,7 +550,7 @@ function draw(
   context.setTransform(scale, 0, 0, scale, 0, 0);
   const style = getComputedStyle(canvas);
   const color = (name: string) => style.getPropertyValue(name);
-  const { zoom } = viewport;
+  const { zoom, layout } = viewport;
   const headerWidth = ROW_HEADER_WIDTH * zoom;
   const headerHeight = COLUMN_HEADER_HEIGHT * zoom;
   const range = visibleRange(width, height, viewport);
@@ -519,6 +618,7 @@ function draw(
       range.left,
       range.right,
       measure,
+      (col) => layout.cols.size(col),
     );
     for (const { col, text, align, from, to } of texts) {
       const box = rect({ row, col });
@@ -659,7 +759,7 @@ function draw(
   context.clip();
   for (let row = range.top; row <= range.bottom; row++) {
     const { y, height: h } = rect({ row, col: 0 });
-    context.fillText(String(row + 1), headerWidth / 2, y + h / 2);
+    if (h > 0) context.fillText(String(row + 1), headerWidth / 2, y + h / 2);
   }
   context.restore();
   context.save();
@@ -668,9 +768,31 @@ function draw(
   context.clip();
   for (let col = range.left; col <= range.right; col++) {
     const { x, width: w } = rect({ row: 0, col });
-    context.fillText(columnName(col), x + w / 2, headerHeight / 2);
+    if (w > 0) context.fillText(columnName(col), x + w / 2, headerHeight / 2);
   }
   context.restore();
+
+  // Where the border of a row or column being resized is dragged to.
+  if (resizing) {
+    const { direction, index, size } = resizing;
+    const start = rect({ row: index, col: index });
+    const at = Math.round(
+      (direction === 'rows' ? start.y : start.x) + Math.max(0, size) * zoom,
+    );
+    context.strokeStyle = color('--accent');
+    context.lineWidth = 1;
+    context.setLineDash([3, 3]);
+    context.beginPath();
+    if (direction === 'rows') {
+      context.moveTo(0, at + 0.5);
+      context.lineTo(width, at + 0.5);
+    } else {
+      context.moveTo(at + 0.5, 0);
+      context.lineTo(at + 0.5, height);
+    }
+    context.stroke();
+    context.setLineDash([]);
+  }
 }
 
 /** The references of the entry to cells of the shown sheet. */

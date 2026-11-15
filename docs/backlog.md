@@ -605,7 +605,7 @@ Notes:
 
 ## S15: Rows and columns
 
-Status: Todo
+Status: In progress
 
 Acceptance criteria:
 - The user can insert and delete rows and columns, and formulas that refer to

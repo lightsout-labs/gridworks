@@ -3,8 +3,12 @@ import {
   quoteSheetName,
   type Change,
   type Command,
+  type Direction,
+  type LineSpan,
   type Range,
+  type Span,
   type Workbook,
+  SHEET_COLUMNS,
   SHEET_ROWS,
 } from '../../engine/workbook';
 import {
@@ -20,6 +24,7 @@ import type { EntryMode } from './keys';
 import { navigate, type Navigation, type SheetContents } from './navigation';
 import type { CellPosition } from './geometry';
 import { covering, single, type Selection } from './selection';
+import { TEXT_PADDING } from './text';
 
 export const ZOOM_MIN = 0.5;
 export const ZOOM_MAX = 2;
@@ -69,6 +74,15 @@ export interface ViewState {
    * included, or `null` when it is not dragged beyond the selection.
    */
   readonly filling: Range | null;
+  /** The size a row or column is dragged to by its border, or `null`. */
+  readonly resizing: Resizing | null;
+}
+
+/** A row or column dragged by its border to a size, in CSS pixels at 100%. */
+export interface Resizing {
+  readonly direction: Direction;
+  readonly index: number;
+  readonly size: number;
 }
 
 /** A range copied or cut, which a moving border shows until it is forgotten. */
@@ -110,6 +124,7 @@ export class View {
       endMode: false,
       copied: null,
       filling: null,
+      resizing: null,
     };
   }
 
@@ -443,6 +458,92 @@ export class View {
   }
 
   /**
+   * Inserts before each selected range as many rows or columns as it
+   * spans, after committing a waiting entry, and selects them.
+   */
+  insertLines(direction: Direction): void {
+    this.commit();
+    const { sheet } = this.current;
+    const spans = this.selectedSpans(direction);
+    const change = this.workbook.execute({
+      type: 'insertLines',
+      sheet,
+      direction,
+      spans,
+    });
+    this.change({ selection: covering(change.ranges), endMode: false });
+  }
+
+  /** Deletes the rows or columns of the selection, after committing. */
+  deleteLines(direction: Direction): void {
+    this.commit();
+    const { sheet } = this.current;
+    const spans = this.selectedSpans(direction);
+    this.workbook.execute({ type: 'deleteLines', sheet, direction, spans });
+  }
+
+  /** Hides, or shows again, the rows or columns of the selection. */
+  hideLines(direction: Direction, hidden: boolean): void {
+    const spans = this.selectedSpans(direction).map((span) => ({
+      ...span,
+      hidden,
+    }));
+    this.setLines(direction, spans);
+  }
+
+  /** Drags the border of a row or column to give it a size. */
+  previewResize(direction: Direction, index: number, size: number): void {
+    this.change({ resizing: { direction, index, size } });
+  }
+
+  /**
+   * Gives the size a border was dragged to to its row or column, or to
+   * every whole line selected with it; dragged to nothing, they are
+   * hidden, as in Excel.
+   */
+  resize(): void {
+    const { resizing } = this.current;
+    if (!resizing) return;
+    this.change({ resizing: null });
+    const { direction, index } = resizing;
+    const size = Math.round(resizing.size);
+    this.setLines(
+      direction,
+      this.linesWith(direction, index).map((span) =>
+        size > 0 ? { ...span, size, hidden: false } : { ...span, hidden: true },
+      ),
+    );
+  }
+
+  /**
+   * Fits a row or column, or every whole line selected with it, to its
+   * contents, as a double-click on its border does: a column to its
+   * widest text, as `measure` gives it at 100%, and a row to the standard
+   * height, the only one its single line of text needs.
+   */
+  fitLines(
+    direction: Direction,
+    index: number,
+    measure: (text: string) => number,
+  ): void {
+    const { sheet } = this.current;
+    const { rows } = this.workbook.extent(sheet);
+    const spans: LineSpan[] = [];
+    for (const { start, end } of this.linesWith(direction, index)) {
+      for (let line = start; line <= end; line++) {
+        let widest = 0;
+        for (let row = 0; direction === 'columns' && row < rows; row++) {
+          const { display } = this.workbook.cell(sheet, row, line);
+          if (display !== '') widest = Math.max(widest, measure(display));
+        }
+        const size = widest > 0 ? Math.ceil(widest + 2 * TEXT_PADDING) : null;
+        spans.push({ start: line, end: line, size });
+      }
+    }
+    this.setLines(direction, spans);
+  }
+
+  /**
    * Undoes the last change, abandoning the entry, and selects the cells it
    * changed.
    */
@@ -474,6 +575,42 @@ export class View {
       Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom)) * 100,
     );
     this.change({ zoom: percent / 100 });
+  }
+
+  private setLines(direction: Direction, spans: LineSpan[]): void {
+    this.commit();
+    const { sheet } = this.current;
+    this.workbook.execute({ type: 'setLines', sheet, direction, spans });
+  }
+
+  /** The rows or columns that the ranges of the selection span. */
+  private selectedSpans(direction: Direction): Span[] {
+    return this.current.selection.ranges.map((range) =>
+      direction === 'rows'
+        ? { start: range.top, end: range.bottom }
+        : { start: range.left, end: range.right },
+    );
+  }
+
+  /**
+   * A row or column, or, when it is among whole lines selected, all of
+   * those: the lines a drag or double-click on its border changes.
+   */
+  private linesWith(direction: Direction, index: number): Span[] {
+    const rows = direction === 'rows';
+    const whole = this.current.selection.ranges.filter((range) =>
+      rows
+        ? range.left === 0 && range.right === SHEET_COLUMNS - 1
+        : range.top === 0 && range.bottom === SHEET_ROWS - 1,
+    );
+    const spans = whole.map((range) =>
+      rows
+        ? { start: range.top, end: range.bottom }
+        : { start: range.left, end: range.right },
+    );
+    return spans.some((span) => index >= span.start && index <= span.end)
+      ? spans
+      : [{ start: index, end: index }];
   }
 
   private lastRange(): Range {

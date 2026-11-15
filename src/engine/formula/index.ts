@@ -127,6 +127,21 @@ export type Move =
       readonly cols: number;
       readonly own: string;
       readonly newOwn: string;
+    }
+  | {
+      /**
+       * `count` rows or columns inserted before `at`, or, when negative, as
+       * many deleted from `at` on, on the sheet named `sheet`. References
+       * to cells there follow them, absolute or not; a range grows or
+       * shrinks with the lines inside it, and a reference to deleted cells
+       * only becomes `#REF!`. `own` is the sheet of the formula.
+       */
+      readonly type: 'lines';
+      readonly sheet: string;
+      readonly own: string;
+      readonly direction: 'rows' | 'columns';
+      readonly at: number;
+      readonly count: number;
     };
 
 /** A reference as written in a formula. */
@@ -627,7 +642,9 @@ export function shift(ast: Ast, move: Move): Ast {
       ? offset(move)
       : move.type === 'moveCells'
         ? movedCells(move)
-        : renamed(move.from, move.to);
+        : move.type === 'lines'
+          ? movedLines(move)
+          : renamed(move.from, move.to);
   const visit = (node: Ast): Ast => {
     switch (node.type) {
       case 'range':
@@ -733,6 +750,45 @@ function movedCells(move: Extract<Move, { type: 'moveCells' }>) {
       ...(sheet !== undefined && { sheet }),
       start,
       ...(end && { end }),
+    };
+  };
+}
+
+/** Moves references to rows or columns inserted or deleted. */
+function movedLines(move: Extract<Move, { type: 'lines' }>) {
+  const { at, count } = move;
+  const field = move.direction === 'rows' ? 'row' : 'col';
+  const limit = move.direction === 'rows' ? SHEET_ROWS : SHEET_COLUMNS;
+  const sheet = move.sheet.toLowerCase();
+  return (node: ReferenceAst): Ast => {
+    if ((node.sheet ?? move.own).toLowerCase() !== sheet) return node;
+    const end = node.end ?? node.start;
+    const a = node.start[field];
+    const b = end[field];
+    // A whole column does not move with rows, nor a whole row with columns.
+    if (a === null || b === null) return node;
+    const low = Math.min(a, b);
+    const high = Math.max(a, b);
+    let first: number;
+    let last: number;
+    if (count > 0) {
+      first = low >= at ? low + count : low;
+      last = Math.min(high >= at ? high + count : high, limit - 1);
+      if (first >= limit) return { type: 'error', value: error('#REF!') };
+    } else {
+      const after = at - count;
+      if (low >= at && high < after) {
+        return { type: 'error', value: error('#REF!') };
+      }
+      first = low < at ? low : low >= after ? low + count : at;
+      last = high < at ? high : high >= after ? high + count : at - 1;
+    }
+    if (first === low && last === high) return node;
+    const [start, stop] = a <= b ? [first, last] : [last, first];
+    return {
+      ...node,
+      start: { ...node.start, [field]: start },
+      ...(node.end && { end: { ...node.end, [field]: stop } }),
     };
   };
 }

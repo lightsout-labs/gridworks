@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { cellRect } from '../../src/app/grid/geometry';
+import { cellRect, UNIFORM } from '../../src/app/grid/geometry';
 import { clickCell, enter, expectCell, openApp } from './grid';
 
 test.use({ locale: 'en-US' });
@@ -13,7 +13,10 @@ const hint = (page: Page) => page.getByRole('note', { name: 'Arguments' });
 /** Where the middle of a cell is on the page, at the top of the sheet. */
 async function cellPoint(page: Page, row: number, col: number) {
   const canvas = (await page.locator('canvas').boundingBox())!;
-  const rect = cellRect({ row, col }, { scrollX: 0, scrollY: 0, zoom: 1 });
+  const rect = cellRect(
+    { row, col },
+    { scrollX: 0, scrollY: 0, zoom: 1, layout: UNIFORM },
+  );
   return {
     x: canvas.x + rect.x + rect.width / 2,
     y: canvas.y + rect.y + rect.height / 2,
@@ -22,7 +25,10 @@ async function cellPoint(page: Page, row: number, col: number) {
 
 /** The color the canvas drew just inside the left edge of a cell. */
 async function leftEdgeColor(page: Page, row: number, col: number) {
-  const rect = cellRect({ row, col }, { scrollX: 0, scrollY: 0, zoom: 1 });
+  const rect = cellRect(
+    { row, col },
+    { scrollX: 0, scrollY: 0, zoom: 1, layout: UNIFORM },
+  );
   return page.locator('canvas').evaluate((canvas: HTMLCanvasElement, rect) => {
     const scale = canvas.width / canvas.clientWidth;
     const { data } = canvas

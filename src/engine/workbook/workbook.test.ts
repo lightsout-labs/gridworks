@@ -1206,3 +1206,231 @@ describe('fill', () => {
     );
   });
 });
+
+describe('rows and columns', () => {
+  function lines() {
+    const { workbook, sheet, set, show } = setup();
+    const formula = (row: number, col: number) =>
+      workbook.cell(sheet, row, col).formula;
+    const insert = (
+      direction: 'rows' | 'columns',
+      ...spans: [number, number][]
+    ) =>
+      workbook.execute({
+        type: 'insertLines',
+        sheet,
+        direction,
+        spans: spans.map(([start, end]) => ({ start, end })),
+      });
+    const remove = (
+      direction: 'rows' | 'columns',
+      ...spans: [number, number][]
+    ) =>
+      workbook.execute({
+        type: 'deleteLines',
+        sheet,
+        direction,
+        spans: spans.map(([start, end]) => ({ start, end })),
+      });
+    return { workbook, sheet, set, show, formula, insert, remove };
+  }
+
+  it('inserts rows, moving the cells below and every reference to them', () => {
+    const { workbook, set, show, formula, insert } = lines();
+    set(0, 0, '1');
+    set(2, 0, '3');
+    set(3, 0, '=A3*2');
+    set(4, 0, '=SUM(A1:A4)+$A$3');
+    set(0, 1, '=A3+A1');
+    const other = workbook.execute({ type: 'addSheet', index: 1 }).sheet;
+    workbook.execute({
+      type: 'setCell',
+      sheet: other,
+      row: 0,
+      col: 0,
+      input: '=Sheet1!A3',
+    });
+    insert('rows', [1, 2]);
+    expect(show(4, 0)).toBe('3');
+    expect(show(1, 0)).toBe('');
+    expect(formula(5, 0)).toBe('=A5*2');
+    expect(formula(6, 0)).toBe('=SUM(A1:A6)+$A$5');
+    expect(show(6, 0)).toBe('13');
+    expect(formula(0, 1)).toBe('=A5+A1');
+    expect(workbook.cell(other, 0, 0).formula).toBe('=Sheet1!A5');
+    // The moved cells are read where they are now.
+    set(4, 0, '10');
+    expect(show(5, 0)).toBe('20');
+    expect(show(0, 1)).toBe('11');
+    expect(workbook.cell(other, 0, 0).display).toBe('10');
+  });
+
+  it('deletes rows, giving #REF! for references to deleted cells and shrinking ranges', () => {
+    const { set, show, formula, remove } = lines();
+    for (let row = 0; row < 5; row++) set(row, 0, String(row + 1));
+    set(0, 1, '=A3');
+    set(1, 1, '=SUM(A2:A5)');
+    set(2, 1, 'gone');
+    set(5, 1, '=A5+A6');
+    set(6, 1, '=SUM(A2:A3)');
+    remove('rows', [1, 2]);
+    expect(show(1, 0)).toBe('4');
+    expect(formula(0, 1)).toBe('=#REF!');
+    expect(show(0, 1)).toBe('#REF!');
+    // The formula in a deleted row is gone with it.
+    expect(show(1, 1)).toBe('');
+    expect(formula(3, 1)).toBe('=A3+A4');
+    expect(formula(4, 1)).toBe('=SUM(#REF!)');
+    expect(show(3, 1)).toBe('5');
+  });
+
+  it('inserts and deletes columns, with the references to them', () => {
+    const { set, show, formula, insert, remove } = lines();
+    set(0, 0, '1');
+    set(0, 1, '2');
+    set(0, 2, '=A1+B1');
+    set(1, 0, '=SUM(B:C)');
+    insert('columns', [1, 1]);
+    expect(show(0, 2)).toBe('2');
+    expect(formula(0, 3)).toBe('=A1+C1');
+    expect(formula(1, 0)).toBe('=SUM(C:D)');
+    remove('columns', [0, 0]);
+    expect(formula(0, 2)).toBe('=#REF!+B1');
+    expect(formula(1, 0)).toBeNull();
+  });
+
+  it('inserts and deletes at each of several spans at once', () => {
+    const { set, show, insert, remove } = lines();
+    for (let row = 0; row < 6; row++) set(row, 0, String(row + 1));
+    remove('rows', [3, 3], [1, 1]);
+    expect([0, 1, 2, 3].map((row) => show(row, 0))).toEqual([
+      '1',
+      '3',
+      '5',
+      '6',
+    ]);
+    insert('rows', [1, 1], [2, 3]);
+    expect([0, 1, 2, 3, 4, 5, 6].map((row) => show(row, 0))).toEqual([
+      '1',
+      '',
+      '3',
+      '',
+      '',
+      '5',
+      '6',
+    ]);
+  });
+
+  it('sets the sizes of rows and columns and hides them, keeping them in the snapshot', () => {
+    const { workbook, sheet } = lines();
+    workbook.execute({
+      type: 'setLines',
+      sheet,
+      direction: 'columns',
+      spans: [
+        { start: 1, end: 2, size: 150 },
+        { start: 4, end: 4, size: 30 },
+      ],
+    });
+    workbook.execute({
+      type: 'setLines',
+      sheet,
+      direction: 'rows',
+      spans: [{ start: 3, end: 5, hidden: true }],
+    });
+    workbook.execute({
+      type: 'setLines',
+      sheet,
+      direction: 'columns',
+      spans: [{ start: 2, end: 4, size: null }],
+    });
+    const { rows, columns } = workbook.layout(sheet);
+    expect([...columns.sizes]).toEqual([[1, 150]]);
+    expect([...rows.hidden].sort()).toEqual([3, 4, 5]);
+    expect(rows.sizes.size).toBe(0);
+    const reopened = Workbook.fromSnapshot(workbook.toSnapshot());
+    expect(reopened.layout(sheet)).toEqual(workbook.layout(sheet));
+    expect(workbook.layout(sheet)).toBe(workbook.layout(sheet));
+  });
+
+  it('moves the sizes and hidden lines with the rows and columns', () => {
+    const { workbook, sheet, insert, remove } = lines();
+    workbook.execute({
+      type: 'setLines',
+      sheet,
+      direction: 'rows',
+      spans: [
+        { start: 2, end: 2, size: 40 },
+        { start: 5, end: 5, hidden: true },
+      ],
+    });
+    insert('rows', [0, 1]);
+    expect([...workbook.layout(sheet).rows.sizes]).toEqual([[4, 40]]);
+    expect([...workbook.layout(sheet).rows.hidden]).toEqual([7]);
+    remove('rows', [4, 4]);
+    expect(workbook.layout(sheet).rows.sizes.size).toBe(0);
+    expect([...workbook.layout(sheet).rows.hidden]).toEqual([6]);
+  });
+
+  it('undoes and redoes each change to rows and columns, selecting the lines it changed', () => {
+    const { workbook, sheet, set, show, formula, insert, remove } = lines();
+    set(0, 0, '1');
+    set(1, 0, '2');
+    set(2, 0, '=A2*10');
+    remove('rows', [1, 1]);
+    expect(formula(1, 0)).toBe('=#REF!*10');
+    expect(workbook.undo()!.ranges).toEqual([
+      { top: 1, left: 0, bottom: 1, right: SHEET_COLUMNS - 1 },
+    ]);
+    expect(formula(2, 0)).toBe('=A2*10');
+    expect(show(2, 0)).toBe('20');
+    workbook.redo();
+    expect(formula(1, 0)).toBe('=#REF!*10');
+    workbook.undo();
+
+    insert('columns', [0, 1]);
+    expect(show(2, 2)).toBe('20');
+    expect(workbook.undo()!.ranges).toEqual([
+      { top: 0, left: 0, bottom: SHEET_ROWS - 1, right: 1 },
+    ]);
+    expect(formula(2, 0)).toBe('=A2*10');
+    set(1, 0, '3');
+    expect(show(2, 0)).toBe('30');
+
+    workbook.execute({
+      type: 'setLines',
+      sheet,
+      direction: 'rows',
+      spans: [{ start: 0, end: 1, size: 50, hidden: true }],
+    });
+    workbook.undo();
+    expect(workbook.layout(sheet).rows.sizes.size).toBe(0);
+    expect(workbook.layout(sheet).rows.hidden.size).toBe(0);
+    workbook.redo();
+    expect([...workbook.layout(sheet).rows.sizes]).toEqual([
+      [0, 50],
+      [1, 50],
+    ]);
+  });
+
+  it('tells listeners of changes to rows and columns as commands that replay them', () => {
+    const { workbook, sheet, set, insert, remove } = lines();
+    const replay = Workbook.fromSnapshot(workbook.toSnapshot());
+    workbook.subscribe((command) => replay.execute(command));
+    set(0, 0, '1');
+    set(3, 0, '=A1+A3');
+    insert('rows', [0, 0]);
+    remove('columns', [2, 3]);
+    workbook.execute({
+      type: 'setLines',
+      sheet,
+      direction: 'columns',
+      spans: [{ start: 0, end: 0, size: 120 }],
+    });
+    remove('rows', [2, 2]);
+    workbook.undo();
+    workbook.undo();
+    workbook.redo();
+    expect(replay.toSnapshot()).toEqual(workbook.toSnapshot());
+  });
+});

@@ -125,5 +125,11 @@ describe('selection', () => {
       bottom: LAST_ROW,
       right: 9,
     });
+
+    // A plain click selects its target alone again.
+    const alone = pick(column, { kind: 'row', row: 2 }, 'replace', origin);
+    expect(alone.ranges).toEqual([
+      { top: 2, left: 0, bottom: 2, right: LAST_COL },
+    ]);
   });
 });

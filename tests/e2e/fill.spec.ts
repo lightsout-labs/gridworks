@@ -1,10 +1,10 @@
 import { expect, test, type Page } from '@playwright/test';
-import { cellRect } from '../../src/app/grid/geometry';
+import { cellRect, UNIFORM } from '../../src/app/grid/geometry';
 import { clickCell, enter, expectCell, openApp } from './grid';
 
 test.use({ locale: 'en-US' });
 
-const TOP = { scrollX: 0, scrollY: 0, zoom: 1 };
+const TOP = { scrollX: 0, scrollY: 0, zoom: 1, layout: UNIFORM };
 
 /** Where the fill handle of a range ending at a cell is, on the page. */
 async function handle(page: Page, bottom: number, right: number) {

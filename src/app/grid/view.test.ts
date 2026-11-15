@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createWorkbook } from '../../engine/workbook';
-import { single } from './selection';
+import { createWorkbook, SHEET_ROWS } from '../../engine/workbook';
+import { pick, single } from './selection';
 import { View } from './view';
 
 function setup() {
@@ -23,6 +23,7 @@ describe('View', () => {
       endMode: false,
       copied: null,
       filling: null,
+      resizing: null,
     });
   });
 
@@ -707,6 +708,137 @@ describe('View', () => {
       empty.view.fillDown();
       empty.view.fillRight();
       expect(empty.workbook.canUndo).toBe(false);
+    });
+  });
+
+  describe('rows and columns', () => {
+    const origin = { row: 0, col: 0 };
+    /** Selects whole rows or columns, adding them to the selection when asked. */
+    function selectLines(
+      view: View,
+      kind: 'row' | 'column',
+      from: number,
+      to = from,
+      add = false,
+    ) {
+      const target = (index: number) =>
+        kind === 'row'
+          ? ({ kind, row: index } as const)
+          : ({ kind, col: index } as const);
+      const start = pick(
+        view.state.selection,
+        target(from),
+        add ? 'add' : 'replace',
+        origin,
+      );
+      view.select(pick(start, target(to), 'extend', origin));
+    }
+
+    it('inserts and deletes the selected rows or columns, each span at once', () => {
+      const { workbook, view, sheet } = setup();
+      for (let row = 0; row < 5; row++) {
+        workbook.execute({
+          type: 'setCell',
+          sheet,
+          row,
+          col: 0,
+          input: String(row + 1),
+        });
+      }
+      selectLines(view, 'row', 1, 2);
+      selectLines(view, 'row', 4, 4, true);
+      view.insertLines('rows');
+      const column = () =>
+        Array.from(
+          { length: 8 },
+          (_, row) => workbook.cell(sheet, row, 0).display,
+        );
+      expect(column()).toEqual(['1', '', '', '2', '3', '4', '', '5']);
+      // The rows inserted are selected, so deleting them takes them back.
+      view.deleteLines('rows');
+      expect(column()).toEqual(['1', '2', '3', '4', '5', '', '', '']);
+      workbook.undo();
+      workbook.undo();
+      selectLines(view, 'column', 0);
+      view.insertLines('columns');
+      expect(workbook.cell(sheet, 0, 1).display).toBe('1');
+    });
+
+    it('hides and shows again the selected rows or columns', () => {
+      const { workbook, view, sheet } = setup();
+      selectLines(view, 'column', 1, 2);
+      view.hideLines('columns', true);
+      expect([...workbook.layout(sheet).columns.hidden]).toEqual([1, 2]);
+      selectLines(view, 'column', 0, 3);
+      view.hideLines('columns', false);
+      expect(workbook.layout(sheet).columns.hidden.size).toBe(0);
+    });
+
+    it('resizes a line dragged by its border, or every selected line with it', () => {
+      const { workbook, view, sheet } = setup();
+      view.previewResize('columns', 3, 150);
+      expect(view.state.resizing).toEqual({
+        direction: 'columns',
+        index: 3,
+        size: 150,
+      });
+      view.resize();
+      expect(view.state.resizing).toBeNull();
+      expect([...workbook.layout(sheet).columns.sizes]).toEqual([[3, 150]]);
+
+      selectLines(view, 'row', 1, 2);
+      selectLines(view, 'row', 5, 5, true);
+      view.previewResize('rows', 2, 40);
+      view.resize();
+      expect([...workbook.layout(sheet).rows.sizes]).toEqual([
+        [1, 40],
+        [2, 40],
+        [5, 40],
+      ]);
+      // A line outside the selection is resized alone, and dragged to
+      // nothing it is hidden.
+      view.previewResize('rows', 8, -3);
+      view.resize();
+      expect([...workbook.layout(sheet).rows.hidden]).toEqual([8]);
+      expect(workbook.layout(sheet).rows.sizes.has(8)).toBe(false);
+      // Without a drag, there is nothing to resize.
+      const changes = workbook.canUndo;
+      view.resize();
+      expect(workbook.canUndo).toBe(changes);
+    });
+
+    it('fits columns to their widest text, and rows to the standard height', () => {
+      const { workbook, view, sheet } = setup();
+      const set = (row: number, col: number, input: string) =>
+        workbook.execute({ type: 'setCell', sheet, row, col, input });
+      set(0, 1, 'abc');
+      set(3, 1, 'abcdefghij');
+      set(0, 2, 'x');
+      const measure = (text: string) => text.length * 10;
+      selectLines(view, 'column', 1, 3);
+      view.fitLines('columns', 2, measure);
+      const { sizes } = workbook.layout(sheet).columns;
+      expect(sizes.get(1)).toBe(108);
+      expect(sizes.get(2)).toBe(18);
+      // An empty column gets the standard width.
+      expect(sizes.has(3)).toBe(false);
+
+      view.previewResize('rows', 0, 60);
+      view.resize();
+      view.fitLines('rows', 0, measure);
+      expect(workbook.layout(sheet).rows.sizes.size).toBe(0);
+    });
+
+    it('selects the lines a change to rows or columns changed when it is undone', () => {
+      const { workbook, view } = setup();
+      selectLines(view, 'column', 2);
+      view.deleteLines('columns');
+      view.select(single({ row: 5, col: 5 }));
+      view.undo();
+      expect(view.state.selection.ranges).toEqual([
+        { top: 0, left: 2, bottom: SHEET_ROWS - 1, right: 2 },
+      ]);
+      expect(workbook.canRedo).toBe(true);
     });
   });
 });

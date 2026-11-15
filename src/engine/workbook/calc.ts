@@ -24,6 +24,24 @@ interface Dependency {
   readonly area: Area;
 }
 
+/**
+ * The rows or the columns of a sheet that differ from the default: sizes
+ * in CSS pixels at 100%, and the lines hidden. Replaced, never changed, so
+ * that the same object means the same lines.
+ */
+export interface Lines {
+  readonly sizes: ReadonlyMap<number, number>;
+  readonly hidden: ReadonlySet<number>;
+}
+
+export const NO_LINES: Lines = { sizes: new Map(), hidden: new Set() };
+
+/** The rows and columns of a sheet that differ from the default. */
+export interface SheetLayout {
+  readonly rows: Lines;
+  readonly columns: Lines;
+}
+
 export interface Sheet {
   readonly id: string;
   name: string;
@@ -35,6 +53,8 @@ export interface Sheet {
   readonly formulaColumns: Map<number, Map<number, Formula>>;
   /** Indexes in the workbook's styles by column, then by row. Both sparse. */
   readonly styleIds: number[][];
+  /** Replaced, never changed, as its lines are. */
+  layout: SheetLayout;
   /** The formulas that read one cell, by the cell's key. */
   readonly cellReaders: Map<string, Set<Dependency>>;
   /** The formulas that read an area of several cells, by each column of it. */
@@ -59,6 +79,7 @@ export function emptySheet(
     formulas: new Map(),
     formulaColumns: new Map(),
     styleIds,
+    layout: { rows: NO_LINES, columns: NO_LINES },
     cellReaders: new Map(),
     areaReaders: new Map(),
   };
