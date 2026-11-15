@@ -9,6 +9,7 @@ import {
 import { useSyncExternalStore } from 'react';
 import { MAC } from '../grid/Grid';
 import type { View } from '../grid/view';
+import type { ClipboardContents } from '../platform';
 import { useTranslation } from './controls';
 import type { Key } from './i18n';
 import styles from './Shell.module.css';
@@ -28,7 +29,14 @@ export function useCopied(view: View) {
 }
 
 /** The menu that right-clicking a cell opens. */
-export function CellMenu({ view }: { view: View }) {
+export function CellMenu({
+  view,
+  onCopy,
+}: {
+  view: View;
+  /** Puts the cells copied or cut on the system clipboard. */
+  onCopy: (contents: ClipboardContents) => void;
+}) {
   const t = useTranslation();
   const copied = useCopied(view);
   const key = MAC ? '⌘' : 'Ctrl+';
@@ -39,13 +47,13 @@ export function CellMenu({ view }: { view: View }) {
           icon={Scissors}
           label={t('cut')}
           keys={`${key}X`}
-          onSelect={() => view.cut()}
+          onSelect={() => onCopy(view.cut())}
         />
         <MenuItem
           icon={Copy}
           label={t('copy')}
           keys={`${key}C`}
-          onSelect={() => view.copy()}
+          onSelect={() => onCopy(view.copy())}
         />
         <MenuItem
           icon={ClipboardPaste}

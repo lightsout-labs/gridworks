@@ -46,6 +46,20 @@ export type Command =
       readonly year?: number;
     }
   | {
+      /**
+       * Sets a block of cells from its top left as if each input were
+       * typed, as text pasted from another application is. Rows may differ
+       * in length; what falls outside the sheet is left out.
+       */
+      readonly type: 'setCells';
+      readonly sheet: string;
+      readonly row: number;
+      readonly col: number;
+      readonly inputs: readonly (readonly string[])[];
+      /** As in `setCell`, for every date typed without a year. */
+      readonly year?: number;
+    }
+  | {
       /** Empties the cells of ranges, keeping their formats. */
       readonly type: 'clear';
       readonly sheet: string;
@@ -224,6 +238,19 @@ export interface Snapshot {
 }
 
 type Paste = Extract<Command, { type: 'paste' }>;
+
+/** The cells a `setCells` command sets, inside the sheet. */
+function blockOf(command: Extract<Command, { type: 'setCells' }>): Range {
+  const { row, col, inputs } = command;
+  const width = Math.max(0, ...inputs.map((each) => each.length));
+  if (width === 0) throw new Error('An empty block');
+  return {
+    top: row,
+    left: col,
+    bottom: Math.min(row + inputs.length, SHEET_ROWS) - 1,
+    right: Math.min(col + width, SHEET_COLUMNS) - 1,
+  };
+}
 
 /** The name of a cell, as in `A1`. */
 export function cellName(row: number, col: number): string {
@@ -462,6 +489,7 @@ export class Workbook {
     let applied: Applied;
     if (
       command.type === 'setCell' ||
+      command.type === 'setCells' ||
       command.type === 'clear' ||
       command.type === 'restore'
     ) {
@@ -504,7 +532,10 @@ export class Workbook {
   }
 
   private changeCells(
-    command: Extract<Command, { type: 'setCell' | 'clear' | 'restore' }>,
+    command: Extract<
+      Command,
+      { type: 'setCell' | 'setCells' | 'clear' | 'restore' }
+    >,
   ): Applied {
     const sheet = this.sheet(command.sheet);
     const ranges =
@@ -517,7 +548,9 @@ export class Workbook {
               right: command.col,
             },
           ]
-        : command.ranges;
+        : command.type === 'setCells'
+          ? [blockOf(command)]
+          : command.ranges;
     const reverse: Restore = {
       type: 'restore',
       sheet: sheet.id,
@@ -525,8 +558,11 @@ export class Workbook {
       cells: this.contents(sheet, ranges),
     };
     let executed: Command = command;
-    if (command.type === 'setCell') {
-      const year = this.setCell(sheet, command);
+    if (command.type === 'setCell' || command.type === 'setCells') {
+      const year =
+        command.type === 'setCell'
+          ? this.setCell(sheet, command)
+          : this.setCells(sheet, command, ranges[0]!);
       // Listeners that record the command replay it with the same date.
       if (year !== undefined) executed = { ...command, year };
     } else if (command.type === 'clear') {
@@ -919,6 +955,36 @@ export class Workbook {
     const ids = (sheet.styleIds[col] ??= []);
     const style = { ...this.styles[ids[row] ?? 0], numberFormat: format };
     ids[row] = this.styleId(style);
+    return year;
+  }
+
+  /**
+   * Sets the cells of a block that fall inside `range`, and gives the year
+   * it gave a date typed without one.
+   */
+  private setCells(
+    sheet: Sheet,
+    command: Extract<Command, { type: 'setCells' }>,
+    range: Range,
+  ): number | undefined {
+    let year = command.year;
+    command.inputs.forEach((inputs, index) => {
+      const row = command.row + index;
+      if (row > range.bottom) return;
+      inputs.forEach((input, offset) => {
+        const col = command.col + offset;
+        if (col > range.right) return;
+        year =
+          this.setCell(sheet, {
+            ...command,
+            type: 'setCell',
+            row,
+            col,
+            input,
+            year,
+          }) ?? year;
+      });
+    });
     return year;
   }
 

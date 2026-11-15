@@ -21,6 +21,10 @@ const platformApis = [
     'the clipboard',
     'export const read = (e: ClipboardEvent) => e.clipboardData;',
   ],
+  ['the clipboard', 'document.execCommand("copy");'],
+  ['the clipboard', 'document.addEventListener("paste", () => {});'],
+  ['the clipboard', 'window.addEventListener("copy", () => {});'],
+  ['the clipboard', 'export const box = <div onCut={() => {}} />;'],
   ['a file', 'export const input = <input type="file" />;'],
   [
     'a file',

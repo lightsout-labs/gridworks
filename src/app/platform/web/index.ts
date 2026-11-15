@@ -4,7 +4,13 @@ import type {
   Snapshot,
   Style,
 } from '../../../engine/workbook';
-import type { ChosenFile, Platform, Stored } from '..';
+import type {
+  ChosenFile,
+  ClipboardContents,
+  ClipboardListener,
+  Platform,
+  Stored,
+} from '..';
 
 // The IndexedDB database `gridworks`. `workbooks` has one record for each
 // workbook; `sheets` has one for each sheet, keyed by workbook and sheet;
@@ -205,11 +211,69 @@ function saveFile(name: string, bytes: Uint8Array): Promise<void> {
   return Promise.resolve();
 }
 
+/** Whether an event comes from where text is typed, which handles its own. */
+function inTextBox(event: Event): boolean {
+  const target = event.target;
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    (target instanceof HTMLElement && target.isContentEditable)
+  );
+}
+
+// The clipboard events reach the page on the keyboard shortcuts in every
+// browser, with no permission asked, and the focused element gets them.
+function listenToClipboard(listener: ClipboardListener): () => void {
+  const onCopy = (event: ClipboardEvent) => {
+    if (inTextBox(event) || !event.clipboardData) return;
+    const contents = listener.copy(event.type === 'cut');
+    if (!contents) return;
+    event.preventDefault();
+    event.clipboardData.setData('text/plain', contents.text);
+    event.clipboardData.setData('text/html', contents.html);
+  };
+  const onPaste = (event: ClipboardEvent) => {
+    if (inTextBox(event) || !event.clipboardData) return;
+    if (listener.paste(event.clipboardData.getData('text/plain'))) {
+      event.preventDefault();
+    }
+  };
+  document.addEventListener('copy', onCopy);
+  document.addEventListener('cut', onCopy);
+  document.addEventListener('paste', onPaste);
+  return () => {
+    document.removeEventListener('copy', onCopy);
+    document.removeEventListener('cut', onCopy);
+    document.removeEventListener('paste', onPaste);
+  };
+}
+
+// The copy command, unlike the asynchronous clipboard API, needs no
+// permission in any browser while the user clicks, and has finished when it
+// returns, so a paste right after it reads what it wrote.
+function writeClipboard({ text, html }: ClipboardContents): void {
+  const onCopy = (event: ClipboardEvent) => {
+    // Answered here, not by the app's listener.
+    event.stopImmediatePropagation();
+    event.preventDefault();
+    event.clipboardData?.setData('text/plain', text);
+    event.clipboardData?.setData('text/html', html);
+  };
+  document.addEventListener('copy', onCopy, { capture: true });
+  try {
+    document.execCommand('copy');
+  } finally {
+    document.removeEventListener('copy', onCopy, { capture: true });
+  }
+}
+
 /** The platform for browsers. */
 export const webPlatform: Platform = {
   openFile,
   saveFile,
   workbooks: { load, record, save },
+  listenToClipboard,
+  writeClipboard,
   // A browser that blocks storage throws; the choice is then not remembered.
   preferences: {
     get(name) {

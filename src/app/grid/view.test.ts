@@ -520,6 +520,61 @@ describe('View', () => {
       expect(workbook.cell(sheet, 0, 0).value).toBeNull();
     });
 
+    it('gives the cells copied or cut as they are shown, for the system clipboard', () => {
+      const { workbook, view, sheet } = setup();
+      workbook.execute({
+        type: 'setCells',
+        sheet,
+        row: 0,
+        col: 0,
+        inputs: [
+          ['12%', '=A1*2'],
+          ['', 'x'],
+        ],
+      });
+      selecting(view, 0, 0, 1, 1);
+      expect(view.copy().text).toBe('12%\t0.24\n\tx\n');
+      expect(view.cut().html).toContain('<td>0.24</td>');
+    });
+
+    it('pastes text from another application at the selection as typed, in one change', () => {
+      const { workbook, view, sheet } = setup();
+      selecting(view, 2, 1, 5, 5);
+      view.pasteText('12%\t2024-01-02\r\n=B3*2\r\n');
+      expect(workbook.cell(sheet, 2, 1).display).toBe('12%');
+      expect(workbook.cell(sheet, 2, 2).input).toBe('1/2/2024');
+      expect(workbook.cell(sheet, 3, 1).value).toBe(0.24);
+      expect(view.state.selection.ranges).toEqual([range(2, 1, 3, 2)]);
+      view.undo();
+      expect(workbook.extent(sheet)).toEqual({ rows: 0, cols: 0 });
+      expect(workbook.canUndo).toBe(false);
+      // Nothing to paste changes nothing.
+      view.pasteText('');
+      expect(workbook.canUndo).toBe(false);
+    });
+
+    it('pastes the cells copied in Gridworks, formulas and all, when the text is theirs', () => {
+      const { workbook, view, sheet } = setup();
+      workbook.execute({ type: 'setCell', sheet, row: 0, col: 0, input: '1' });
+      workbook.execute({
+        type: 'setCell',
+        sheet,
+        row: 0,
+        col: 1,
+        input: '=A1+1',
+      });
+      selecting(view, 0, 0, 0, 1);
+      const { text } = view.copy();
+      view.select(single({ row: 2, col: 0 }));
+      // As Windows puts it on the clipboard.
+      view.pasteText(text.replaceAll('\n', '\r\n'));
+      expect(workbook.cell(sheet, 2, 1).formula).toBe('=A3+1');
+      // Other text is pasted as typed, even with cells copied.
+      view.select(single({ row: 4, col: 0 }));
+      view.pasteText('1\t=A1+1');
+      expect(workbook.cell(sheet, 4, 1).formula).toBe('=A1+1');
+    });
+
     it('commits the entry before copying or pasting', () => {
       const { workbook, view, sheet } = setup();
       view.type('5');

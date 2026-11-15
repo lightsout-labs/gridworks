@@ -550,7 +550,8 @@ Notes:
 
 ## S13: Copy and paste with other applications
 
-Status: Todo
+Status: Done
+PR: #18
 
 Acceptance criteria:
 - A range copied in Excel or Google Sheets pastes into Gridworks as the same grid
@@ -561,6 +562,19 @@ Acceptance criteria:
 - Plain multi-line text pastes one line per row. (R7)
 - The clipboard is reached only through the `Platform` interface. (R51)
 - Each of these changes can be undone and redone. (R5)
+
+Notes:
+- Ctrl/Cmd+C, X and V are clipboard events heard by
+  `Platform.listenToClipboard`, not window shortcuts; buttons and menu items
+  that copy call `view.copy()`/`cut()` and pass what they give to
+  `Platform.writeClipboard`. ESLint forbids clipboard events, `clipboardData`
+  and `execCommand` outside `src/app/platform/web`.
+- Text from other applications is the engine's `setCells` command, each
+  input as typed. Only the plain text is read; S16 and S17 (styles) and S18
+  (number formats) may want the HTML put on the clipboard to carry the
+  cells' formats, which it does not yet: it holds the shown text only.
+- S29 (CSV) can reuse nothing here: `src/app/grid/clipboard.ts` is
+  tab-separated with Excel's clipboard quoting.
 
 ## S14: The fill handle
 
