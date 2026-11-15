@@ -136,3 +136,24 @@ export function scrollToShow(
       scrollY + show(rect.y, rect.height, COLUMN_HEADER_HEIGHT * zoom, height),
   };
 }
+
+/** The size of the square drawn at the bottom right of the selection. */
+export const FILL_HANDLE = 6;
+
+/**
+ * Whether a point of the canvas is on the fill handle of a range: within
+ * a few pixels of its bottom right corner.
+ */
+export function isOnFillHandle(
+  x: number,
+  y: number,
+  range: Range,
+  viewport: Viewport,
+): boolean {
+  const corner = cellRect(
+    { row: range.bottom + 1, col: range.right + 1 },
+    viewport,
+  );
+  const reach = FILL_HANDLE / 2 + 2;
+  return Math.abs(x - corner.x) <= reach && Math.abs(y - corner.y) <= reach;
+}

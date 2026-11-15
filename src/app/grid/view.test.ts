@@ -22,6 +22,7 @@ describe('View', () => {
       zoom: 1,
       endMode: false,
       copied: null,
+      filling: null,
     });
   });
 
@@ -584,6 +585,128 @@ describe('View', () => {
       view.type('6');
       view.paste();
       expect(workbook.cell(sheet, 1, 0).value).toBe(5);
+    });
+  });
+
+  describe('fill', () => {
+    const range = (top: number, left: number, bottom = top, right = left) => ({
+      top,
+      left,
+      bottom,
+      right,
+    });
+    const selecting = (
+      view: View,
+      top: number,
+      left: number,
+      bottom = top,
+      right = left,
+    ) =>
+      view.select({
+        ...single({ row: top, col: left }),
+        ranges: [range(top, left, bottom, right)],
+        focus: { row: bottom, col: right },
+      });
+    const set = (
+      workbook: ReturnType<typeof setup>['workbook'],
+      sheet: string,
+      cells: Record<string, string>,
+    ) => {
+      for (const [place, input] of Object.entries(cells)) {
+        const [row, col] = place.split(',').map(Number);
+        workbook.execute({
+          type: 'setCell',
+          sheet,
+          row: row!,
+          col: col!,
+          input,
+        });
+      }
+    };
+
+    it('drags the fill handle the way the pointer went furthest, and fills there', () => {
+      const { workbook, view, sheet } = setup();
+      set(workbook, sheet, { '2,2': '1', '3,2': '2' });
+      selecting(view, 2, 2, 3, 2);
+      view.previewFill({ row: 7, col: 4 });
+      expect(view.state.filling).toEqual(range(2, 2, 7, 2));
+      view.previewFill({ row: 4, col: 6 });
+      expect(view.state.filling).toEqual(range(2, 2, 3, 6));
+      view.previewFill({ row: 0, col: 1 });
+      expect(view.state.filling).toEqual(range(0, 2, 3, 2));
+      view.previewFill({ row: 3, col: 0 });
+      expect(view.state.filling).toEqual(range(2, 0, 3, 2));
+      // Inside the selection, there is nothing to fill.
+      view.previewFill({ row: 3, col: 2 });
+      expect(view.state.filling).toBeNull();
+      view.fill();
+      expect(workbook.canUndo).toBe(true);
+      expect(workbook.cell(sheet, 4, 2).value).toBeNull();
+
+      view.previewFill({ row: 5, col: 2 });
+      view.fill();
+      expect(view.state.filling).toBeNull();
+      expect(workbook.cell(sheet, 5, 2).value).toBe(4);
+      expect(view.state.selection.ranges).toEqual([range(2, 2, 5, 2)]);
+      expect(view.state.selection.active).toEqual({ row: 2, col: 2 });
+    });
+
+    it('fills down as far as the column beside has data, on the left or else the right', () => {
+      const { workbook, view, sheet } = setup();
+      set(workbook, sheet, {
+        '0,0': '1',
+        '1,0': '2',
+        '2,0': '3',
+        '0,1': '=A1*2',
+        '0,3': 'x',
+        '1,3': 'y',
+      });
+      view.select(single({ row: 0, col: 1 }));
+      view.autoFill();
+      expect(workbook.cell(sheet, 2, 1).formula).toBe('=A3*2');
+      expect(workbook.cell(sheet, 3, 1).value).toBeNull();
+      expect(view.state.selection.ranges).toEqual([range(0, 1, 2, 1)]);
+
+      set(workbook, sheet, { '0,2': 'z' });
+      view.select(single({ row: 0, col: 2 }));
+      view.autoFill();
+      expect(workbook.cell(sheet, 2, 2).value).toBe('z');
+
+      set(workbook, sheet, { '0,6': 'alone' });
+      view.select(single({ row: 0, col: 6 }));
+      view.autoFill();
+      expect(workbook.cell(sheet, 1, 6).value).toBeNull();
+    });
+
+    it('fills down and right from the first row or column of the selection, or from the cells before it', () => {
+      const { workbook, view, sheet } = setup();
+      set(workbook, sheet, { '0,0': '1', '0,1': '=A1+1' });
+      selecting(view, 0, 0, 2, 1);
+      view.copy();
+      view.fillDown();
+      // Unlike a paste, a fill forgets what was copied, as in Excel.
+      expect(view.state.copied).toBeNull();
+      expect(workbook.cell(sheet, 2, 0).value).toBe(1);
+      expect(workbook.cell(sheet, 2, 1).formula).toBe('=A3+1');
+      expect(view.state.selection.ranges).toEqual([range(0, 0, 2, 1)]);
+
+      selecting(view, 3, 0, 3, 1);
+      view.fillDown();
+      expect(workbook.cell(sheet, 3, 1).formula).toBe('=A4+1');
+
+      // Numbers are copied, not counted on.
+      selecting(view, 0, 0, 0, 3);
+      view.fillRight();
+      expect(workbook.cell(sheet, 0, 3).value).toBe(1);
+      view.select(single({ row: 1, col: 2 }));
+      view.fillRight();
+      expect(workbook.cell(sheet, 1, 2).formula).toBe('=B2+1');
+
+      // From the first row or column, there is nothing to fill from.
+      const empty = setup();
+      empty.view.fillDown();
+      empty.view.fillRight();
+      expect(empty.workbook.canUndo).toBe(false);
     });
   });
 });

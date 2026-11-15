@@ -19,6 +19,12 @@ describe('shortcut', () => {
     expect(shortcut(press('Z', { ctrl: true }), false)).toBe('undo');
   });
 
+  it('fills down with Ctrl+D and right with Ctrl+R', () => {
+    expect(shortcut(press('d', { ctrl: true }), false)).toBe('fillDown');
+    expect(shortcut(press('r', { ctrl: true }), false)).toBe('fillRight');
+    expect(shortcut(press('d', { meta: true }), true)).toBe('fillDown');
+  });
+
   it('leaves Ctrl+C, X and V to the clipboard events', () => {
     expect(shortcut(press('c', { ctrl: true }), false)).toBeNull();
     expect(shortcut(press('x', { ctrl: true }), false)).toBeNull();

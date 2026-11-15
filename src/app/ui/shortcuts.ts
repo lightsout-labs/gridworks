@@ -5,7 +5,7 @@ import type { KeyPress } from '../grid/navigation';
  * and paste come as clipboard events instead, which reach the system
  * clipboard.
  */
-export type Shortcut = 'undo' | 'redo';
+export type Shortcut = 'undo' | 'redo' | 'fillDown' | 'fillRight';
 
 /**
  * The shortcut a key runs, as in Excel, with Cmd in place of Ctrl on a
@@ -20,6 +20,10 @@ export function shortcut(press: KeyPress, mac: boolean): Shortcut | null {
       return 'undo';
     case 'y':
       return 'redo';
+    case 'd':
+      return 'fillDown';
+    case 'r':
+      return 'fillRight';
     default:
       return null;
   }

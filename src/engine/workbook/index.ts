@@ -18,6 +18,7 @@ import {
   type Constant,
   type Sheet,
 } from './calc';
+import { series } from './series';
 
 export type { Value } from '../value';
 export {
@@ -83,6 +84,20 @@ export type Command =
       readonly source: { readonly sheet: string; readonly range: Range };
       readonly cut?: boolean;
       readonly only?: 'values' | 'formulas' | 'formats';
+    }
+  | {
+      /**
+       * Fills `target` from `source`, a range at one of its edges, as the
+       * fill handle does: each row or column of the source that starts a
+       * series is extended as one, and any other is repeated, its formulas'
+       * relative references moved, with the formats of its cells. The
+       * target spans the source and extends it on one side. It gives the
+       * cells filled, and listeners get it as a `group`.
+       */
+      readonly type: 'fill';
+      readonly sheet: string;
+      readonly source: Range;
+      readonly target: Range;
     }
   | {
       /**
@@ -238,6 +253,7 @@ export interface Snapshot {
 }
 
 type Paste = Extract<Command, { type: 'paste' }>;
+type Fill = Extract<Command, { type: 'fill' }>;
 
 /** The cells a `setCells` command sets, inside the sheet. */
 function blockOf(command: Extract<Command, { type: 'setCells' }>): Range {
@@ -496,9 +512,17 @@ export class Workbook {
       applied = this.changeCells(command);
       this.calc.changed(this.sheet(command.sheet), applied.change.ranges);
       this.calc.settle();
-    } else if (command.type === 'paste' || command.type === 'group') {
+    } else if (
+      command.type === 'paste' ||
+      command.type === 'fill' ||
+      command.type === 'group'
+    ) {
       const restores =
-        command.type === 'paste' ? this.pasted(command) : command.restores;
+        command.type === 'paste'
+          ? this.pasted(command)
+          : command.type === 'fill'
+            ? [this.filled(command)]
+            : command.restores;
       const each = restores.map((restore) => {
         const done = this.changeCells(restore);
         this.calc.changed(this.sheet(restore.sheet), done.change.ranges);
@@ -728,6 +752,96 @@ export class Workbook {
         value !== null || formula !== undefined || style !== undefined,
     );
     return [{ type: 'restore', sheet: to.id, ranges: [area], cells: filled }];
+  }
+
+  /** The restore that makes a fill, read before it runs. */
+  private filled({ sheet: id, source, target }: Fill): Restore {
+    const sheet = this.sheet(id);
+    const contains =
+      target.top <= source.top &&
+      target.left <= source.left &&
+      target.bottom >= source.bottom &&
+      target.right >= source.right;
+    const sides = [
+      source.top > target.top,
+      target.bottom > source.bottom,
+      source.left > target.left,
+      target.right > source.right,
+    ];
+    if (!contains || sides.filter(Boolean).length !== 1) {
+      throw new Error('A fill extends its source on one side');
+    }
+    const [up, down, left] = sides;
+    const vertical = up || down;
+    const area: Range = up
+      ? { ...target, bottom: source.top - 1 }
+      : down
+        ? { ...target, top: source.bottom + 1 }
+        : left
+          ? { ...target, right: source.left - 1 }
+          : { ...target, left: source.right + 1 };
+    const seeds = new Map(
+      this.contents(sheet, [source]).map((cell) => [
+        key(cell.row, cell.col),
+        cell,
+      ]),
+    );
+    // Rows or columns of the source, along which the fill goes.
+    const length = vertical
+      ? source.bottom - source.top + 1
+      : source.right - source.left + 1;
+    const [first, last] = vertical
+      ? [source.left, source.right]
+      : [source.top, source.bottom];
+    const [from, to] = vertical
+      ? [area.top - source.top, area.bottom - source.top]
+      : [area.left - source.left, area.right - source.left];
+    const at = (line: number, place: number) =>
+      vertical
+        ? { row: source.top + place, col: line }
+        : { row: line, col: source.left + place };
+    const cells: CellContents[] = [];
+    for (let line = first; line <= last; line++) {
+      const lineSeeds = Array.from({ length }, (_, place) => {
+        const { row, col } = at(line, place);
+        return seeds.get(key(row, col));
+      });
+      const extended = series(
+        lineSeeds.map((cell) => ({
+          value: cell?.value ?? null,
+          formula: cell?.formula !== undefined,
+          format: cell?.style?.numberFormat ?? GENERAL,
+        })),
+      );
+      for (let place = from; place <= to; place++) {
+        const { row, col } = at(line, place);
+        const seed = lineSeeds[((place % length) + length) % length];
+        let contents: Pick<CellContents, 'value' | 'formula'>;
+        if (extended) {
+          contents = { value: extended(place) };
+        } else if (seed?.formula !== undefined) {
+          const { ast } = sheet.formulas.get(key(seed.row, seed.col))!;
+          const move: Move = {
+            type: 'offset',
+            rows: row - seed.row,
+            cols: col - seed.col,
+          };
+          contents = { value: null, formula: `=${print(shift(ast, move))}` };
+        } else {
+          contents = { value: seed?.value ?? null };
+        }
+        if (contents.value === null && !contents.formula && !seed?.style) {
+          continue;
+        }
+        cells.push({
+          row,
+          col,
+          ...contents,
+          ...(seed?.style && { style: seed.style }),
+        });
+      }
+    }
+    return { type: 'restore', sheet: sheet.id, ranges: [area], cells };
   }
 
   /**

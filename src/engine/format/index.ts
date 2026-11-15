@@ -10,6 +10,8 @@ import {
 } from 'numfmt';
 import { isError, type Value } from '../value';
 
+export { isDateFormat };
+
 /** The format of a cell that was given none. */
 export const GENERAL = 'General';
 
@@ -109,4 +111,28 @@ export function editText(value: Value, code: string = GENERAL): string {
 /** A number with the 15 significant digits that Excel keeps. */
 function plain(value: number): string {
   return String(Number(value.toPrecision(15)));
+}
+
+// Dates are Excel's serial numbers: 1 is 1 January 1900, and 60 the
+// 29 February 1900 that Excel keeps from Lotus 1-2-3, so that every date
+// from 1 March 1900 is one day later than a count of real days.
+const DAY = 86_400_000;
+const START = Date.UTC(1899, 11, 31);
+
+/** The serial number of a date, with months and days past their ends carried. */
+export function dateSerial(year: number, month: number, day: number): number {
+  const months = year * 12 + month - 1;
+  const first =
+    (Date.UTC(Math.floor(months / 12), months % 12, 1) - START) / DAY;
+  return (first >= 60 ? first + 1 : first) + day - 1;
+}
+
+/** The year, month and day of a serial number, without its time. */
+export function dateParts(
+  date: number,
+): [year: number, month: number, day: number] {
+  if (date === 0) return [1900, 1, 0];
+  if (date === 60) return [1900, 2, 29];
+  const real = new Date(START + (date < 60 ? date : date - 1) * DAY);
+  return [real.getUTCFullYear(), real.getUTCMonth() + 1, real.getUTCDate()];
 }

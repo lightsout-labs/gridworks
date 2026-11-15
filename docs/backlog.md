@@ -578,7 +578,7 @@ Notes:
 
 ## S14: The fill handle
 
-Status: Todo
+Status: Done
 
 Acceptance criteria:
 - Dragging the fill handle of a selection copies its values and formats into
@@ -590,6 +590,18 @@ Acceptance criteria:
   data. (R8)
 - Ctrl/Cmd+D and Ctrl/Cmd+R fill down and right. (R40)
 - Each of these changes can be undone and redone. (R5)
+
+Notes:
+- `fill` is an engine command (source, and a target extending it on one
+  side) recorded as a `group` of one `restore`; series logic is in
+  `engine/workbook/series.ts`. S15 (insert and delete rows and columns)
+  need not change it.
+- Ctrl/Cmd+D and R are window shortcuts that `paste` the first row or
+  column into the rest of the selection.
+- `engine/format` now exports `dateSerial`, `dateParts` and
+  `isDateFormat`; S18 (number formats) can reuse them.
+- Text ending in a number (`Item 1`) is repeated, not counted on; no
+  criterion asks for it.
 
 ## S15: Rows and columns
 
