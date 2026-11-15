@@ -62,10 +62,10 @@ because a requirement needs it.
 |---|---|---|
 | `engine/workbook` | `execute(command)`, `undo()`, `redo()` (each giving the cells it changed), `canUndo`, `canRedo`, `cell(sheet, row, col)` (value, formula, display text, text to edit, style, note, link), the sheet size, queries (`find`, `aggregate`, `extent`, `circularReference`, sheet and name lists, layout), `calculations` (a count, to measure recalculation), `subscribe(listener)`, `toSnapshot()`, `fromSnapshot(snapshot, changes)` | Column-oriented cell storage; the dependency graph and on-demand recalculation; circular-reference detection; rewriting references when cells, rows, columns and sheets move; pasting cells copied or cut, all or only their values, formulas or formats; inverse patches for undo; fill series; sort; filters; merges; data validation; conditional format evaluation; named ranges (R1, R5, R6, R8–R10, R14, R15, R19–R27). |
 | `engine/formula` | `parse(text)`, `print(ast, { file })` (with the `_xlfn.` prefix of newer functions for a file), `evaluate(ast, context)`, `references(ast)`, `shift(ast, move)` (a sheet renamed, the formula moved by rows and columns, or cells cut and pasted), `calculable(ast)`, `functions` (the names of the library), `tokenize(text)` (the tokens of a formula still being typed, with their places), `argumentHint(name, index)`, `quoteSheetName(name)` | Tokenizer and parser; operators and coercion rules; the error values; the library of at least 150 functions and the names of their arguments (R11–R13, R16). Used by `engine/workbook`, by `engine/io` to check and fill in the formulas of files, and `functions`, `tokenize` and `argumentHint` by the help while typing a formula; the workbook re-exports `quoteSheetName` for the app. |
-| `engine/format` | `formatValue(value, code)`, `parseInput(text)`, `parseDate(text)`, `editText(value, code)`, `builtinFormat(id)` | Excel format codes, date serial numbers, and recognition of typed numbers, dates, times, percentages and booleans, on top of `numfmt` (R4, R18). |
+| `engine/format` | `formatValue(value, code)`, `parseInput(text)`, `parseDate(text)`, `editText(value, code)`, `builtinFormat(id)`, `isDateFormat(code)`, `dateSerial(year, month, day)`, `dateParts(serial)` | Excel format codes, date serial numbers, and recognition of typed numbers, dates, times, percentages and booleans, on top of `numfmt` (R4, R18). |
 | `engine/io` | `readXlsx(bytes, name)` (a snapshot and what was dropped), `writeXlsx(snapshot)`, `readCsv(text)`, `writeCsv(snapshot, sheet)` | Reading the parts of an `.xlsx` file; shared formulas; the mapping from a workbook snapshot to ExcelJS; the list of dropped features reported on import; CSV quoting (R30–R32). |
 | `app/platform` | The `Platform` interface: `openFile()`, `saveFile(name, bytes)`, `workbooks` (list, load, record a change, save, rename, delete), `preferences` (get, set), `listenToClipboard(listener)` (the user's copy, cut and paste outside a text box), `writeClipboard(contents)` (tab-separated text and an HTML table), `print(document)`; and `webPlatform`, its one implementation | File inputs and downloads; the IndexedDB schema; clipboard events and the copy command; the print frame (R33, R34, R51). |
-| `app/grid` | `<Grid workbook view menu />` and the `View` it edits (active sheet, selection, zoom, entry, End mode, the cells copied or cut); `<FormulaEditor>` and `keyAction`, which the formula bar shares to edit the same entry | Canvas drawing and virtualization; frozen panes; hit testing; text measurement, alignment and overflow; selection, resize, fill-handle and reference-picking gestures; the moving border of the cells copied; the in-cell editor and its Enter and Edit modes; function completion, the argument hint, reference colors and F4 (`formula.ts`); keyboard navigation and editing keys as in Excel (R2, R3, R4, R8, R9, R16, R21, R45). |
+| `app/grid` | `<Grid workbook view menu />` and the `View` it edits (active sheet, selection, zoom, entry, End mode, the cells copied or cut, the range the fill handle is dragged over); `<FormulaEditor>` and `keyAction`, which the formula bar shares to edit the same entry | Canvas drawing and virtualization; frozen panes; hit testing; text measurement, alignment and overflow; selection, resize, fill-handle and reference-picking gestures; the moving border of the cells copied; the in-cell editor and its Enter and Edit modes; function completion, the argument hint, reference colors and F4 (`formula.ts`); keyboard navigation and editing keys as in Excel (R2, R3, R4, R8, R9, R16, R21, R45). |
 | `app/ui` | `<App platform />` | The start screen, ribbon, formula bar and name box, sheet tabs, status bar, context menus (the cell menu is the `menu` of the grid), dialogs and side panels; shortcuts; translation dictionaries; themes; autosave timing; building the printable document (R34, R36–R44). |
 
 Boundaries, enforced by the build so that R50 and R51 cannot erode:
@@ -112,6 +112,25 @@ Decisions that are cheap to reverse, with their reasons:
   it fills, so pasting one cell over a whole column is 100,000 cells in
   one recorded change; over a whole sheet it would be too many, which
   nothing prevents yet.
+- **A fill is one command, recorded as what it did.** `fill` names the
+  source range and the target, which extends it on one side, and the
+  workbook fills each row or column of the source along the way the fill
+  goes: as a series when its cells start one (numbers by their step, a
+  least-squares line for more than two; dates by days, or by months when
+  they fall on the same day of the month; English weekday and month names,
+  in the case of the first), and otherwise by repeating them, formulas
+  moved and formats kept, aligned to the source so that a fill upward ends
+  on the source's last cell. One number is repeated, and one date or name
+  counts on by one, as in Excel. Like a paste, listeners and undo get a
+  `group` of one `restore`. The fill handle is a square on the bottom
+  right corner of a single selected range; the view turns a drag of it
+  into the target, extending the selection whichever way the pointer is
+  furthest beyond it, and a double-click fills down as far as the column
+  on its left has data, or else the one on its right. Ctrl/Cmd+D and
+  Ctrl/Cmd+R copy without series, as in Excel, so they are a `paste` of
+  the first row or column of the selection into the rest of it, or of the
+  row above or column left of a selection one cell deep. Text that ends in
+  a number (`Item 1`) is repeated, not counted on.
 - **What was copied lives in the view**, not the workbook: a range and
   whether it was cut. Pasting reads the source as it is then. Escape,
   undo and any change to the workbook other than a paste forget it, as
@@ -141,7 +160,8 @@ Decisions that are cheap to reverse, with their reasons:
   one. Switching to another sheet selects A1 there; each sheet's selection
   is not remembered.
 - **Window shortcuts are handled on the window**, not by the grid, so that
-  Ctrl/Cmd+Z and Ctrl/Cmd+Y work after a click on the ribbon too. During an
+  Ctrl/Cmd+Z, Ctrl/Cmd+Y, Ctrl/Cmd+D and Ctrl/Cmd+R work after a click on
+  the ribbon too. During an
   entry they are left to the editor, which undoes its own typing.
 - **Recalculation follows a dependency graph.** Each sheet keeps, for
   each cell, the formulas that read it alone, and for each column, the

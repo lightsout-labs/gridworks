@@ -6,6 +6,7 @@ import {
   COLUMN_HEADER_HEIGHT,
   COLUMN_WIDTH,
   hitTest,
+  isOnFillHandle,
   ROW_HEADER_WIDTH,
   ROW_HEIGHT,
   scrollToShow,
@@ -146,5 +147,16 @@ describe('grid geometry', () => {
     expect(
       scrollToShow({ row: 20, col: 0 }, zoomed, width, height).scrollY,
     ).toBe(2 * (COLUMN_HEADER_HEIGHT + 21 * ROW_HEIGHT) - height);
+  });
+
+  it('finds the fill handle at the bottom right corner of a range', () => {
+    const range = { top: 1, left: 1, bottom: 2, right: 3 };
+    const corner = cellRect({ row: 3, col: 4 }, top);
+    expect(isOnFillHandle(corner.x, corner.y, range, top)).toBe(true);
+    expect(isOnFillHandle(corner.x - 3, corner.y + 3, range, top)).toBe(true);
+    expect(isOnFillHandle(corner.x - 8, corner.y, range, top)).toBe(false);
+    const scrolled = { scrollX: 10, scrollY: 20, zoom: 2 };
+    const zoomed = cellRect({ row: 3, col: 4 }, scrolled);
+    expect(isOnFillHandle(zoomed.x, zoomed.y, range, scrolled)).toBe(true);
   });
 });

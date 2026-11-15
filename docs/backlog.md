@@ -578,7 +578,7 @@ Notes:
 
 ## S14: The fill handle
 
-Status: Todo
+Status: In progress
 
 Acceptance criteria:
 - Dragging the fill handle of a selection copies its values and formats into

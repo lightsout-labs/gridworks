@@ -19,7 +19,9 @@ import {
   cellRect,
   COLUMN_HEADER_HEIGHT,
   COLUMN_WIDTH,
+  FILL_HANDLE,
   hitTest,
+  isOnFillHandle,
   ROW_HEADER_WIDTH,
   ROW_HEIGHT,
   scrollToShow,
@@ -60,8 +62,11 @@ export function Grid({
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
-  /** What a drag selects, or the corner of the range it picks for a formula. */
-  const drag = useRef<Target['kind'] | CellPosition | null>(null);
+  /**
+   * What a drag selects, the fill handle it drags, or the corner of the
+   * range it picks for a formula.
+   */
+  const drag = useRef<Target['kind'] | 'fill' | CellPosition | null>(null);
   const state = useSyncExternalStore(view.subscribe, () => view.state);
   const { sheet, selection, entry, zoom, copied } = state;
   const { active } = selection;
@@ -170,6 +175,11 @@ export function Grid({
         event.clientY - bounds.top,
         viewport(),
       );
+      if (drag.current === 'fill') {
+        view.previewFill({ row, col });
+        show({ row, col });
+        return;
+      }
       if (typeof drag.current === 'object') {
         const corner = drag.current;
         view.pick({
@@ -197,6 +207,7 @@ export function Grid({
       show(next.focus);
     };
     const onUp = () => {
+      if (drag.current === 'fill') view.fill();
       drag.current = null;
     };
     window.addEventListener('mousemove', onMove);
@@ -207,8 +218,27 @@ export function Grid({
     };
   }, [view]);
 
+  /** Whether a mouse event is on the fill handle of the selection. */
+  const onFillHandle = (event: MouseEvent) => {
+    const { ranges } = view.state.selection;
+    if (view.state.entry || ranges.length !== 1) return false;
+    const bounds = canvas.current!.getBoundingClientRect();
+    return isOnFillHandle(
+      event.clientX - bounds.left,
+      event.clientY - bounds.top,
+      ranges[0]!,
+      viewport(),
+    );
+  };
+
   const onMouseDown = (event: MouseEvent) => {
     if (event.button !== 0) return;
+    if (onFillHandle(event)) {
+      drag.current = 'fill';
+      event.preventDefault();
+      scroller.current!.focus();
+      return;
+    }
     const bounds = canvas.current!.getBoundingClientRect();
     const target = hitTest(
       event.clientX - bounds.left,
@@ -262,6 +292,10 @@ export function Grid({
   };
 
   const onDoubleClick = (event: MouseEvent) => {
+    if (onFillHandle(event)) {
+      view.autoFill();
+      return;
+    }
     const bounds = canvas.current!.getBoundingClientRect();
     const target = hitTest(
       event.clientX - bounds.left,
@@ -346,6 +380,11 @@ export function Grid({
               ref={canvas}
               className={styles.canvas}
               onMouseDown={onMouseDown}
+              onMouseMove={(event) => {
+                canvas.current!.style.cursor = onFillHandle(event)
+                  ? 'crosshair'
+                  : '';
+              }}
               onDoubleClick={onDoubleClick}
               onContextMenu={onContextMenu}
             />
@@ -394,7 +433,7 @@ function rangeName({ top, left, bottom, right }: Range): string {
 function draw(
   canvas: HTMLCanvasElement,
   workbook: Workbook,
-  { sheet, selection, entry, copied }: ViewState,
+  { sheet, selection, entry, copied, filling }: ViewState,
   viewport: Viewport,
   width: number,
   height: number,
@@ -533,10 +572,30 @@ function draw(
   if (selected && ranges.length === 1) {
     const box = rangeRect(ranges[0]!);
     context.strokeRect(box.x + 0.5, box.y + 0.5, box.width, box.height);
+    if (entry === null) {
+      // The fill handle, on a gap in the border.
+      const x = box.x + box.width + 0.5;
+      const y = box.y + box.height + 0.5;
+      const size = FILL_HANDLE;
+      context.fillStyle = color('--background');
+      context.fillRect(x - size / 2 - 1, y - size / 2 - 1, size + 2, size + 2);
+      context.fillStyle = color('--accent');
+      context.fillRect(x - size / 2, y - size / 2, size, size);
+    }
   } else if (selected) {
     const box = rect(active);
     context.lineWidth = 1;
     context.strokeRect(box.x + 0.5, box.y + 0.5, box.width, box.height);
+  }
+
+  // The range the fill handle is dragged over.
+  if (filling) {
+    const box = rangeRect(filling);
+    context.strokeStyle = color('--muted');
+    context.lineWidth = 1;
+    context.setLineDash([3, 3]);
+    context.strokeRect(box.x + 1.5, box.y + 1.5, box.width - 2, box.height - 2);
+    context.setLineDash([]);
   }
 
   // The cells copied, with a border that moves.

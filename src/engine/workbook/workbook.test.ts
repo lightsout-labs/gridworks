@@ -1074,3 +1074,135 @@ describe('paste', () => {
     );
   });
 });
+
+describe('fill', () => {
+  const range = (top: number, left: number, bottom = top, right = left) => ({
+    top,
+    left,
+    bottom,
+    right,
+  });
+
+  function filling() {
+    const { workbook, sheet, set, show } = setup();
+    const formula = (row: number, col: number) =>
+      workbook.cell(sheet, row, col).formula;
+    const fill = (
+      source: ReturnType<typeof range>,
+      target: ReturnType<typeof range>,
+    ) => workbook.execute({ type: 'fill', sheet, source, target });
+    return { workbook, sheet, set, show, formula, fill };
+  }
+
+  it('repeats cells that make no series, with their formats, in each direction', () => {
+    const { set, show, fill } = filling();
+    set(2, 0, 'a');
+    set(3, 0, '12%');
+    const change = fill(range(2, 0, 3, 0), range(2, 0, 6, 0));
+    expect(change.ranges).toEqual([range(4, 0, 6, 0)]);
+    expect([4, 5, 6].map((row) => show(row, 0))).toEqual(['a', '12%', 'a']);
+    // Upward, the pattern keeps its place: the cell above the first is the last.
+    fill(range(2, 0, 3, 0), range(0, 0, 3, 0));
+    expect([0, 1].map((row) => show(row, 0))).toEqual(['a', '12%']);
+    set(0, 5, 'x');
+    set(0, 6, '');
+    fill(range(0, 5, 0, 6), range(0, 5, 0, 9));
+    expect([7, 8, 9].map((col) => show(0, col))).toEqual(['x', '', 'x']);
+    fill(range(0, 5, 0, 6), range(0, 3, 0, 6));
+    expect([3, 4].map((col) => show(0, col))).toEqual(['x', '']);
+    // One number is copied, not counted on.
+    set(10, 0, '7');
+    fill(range(10, 0), range(10, 0, 12, 0));
+    expect(show(12, 0)).toBe('7');
+  });
+
+  it('moves the relative references of formulas by the distance filled', () => {
+    const { set, formula, fill } = filling();
+    set(5, 5, '=A1+$A$1+A$1+$A1');
+    fill(range(5, 5), range(5, 5, 7, 5));
+    expect(formula(7, 5)).toBe('=A3+$A$1+A$1+$A3');
+    fill(range(5, 5), range(5, 3, 5, 5));
+    expect(formula(5, 3)).toBe('=#REF!+$A$1+#REF!+$A1');
+    fill(range(5, 5), range(4, 5, 5, 5));
+    expect(formula(4, 5)).toBe('=#REF!+$A$1+A$1+#REF!');
+  });
+
+  it('extends numbers by their step, both ways', () => {
+    const { show, set, fill } = filling();
+    set(1, 0, '1');
+    set(2, 0, '3');
+    fill(range(1, 0, 2, 0), range(1, 0, 4, 0));
+    fill(range(1, 0, 2, 0), range(0, 0, 2, 0));
+    expect([0, 3, 4].map((row) => show(row, 0))).toEqual(['-1', '5', '7']);
+    set(0, 2, '0.1');
+    set(0, 3, '0.2');
+    set(0, 4, '0.3');
+    fill(range(0, 2, 0, 4), range(0, 2, 0, 6));
+    expect(show(0, 6)).toBe('0.5');
+  });
+
+  it('extends dates by days, or by months when they fall on the same day', () => {
+    const { show, set, fill } = filling();
+    set(0, 0, '1/30/2024');
+    fill(range(0, 0), range(0, 0, 2, 0));
+    expect(show(2, 0)).toBe('2/1/2024');
+    set(0, 1, '1/31/2024');
+    set(1, 1, '3/31/2024');
+    fill(range(0, 1, 1, 1), range(0, 1, 4, 1));
+    // The day is kept where the month has it, and the month's last otherwise.
+    expect([2, 3, 4].map((row) => show(row, 1))).toEqual([
+      '5/31/2024',
+      '7/31/2024',
+      '9/30/2024',
+    ]);
+    set(0, 2, '1/1/2024');
+    set(1, 2, '1/2/2024');
+    fill(range(0, 2, 1, 2), range(0, 2, 2, 2));
+    expect(show(2, 2)).toBe('1/3/2024');
+    set(0, 3, '1/31/2024');
+    set(1, 3, '2/29/2024');
+    fill(range(0, 3, 1, 3), range(0, 3, 2, 3));
+    expect(show(2, 3)).toBe('3/29/2024');
+  });
+
+  it('extends weekday and month names, keeping their case', () => {
+    const { show, set, fill } = filling();
+    set(0, 0, 'Sat');
+    fill(range(0, 0), range(0, 0, 2, 0));
+    expect([1, 2].map((row) => show(row, 0))).toEqual(['Sun', 'Mon']);
+    set(0, 1, 'JANUARY');
+    set(1, 1, 'MARCH');
+    fill(range(0, 1, 1, 1), range(0, 1, 2, 1));
+    expect(show(2, 1)).toBe('MAY');
+    set(0, 2, 'may');
+    fill(range(0, 2), range(0, 2, 0, 3));
+    expect(show(0, 3)).toBe('jun');
+    set(0, 4, 'Monday');
+    fill(range(0, 4), range(0, 4, 0, 5));
+    expect(show(0, 5)).toBe('Tuesday');
+    // A name with something else is copied.
+    set(5, 0, 'Mon');
+    set(6, 0, '3');
+    fill(range(5, 0, 6, 0), range(5, 0, 7, 0));
+    expect(show(7, 0)).toBe('Mon');
+  });
+
+  it('is undone and redone as one change, and tells listeners a command that replays it', () => {
+    const { workbook, set, show, fill } = filling();
+    const replay = createWorkbook();
+    workbook.subscribe((command) => replay.execute(command));
+    set(0, 0, '1');
+    set(1, 0, '2');
+    set(3, 0, 'under');
+    fill(range(0, 0, 1, 0), range(0, 0, 4, 0));
+    expect(show(3, 0)).toBe('4');
+    expect(workbook.undo()!.ranges).toEqual([range(2, 0, 4, 0)]);
+    expect(show(3, 0)).toBe('under');
+    expect(show(4, 0)).toBe('');
+    workbook.redo();
+    expect(show(4, 0)).toBe('5');
+    expect(Workbook.fromSnapshot(replay.toSnapshot()).toSnapshot()).toEqual(
+      workbook.toSnapshot(),
+    );
+  });
+});

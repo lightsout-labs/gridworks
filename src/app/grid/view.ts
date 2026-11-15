@@ -5,6 +5,7 @@ import {
   type Command,
   type Range,
   type Workbook,
+  SHEET_ROWS,
 } from '../../engine/workbook';
 import {
   complete,
@@ -17,6 +18,7 @@ import type { ClipboardContents } from '../platform';
 import { fromClipboard, toClipboard } from './clipboard';
 import type { EntryMode } from './keys';
 import { navigate, type Navigation, type SheetContents } from './navigation';
+import type { CellPosition } from './geometry';
 import { covering, single, type Selection } from './selection';
 
 export const ZOOM_MIN = 0.5;
@@ -62,6 +64,11 @@ export interface ViewState {
   readonly endMode: boolean;
   /** The cells copied or cut, to paste, or `null` when there are none. */
   readonly copied: Copied | null;
+  /**
+   * The range that the fill handle is dragged over, the selection
+   * included, or `null` when it is not dragged beyond the selection.
+   */
+  readonly filling: Range | null;
 }
 
 /** A range copied or cut, which a moving border shows until it is forgotten. */
@@ -102,6 +109,7 @@ export class View {
       zoom: 1,
       endMode: false,
       copied: null,
+      filling: null,
     };
   }
 
@@ -363,6 +371,78 @@ export class View {
   }
 
   /**
+   * Drags the fill handle of the selected range, the last one, to a cell:
+   * the range to fill extends the selection to it, down, up, right or left,
+   * whichever way the cell is furthest beyond it.
+   */
+  previewFill({ row, col }: CellPosition): void {
+    const range = this.lastRange();
+    const rows = Math.max(row - range.bottom, range.top - row, 0);
+    const cols = Math.max(col - range.right, range.left - col, 0);
+    let filling: Range | null = null;
+    if (rows > 0 && rows >= cols) {
+      filling =
+        row > range.bottom ? { ...range, bottom: row } : { ...range, top: row };
+    } else if (cols > 0) {
+      filling =
+        col > range.right ? { ...range, right: col } : { ...range, left: col };
+    }
+    this.change({ filling });
+  }
+
+  /**
+   * Fills the range the fill handle was dragged over from the selection,
+   * extending its series, and selects it.
+   */
+  fill(): void {
+    const { filling } = this.current;
+    if (!filling) return;
+    this.change({ filling: null });
+    this.fillFrom(this.lastRange(), filling);
+  }
+
+  /**
+   * Fills down from the selected range, as a double-click on the fill
+   * handle does, as far as the column on its left has data, or else the
+   * column on its right.
+   */
+  autoFill(): void {
+    const range = this.lastRange();
+    const { sheet } = this.current;
+    const filled = (row: number, col: number) =>
+      col >= 0 && this.workbook.cell(sheet, row, col).value !== null;
+    const below = range.bottom + 1;
+    const col = filled(below, range.left - 1)
+      ? range.left - 1
+      : range.right + 1;
+    let bottom = range.bottom;
+    while (bottom < SHEET_ROWS - 1 && filled(bottom + 1, col)) bottom++;
+    if (bottom > range.bottom) this.fillFrom(range, { ...range, bottom });
+  }
+
+  /**
+   * Copies the first row of the selected range into the rest of it, or the
+   * row above a range of one row into it, as Ctrl+D does.
+   */
+  fillDown(): void {
+    const range = this.lastRange();
+    const top = range.top === range.bottom ? range.top - 1 : range.top;
+    if (top < 0) return;
+    this.copyInto({ ...range, top, bottom: top }, { ...range, top: top + 1 });
+  }
+
+  /** Copies the first column into the rest, as `fillDown` does rows. */
+  fillRight(): void {
+    const range = this.lastRange();
+    const left = range.left === range.right ? range.left - 1 : range.left;
+    if (left < 0) return;
+    this.copyInto(
+      { ...range, left, right: left },
+      { ...range, left: left + 1 },
+    );
+  }
+
+  /**
    * Undoes the last change, abandoning the entry, and selects the cells it
    * changed.
    */
@@ -394,6 +474,29 @@ export class View {
       Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom)) * 100,
     );
     this.change({ zoom: percent / 100 });
+  }
+
+  private lastRange(): Range {
+    const { ranges } = this.current.selection;
+    return ranges[ranges.length - 1]!;
+  }
+
+  private fillFrom(source: Range, target: Range): void {
+    this.commit();
+    const { sheet } = this.current;
+    this.workbook.execute({ type: 'fill', sheet, source, target });
+    this.change({ selection: covering([target]), endMode: false });
+  }
+
+  /** Pastes a range copied into another of whole copies of it. */
+  private copyInto(source: Range, target: Range): void {
+    const { sheet } = this.current;
+    this.workbook.execute({
+      type: 'paste',
+      sheet,
+      target,
+      source: { sheet, range: source },
+    });
   }
 
   private copyRange(cut: boolean): ClipboardContents {
