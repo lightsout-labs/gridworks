@@ -231,7 +231,13 @@ export function App({ platform }: { platform: Platform }) {
           <main className={styles.grid}>
             <Grid
               {...open}
-              menu={<CellMenu view={open.view} onCopy={copyToClipboard} />}
+              menu={(lines) => (
+                <CellMenu
+                  view={open.view}
+                  onCopy={copyToClipboard}
+                  lines={lines}
+                />
+              )}
             />
           </main>
           <SheetTabs {...open} />

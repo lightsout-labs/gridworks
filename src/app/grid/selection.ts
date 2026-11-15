@@ -99,7 +99,9 @@ export function pick(
         });
     }
   }
-  return withLast(selection, corners(target, origin), mode === 'add');
+  const last = corners(target, origin);
+  if (mode === 'add') return withLast(selection, last, true);
+  return { ...last, ranges: [span(last.anchor, last.focus)] };
 }
 
 function corners(

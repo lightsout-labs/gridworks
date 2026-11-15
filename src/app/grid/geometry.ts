@@ -1,4 +1,11 @@
-import { SHEET_COLUMNS, SHEET_ROWS, type Range } from '../../engine/workbook';
+import {
+  SHEET_COLUMNS,
+  SHEET_ROWS,
+  type Direction,
+  type Lines,
+  type Range,
+  type SheetLayout,
+} from '../../engine/workbook';
 
 /** Sizes of the grid at 100%, in CSS pixels. */
 export const ROW_HEADER_WIDTH = 46;
@@ -20,13 +27,106 @@ export interface Rect {
 }
 
 /**
+ * The sizes of the rows or the columns of a sheet at 100%, a hidden one
+ * of size 0. Finding a line's place or the line at a place takes a time
+ * that grows with the logarithm of the lines of other sizes.
+ */
+export class Axis {
+  /** The lines of other sizes than the standard one, in order. */
+  private readonly lines: number[];
+  /** For each of them, how much the lines before it add to the standard. */
+  private readonly extra: number[];
+
+  constructor(
+    private readonly count: number,
+    private readonly standard: number,
+    private readonly layout: Lines,
+  ) {
+    this.lines = [...new Set([...layout.sizes.keys(), ...layout.hidden])]
+      .filter((index) => index < count)
+      .sort((a, b) => a - b);
+    this.extra = [0];
+    for (const index of this.lines) {
+      this.extra.push(
+        this.extra[this.extra.length - 1]! + this.size(index) - standard,
+      );
+    }
+  }
+
+  size(index: number): number {
+    if (this.layout.hidden.has(index)) return 0;
+    return this.layout.sizes.get(index) ?? this.standard;
+  }
+
+  /** Where a line starts. */
+  start(index: number): number {
+    let low = 0;
+    let high = this.lines.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (this.lines[middle]! < index) low = middle + 1;
+      else high = middle;
+    }
+    return index * this.standard + this.extra[low]!;
+  }
+
+  /** The size of all the lines. */
+  get total(): number {
+    return this.start(this.count);
+  }
+
+  /**
+   * The line at a place: the last that starts there or before, which is
+   * not a hidden one but at the end. Places outside give the nearest line.
+   */
+  at(place: number): number {
+    let low = 0;
+    let high = this.count - 1;
+    while (low < high) {
+      const middle = (low + high + 1) >> 1;
+      if (this.start(middle) <= place) low = middle;
+      else high = middle - 1;
+    }
+    return low;
+  }
+}
+
+/** The rows and columns of a sheet, as the grid places them. */
+export interface Layout {
+  readonly rows: Axis;
+  readonly cols: Axis;
+}
+
+const layouts = new WeakMap<SheetLayout, Layout>();
+
+/** The layout of a sheet's lines: the same object for the same lines. */
+export function layoutOf(sheet: SheetLayout): Layout {
+  let layout = layouts.get(sheet);
+  if (!layout) {
+    layout = {
+      rows: new Axis(SHEET_ROWS, ROW_HEIGHT, sheet.rows),
+      cols: new Axis(SHEET_COLUMNS, COLUMN_WIDTH, sheet.columns),
+    };
+    layouts.set(sheet, layout);
+  }
+  return layout;
+}
+
+const NONE: Lines = { sizes: new Map(), hidden: new Set() };
+
+/** Every row and column of the standard size. */
+export const UNIFORM = layoutOf({ rows: NONE, columns: NONE });
+
+/**
  * Which part of the sheet the canvas shows: how far it is scrolled, in
- * CSS pixels at the zoom, and the zoom, where 1 is 100%.
+ * CSS pixels at the zoom, the zoom, where 1 is 100%, and the sizes of the
+ * rows and columns.
  */
 export interface Viewport {
   readonly scrollX: number;
   readonly scrollY: number;
   readonly zoom: number;
+  readonly layout: Layout;
 }
 
 /** What is under a point of the canvas. */
@@ -36,27 +136,28 @@ export type Target =
   | { readonly kind: 'column'; readonly col: number }
   | { readonly kind: 'all' };
 
-const clamp = (value: number, min: number, max: number) =>
-  Math.min(max, Math.max(min, value));
-
 /** The size of the whole sheet, headers included, at a zoom. */
-export function sheetSize(zoom: number): { width: number; height: number } {
+export function sheetSize({
+  zoom,
+  layout,
+}: Pick<Viewport, 'zoom' | 'layout'>): { width: number; height: number } {
   return {
-    width: (ROW_HEADER_WIDTH + SHEET_COLUMNS * COLUMN_WIDTH) * zoom,
-    height: (COLUMN_HEADER_HEIGHT + SHEET_ROWS * ROW_HEIGHT) * zoom,
+    width: (ROW_HEADER_WIDTH + layout.cols.total) * zoom,
+    height: (COLUMN_HEADER_HEIGHT + layout.rows.total) * zoom,
   };
 }
 
 /** Where a cell is drawn on the canvas. The headers stay in place. */
 export function cellRect(
   { row, col }: CellPosition,
-  { scrollX, scrollY, zoom }: Viewport,
+  { scrollX, scrollY, zoom, layout }: Viewport,
 ): Rect {
+  const { rows, cols } = layout;
   return {
-    x: (ROW_HEADER_WIDTH + col * COLUMN_WIDTH) * zoom - scrollX,
-    y: (COLUMN_HEADER_HEIGHT + row * ROW_HEIGHT) * zoom - scrollY,
-    width: COLUMN_WIDTH * zoom,
-    height: ROW_HEIGHT * zoom,
+    x: (ROW_HEADER_WIDTH + cols.start(col)) * zoom - scrollX,
+    y: (COLUMN_HEADER_HEIGHT + rows.start(row)) * zoom - scrollY,
+    width: cols.size(col) * zoom,
+    height: rows.size(row) * zoom,
   };
 }
 
@@ -84,18 +185,49 @@ export function cellAt(x: number, y: number, viewport: Viewport): CellPosition {
   return { row: rowAt(y, viewport), col: colAt(x, viewport) };
 }
 
-function rowAt(y: number, { scrollY, zoom }: Viewport): number {
-  const row = Math.floor(
-    ((y + scrollY) / zoom - COLUMN_HEADER_HEIGHT) / ROW_HEIGHT,
-  );
-  return clamp(row, 0, SHEET_ROWS - 1);
+function rowAt(y: number, { scrollY, zoom, layout }: Viewport): number {
+  return layout.rows.at((y + scrollY) / zoom - COLUMN_HEADER_HEIGHT);
 }
 
-function colAt(x: number, { scrollX, zoom }: Viewport): number {
-  const col = Math.floor(
-    ((x + scrollX) / zoom - ROW_HEADER_WIDTH) / COLUMN_WIDTH,
+function colAt(x: number, { scrollX, zoom, layout }: Viewport): number {
+  return layout.cols.at((x + scrollX) / zoom - ROW_HEADER_WIDTH);
+}
+
+/** How near a header border a point must be to drag it, in CSS pixels. */
+const BORDER_REACH = 4;
+
+/**
+ * The row or column whose border, at its end in the headers, is near a
+ * point of the canvas, to resize it; a hidden line's border is that of
+ * the shown line before it.
+ */
+export function borderAt(
+  x: number,
+  y: number,
+  viewport: Viewport,
+): { direction: Direction; index: number } | null {
+  const { zoom, layout } = viewport;
+  const inRowHeader = x < ROW_HEADER_WIDTH * zoom;
+  const inColumnHeader = y < COLUMN_HEADER_HEIGHT * zoom;
+  if (inRowHeader === inColumnHeader) return null;
+  const direction = inColumnHeader ? 'columns' : 'rows';
+  const axis = inColumnHeader ? layout.cols : layout.rows;
+  const point = inColumnHeader ? x : y;
+  const index = inColumnHeader ? colAt(x, viewport) : rowAt(y, viewport);
+  const rect = cellRect(
+    inColumnHeader ? { row: 0, col: index } : { row: index, col: 0 },
+    viewport,
   );
-  return clamp(col, 0, SHEET_COLUMNS - 1);
+  const [start, size] = inColumnHeader
+    ? [rect.x, rect.width]
+    : [rect.y, rect.height];
+  if (Math.abs(point - start - size) <= BORDER_REACH) {
+    return { direction, index };
+  }
+  if (Math.abs(point - start) > BORDER_REACH) return null;
+  let before = index - 1;
+  while (before >= 0 && axis.size(before) === 0) before--;
+  return before >= 0 ? { direction, index: before } : null;
 }
 
 /** The cells that a canvas of this size shows, partial ones included. */

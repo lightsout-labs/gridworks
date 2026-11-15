@@ -3,13 +3,14 @@ import {
   cellRect,
   COLUMN_HEADER_HEIGHT,
   ROW_HEADER_WIDTH,
+  UNIFORM,
 } from '../../src/app/grid/geometry';
 import { clickCell, enter, openApp } from './grid';
 
 const nameBox = (page: Page) => page.getByLabel('Name box');
 const status = (page: Page) => page.getByRole('contentinfo');
 const canvas = (page: Page) => page.locator('canvas');
-const top = { scrollX: 0, scrollY: 0, zoom: 1 };
+const top = { scrollX: 0, scrollY: 0, zoom: 1, layout: UNIFORM };
 
 /** The middle of a cell, at the top of the sheet and at 100%. */
 function middle(row: number, col: number) {

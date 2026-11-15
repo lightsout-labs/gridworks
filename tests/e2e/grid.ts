@@ -1,8 +1,8 @@
 import { expect, type Page } from '@playwright/test';
-import { cellRect } from '../../src/app/grid/geometry';
+import { cellRect, UNIFORM } from '../../src/app/grid/geometry';
 
 /** The sheet scrolled to the top at 100%, where these helpers work. */
-const TOP = { scrollX: 0, scrollY: 0, zoom: 1 };
+const TOP = { scrollX: 0, scrollY: 0, zoom: 1, layout: UNIFORM };
 
 /**
  * Opens the app and waits for the grid. With GRIDWORKS_COMMIT set, first waits

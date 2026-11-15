@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { cellRect } from '../../src/app/grid/geometry';
+import { cellRect, UNIFORM } from '../../src/app/grid/geometry';
 import { clickCell, enter, expectCell, openApp } from './grid';
 
 test.use({ locale: 'en-US' });
@@ -51,7 +51,10 @@ async function pasteElsewhere(page: Page): Promise<string> {
 
 /** Right-clicks a cell, opening the cell menu. */
 async function rightClickCell(page: Page, row: number, col: number) {
-  const rect = cellRect({ row, col }, { scrollX: 0, scrollY: 0, zoom: 1 });
+  const rect = cellRect(
+    { row, col },
+    { scrollX: 0, scrollY: 0, zoom: 1, layout: UNIFORM },
+  );
   await page.locator('canvas').click({
     button: 'right',
     position: { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 },

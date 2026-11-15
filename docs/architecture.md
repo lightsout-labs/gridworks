@@ -60,7 +60,7 @@ because a requirement needs it.
 
 | Module | Interface | Hides |
 |---|---|---|
-| `engine/workbook` | `execute(command)`, `undo()`, `redo()` (each giving the cells it changed), `canUndo`, `canRedo`, `cell(sheet, row, col)` (value, formula, display text, text to edit, style, note, link), the sheet size, queries (`find`, `aggregate`, `extent`, `circularReference`, sheet and name lists, layout), `calculations` (a count, to measure recalculation), `subscribe(listener)`, `toSnapshot()`, `fromSnapshot(snapshot, changes)` | Column-oriented cell storage; the dependency graph and on-demand recalculation; circular-reference detection; rewriting references when cells, rows, columns and sheets move; pasting cells copied or cut, all or only their values, formulas or formats; inverse patches for undo; fill series; sort; filters; merges; data validation; conditional format evaluation; named ranges (R1, R5, R6, R8–R10, R14, R15, R19–R27). |
+| `engine/workbook` | `execute(command)`, `undo()`, `redo()` (each giving the cells it changed), `canUndo`, `canRedo`, `cell(sheet, row, col)` (value, formula, display text, text to edit, style, note, link), the sheet size, queries (`find`, `aggregate`, `extent`, `circularReference`, sheet and name lists, `layout`: the sizes of rows and columns and those hidden), `calculations` (a count, to measure recalculation), `subscribe(listener)`, `toSnapshot()`, `fromSnapshot(snapshot, changes)` | Column-oriented cell storage; the dependency graph and on-demand recalculation; circular-reference detection; rewriting references when cells, rows, columns and sheets move; pasting cells copied or cut, all or only their values, formulas or formats; inverse patches for undo; fill series; sort; filters; merges; data validation; conditional format evaluation; named ranges (R1, R5, R6, R8–R10, R14, R15, R19–R27). |
 | `engine/formula` | `parse(text)`, `print(ast, { file })` (with the `_xlfn.` prefix of newer functions for a file), `evaluate(ast, context)`, `references(ast)`, `shift(ast, move)` (a sheet renamed, the formula moved by rows and columns, or cells cut and pasted), `calculable(ast)`, `functions` (the names of the library), `tokenize(text)` (the tokens of a formula still being typed, with their places), `argumentHint(name, index)`, `quoteSheetName(name)` | Tokenizer and parser; operators and coercion rules; the error values; the library of at least 150 functions and the names of their arguments (R11–R13, R16). Used by `engine/workbook`, by `engine/io` to check and fill in the formulas of files, and `functions`, `tokenize` and `argumentHint` by the help while typing a formula; the workbook re-exports `quoteSheetName` for the app. |
 | `engine/format` | `formatValue(value, code)`, `parseInput(text)`, `parseDate(text)`, `editText(value, code)`, `builtinFormat(id)`, `isDateFormat(code)`, `dateSerial(year, month, day)`, `dateParts(serial)` | Excel format codes, date serial numbers, and recognition of typed numbers, dates, times, percentages and booleans, on top of `numfmt` (R4, R18). |
 | `engine/io` | `readXlsx(bytes, name)` (a snapshot and what was dropped), `writeXlsx(snapshot)`, `readCsv(text)`, `writeCsv(snapshot, sheet)` | Reading the parts of an `.xlsx` file; shared formulas; the mapping from a workbook snapshot to ExcelJS; the list of dropped features reported on import; CSV quoting (R30–R32). |
@@ -131,6 +131,37 @@ Decisions that are cheap to reverse, with their reasons:
   the first row or column of the selection into the rest of it, or of the
   row above or column left of a selection one cell deep. Text that ends in
   a number (`Item 1`) is repeated, not counted on.
+- **Inserting or deleting rows or columns rebuilds the sheets it
+  changes.** `insertLines` and `deleteLines` name spans of rows or columns;
+  an insertion puts as many empty lines before each span as it has, as
+  Excel does before each selected range. The workbook makes the sheet anew
+  from its snapshot with the cells, formulas and line sizes moved, and
+  every sheet whose formulas refer to the lines with those formulas
+  rewritten by the `lines` move of `shift`: a reference follows its cells,
+  absolute or not, a range grows or shrinks with the lines inside it, and a
+  reference wholly to deleted cells becomes `#REF!` in the text, as in
+  Excel. It then finds again what every formula reads. Undo keeps a
+  `restoreSheets` command holding the snapshots of the sheets as they
+  were, as deleting a sheet does, so that the `#REF!` it wrote comes back
+  as the references they were; what an insertion pushes off the sheet,
+  which Excel refuses, comes back too. Listeners get the insertion or
+  deletion itself.
+- **Row heights and column widths are CSS pixels at 100%**, kept in each
+  sheet's `layout` with the lines hidden, and only for the lines that
+  differ from the standard 24 by 96. `setLines` sets the size, or the
+  standard one, and the visibility of spans, and records the lines as they
+  were for undo. The layout is replaced, never changed, so the grid builds
+  an `Axis` for each direction once per layout: it finds a line's place,
+  or the line at a place, by binary search over the lines that differ, so
+  that drawing a frame stays fast with thousands of them. A hidden line is
+  a line of size 0, which hit testing passes over. Dragging a header
+  border resizes its line, or every whole line selected with it, and
+  dragged to nothing hides them, as in Excel; a double-click fits a column
+  to its widest text, and a row to the standard height, the only one a
+  line of text needs until fonts have sizes. The context menu of the row
+  and column headers inserts, deletes, hides and shows the selected
+  lines; the ribbon has no row and column commands. `.xlsx` files keep
+  sizes and hidden lines from S28 on.
 - **What was copied lives in the view**, not the workbook: a range and
   whether it was cut. Pasting reads the source as it is then. Escape,
   undo and any change to the workbook other than a paste forget it, as
@@ -306,7 +337,8 @@ Decisions that are cheap to reverse, with their reasons:
 A workbook **snapshot** is a versioned, JSON-compatible object: workbook
 properties (name, sheet order, named ranges, the table of distinct styles)
 and, for each sheet, its name and tab color, its columns of values, style
-identifiers, formulas, row heights and column widths, merges, frozen
+identifiers, formulas, row heights and column widths, hidden rows and
+columns, merges, frozen
 panes, filters, validation rules, conditional formats, notes and
 hyperlinks. It is the only form in which a
 workbook leaves the engine.

@@ -14,13 +14,17 @@ import {
   Calculation,
   emptySheet,
   key,
+  NO_LINES,
   place,
   type Constant,
+  type Lines,
   type Sheet,
+  type SheetLayout,
 } from './calc';
 import { series } from './series';
 
 export type { Value } from '../value';
+export type { Lines, SheetLayout } from './calc';
 export {
   columnName,
   quoteSheetName,
@@ -99,6 +103,26 @@ export type Command =
       readonly source: Range;
       readonly target: Range;
     }
+  | MoveLines
+  | ({
+      /**
+       * Sets the size of the rows or columns of each span, or the default
+       * size when `null`, and hides or shows them; what a span leaves out
+       * stays as it is.
+       */
+      readonly type: 'setLines';
+    } & LinesOf<LineSpan>)
+  | {
+      /**
+       * Puts sheets back as they were, giving the cells of `ranges` of
+       * `sheet` as changed: how the workbook undoes a change to rows or
+       * columns.
+       */
+      readonly type: 'restoreSheets';
+      readonly sheet: string;
+      readonly ranges: readonly Range[];
+      readonly sheets: readonly SheetSnapshot[];
+    }
   | {
       /**
        * Restores of different cells made as one change: how a paste is
@@ -141,6 +165,40 @@ export type Command =
       readonly color?: string | null;
       readonly index?: number;
     };
+
+/** Rows or columns. */
+export type Direction = 'rows' | 'columns';
+
+/** A run of rows or columns, its ends included. */
+export interface Span {
+  readonly start: number;
+  readonly end: number;
+}
+
+/**
+ * Inserts before each span as many empty rows or columns as it has, as
+ * Excel inserts before the lines selected, or deletes the lines of each
+ * span. Cells and the sizes of lines move with them, and so does every
+ * reference to them; a reference to deleted cells becomes `#REF!`. What an
+ * insertion pushes off the sheet is lost.
+ */
+export type MoveLines =
+  | (LinesOf<Span> & { readonly type: 'insertLines' })
+  | (LinesOf<Span> & { readonly type: 'deleteLines' });
+
+/** Spans of the rows or columns of a sheet. */
+interface LinesOf<T extends Span> {
+  readonly sheet: string;
+  readonly direction: Direction;
+  readonly spans: readonly T[];
+}
+
+/** A run of rows or columns, with the size and visibility to give them. */
+export interface LineSpan extends Span {
+  /** In CSS pixels at 100%; `null` for the default size. */
+  readonly size?: number | null;
+  readonly hidden?: boolean;
+}
 
 /** Why a sheet name cannot be used, as Excel refuses it. */
 export type SheetNameProblem = 'empty' | 'tooLong' | 'character' | 'taken';
@@ -235,6 +293,12 @@ export interface SheetSnapshot extends SheetInfo {
    * styles.
    */
   readonly styleIds?: number[][];
+  /** Sizes as `[index, size]`, in CSS pixels at 100%; absent for none. */
+  readonly rowHeights?: [number, number][];
+  readonly columnWidths?: [number, number][];
+  /** Absent for none. */
+  readonly hiddenRows?: number[];
+  readonly hiddenColumns?: number[];
 }
 
 /**
@@ -253,6 +317,12 @@ export interface Snapshot {
 }
 
 type Paste = Extract<Command, { type: 'paste' }>;
+type SheetChange = Extract<
+  Command,
+  { type: 'addSheet' | 'deleteSheet' | 'restoreSheet' | 'setSheet' }
+>;
+type SetLines = Extract<Command, { type: 'setLines' }>;
+type RestoreSheets = Extract<Command, { type: 'restoreSheets' }>;
 type Fill = Extract<Command, { type: 'fill' }>;
 
 /** The cells a `setCells` command sets, inside the sheet. */
@@ -463,6 +533,14 @@ export class Workbook {
     return { count, numbers, sum };
   }
 
+  /**
+   * The sizes of the rows and columns of a sheet and the ones hidden: the
+   * same object until they change.
+   */
+  layout(sheetId: string): SheetLayout {
+    return this.sheet(sheetId).layout;
+  }
+
   /** How many rows and columns, from A1, the cells in use extend over. */
   extent(sheetId: string): { rows: number; cols: number } {
     const sheet = this.sheet(sheetId);
@@ -539,6 +617,19 @@ export class Workbook {
         },
         change: each[0]!.change,
       };
+    } else if (
+      command.type === 'insertLines' ||
+      command.type === 'deleteLines' ||
+      command.type === 'restoreSheets'
+    ) {
+      applied =
+        command.type === 'restoreSheets'
+          ? this.restoreSheets(command)
+          : this.moveLines(command);
+      // Formulas have moved, so what each reads is found again.
+      this.calc.rebuild();
+    } else if (command.type === 'setLines') {
+      applied = this.setLines(command);
     } else {
       applied = this.changeSheets(command);
       // References to sheets by name may now find another sheet, or none.
@@ -597,12 +688,7 @@ export class Workbook {
     return { executed, reverse, change: { sheet: sheet.id, ranges } };
   }
 
-  private changeSheets(
-    command: Extract<
-      Command,
-      { type: 'addSheet' | 'deleteSheet' | 'restoreSheet' | 'setSheet' }
-    >,
-  ): Applied {
+  private changeSheets(command: SheetChange): Applied {
     const list = this.sheetList;
     const shown = (sheet: string): Change => ({ sheet, ranges: [] });
     switch (command.type) {
@@ -664,6 +750,148 @@ export class Workbook {
         return { executed: command, reverse, change: shown(sheet.id) };
       }
     }
+  }
+
+  /**
+   * Inserts or deletes rows or columns: replaces the sheet with one made
+   * from its snapshot with the lines moved, and the other sheets whose
+   * formulas refer to the lines moved with ones whose formulas follow.
+   */
+  private moveLines(command: MoveLines): Applied {
+    const sheet = this.sheet(command.sheet);
+    const { direction } = command;
+    const rows = direction === 'rows';
+    const limit = rows ? SHEET_ROWS : SHEET_COLUMNS;
+    const spans = merged(checked(command));
+    const insert = command.type === 'insertLines';
+    // From the last span to the first, so that each keeps its place.
+    const shifts = spans
+      .map(({ start, end }) => ({
+        at: start,
+        count: insert ? end - start + 1 : start - end - 1,
+      }))
+      .reverse();
+    /** Where a line goes, or `null` when it is deleted or pushed off. */
+    const moved = (index: number): number | null => {
+      let place = index;
+      for (const { at, count } of shifts) {
+        if (place < at) continue;
+        if (count < 0 && place < at - count) return null;
+        place += count;
+      }
+      return place < limit ? place : null;
+    };
+    const follow = (own: Sheet, ast: Ast): Ast =>
+      shifts.reduce(
+        (each, { at, count }) =>
+          shift(each, {
+            type: 'lines',
+            sheet: sheet.name,
+            own: own.name,
+            direction,
+            at,
+            count,
+          }),
+        ast,
+      );
+
+    const before: SheetSnapshot[] = [];
+    this.sheetList.forEach((each, index) => {
+      const formulas: [number, number, string][] = [];
+      let changed = each === sheet;
+      for (const { row, col, ast, text } of each.formulas.values()) {
+        const ast2 = follow(each, ast);
+        if (ast2 !== ast) changed = true;
+        const formula = ast2 === ast ? text : `=${print(ast2)}`;
+        if (each !== sheet) {
+          formulas.push([row, col, formula]);
+          continue;
+        }
+        const place = moved(rows ? row : col);
+        if (place === null) continue;
+        formulas.push(rows ? [place, col, formula] : [row, place, formula]);
+      }
+      if (!changed) return;
+      const snapshot = snapshotOf(each);
+      before.push(snapshot);
+      const after: SheetSnapshot =
+        each === sheet
+          ? { ...movedLines(snapshot, rows, shifts, limit, moved), formulas }
+          : { ...snapshot, formulas };
+      this.sheetList[index] = sheetOf(after);
+    });
+    // The lines inserted, where they end up, or the lines deleted.
+    let added = 0;
+    const lines = spans.map(({ start, end }) => {
+      const span = { start: start + added, end: end + added };
+      if (insert) added += end - start + 1;
+      return span;
+    });
+    const ranges = lines.map((span) => lineRange(direction, span));
+    return {
+      executed: command,
+      reverse: {
+        type: 'restoreSheets',
+        sheet: sheet.id,
+        ranges,
+        sheets: before,
+      },
+      change: { sheet: sheet.id, ranges },
+    };
+  }
+
+  /** Puts sheets back from their snapshots, in their places. */
+  private restoreSheets(command: RestoreSheets): Applied {
+    const before = command.sheets.map((contents) => {
+      const index = this.sheetList.indexOf(this.sheet(contents.id));
+      const snapshot = snapshotOf(this.sheetList[index]!);
+      this.sheetList[index] = sheetOf(contents);
+      return snapshot;
+    });
+    const { sheet, ranges } = command;
+    return {
+      executed: command,
+      reverse: { ...command, sheets: before },
+      change: { sheet, ranges },
+    };
+  }
+
+  /** Sets the sizes and visibility of rows or columns. */
+  private setLines(command: SetLines): Applied {
+    const sheet = this.sheet(command.sheet);
+    const { direction } = command;
+    const old = sheet.layout[direction];
+    const sizes = new Map(old.sizes);
+    const hidden = new Set(old.hidden);
+    // The lines as they were, in runs that look the same.
+    const reverse: LineSpan[] = [];
+    for (const span of checked(command)) {
+      for (let index = span.start; index <= span.end; index++) {
+        const size = old.sizes.get(index) ?? null;
+        const hides = old.hidden.has(index);
+        const last = reverse[reverse.length - 1];
+        if (
+          last?.end === index - 1 &&
+          last.size === size &&
+          last.hidden === hides
+        ) {
+          reverse[reverse.length - 1] = { ...last, end: index };
+        } else {
+          reverse.push({ start: index, end: index, size, hidden: hides });
+        }
+        if (span.size === null) sizes.delete(index);
+        else if (span.size !== undefined) sizes.set(index, span.size);
+        if (span.hidden === true) hidden.add(index);
+        else if (span.hidden === false) hidden.delete(index);
+      }
+    }
+    sheet.layout = { ...sheet.layout, [direction]: { sizes, hidden } };
+    const ranges = command.spans.map((span) => lineRange(direction, span));
+    return {
+      executed: command,
+      reverse: { ...command, spans: reverse },
+      change: { sheet: sheet.id, ranges },
+    };
   }
 
   /** The restores that make a paste, read before any of them runs. */
@@ -1144,6 +1372,109 @@ interface Applied {
   readonly change: Change;
 }
 
+/**
+ * Spans sorted, with those that overlap made one. Those that only touch
+ * stay apart: an insertion goes before each.
+ */
+function merged(spans: readonly Span[]): Span[] {
+  const sorted = [...spans].sort((a, b) => a.start - b.start);
+  const result: Span[] = [];
+  for (const span of sorted) {
+    const last = result[result.length - 1];
+    if (last && span.start <= last.end) {
+      result[result.length - 1] = {
+        start: last.start,
+        end: Math.max(last.end, span.end),
+      };
+    } else {
+      result.push(span);
+    }
+  }
+  return result;
+}
+
+/**
+ * The spans of a command, which must lie within the sheet, each from its
+ * start to its end: a damaged command read back from storage fails.
+ */
+function checked<T extends Span>(command: {
+  readonly direction: Direction;
+  readonly spans: readonly T[];
+}): readonly T[] {
+  const limit = command.direction === 'rows' ? SHEET_ROWS : SHEET_COLUMNS;
+  for (const { start, end } of command.spans) {
+    if (!(
+      Number.isInteger(start) &&
+      start >= 0 &&
+      start <= end &&
+      end < limit
+    )) {
+      throw new Error(`Invalid span: ${start} to ${end}`);
+    }
+  }
+  return command.spans;
+}
+
+/** The cells of whole rows or columns. */
+function lineRange(direction: Direction, { start, end }: Span): Range {
+  return direction === 'rows'
+    ? { top: start, left: 0, bottom: end, right: SHEET_COLUMNS - 1 }
+    : { top: 0, left: start, bottom: SHEET_ROWS - 1, right: end };
+}
+
+/**
+ * A snapshot's cells and line sizes with rows or columns inserted and
+ * deleted: `count` lines before `at` for each shift, or as many deleted
+ * when negative, the last first. `moved` gives where a line goes.
+ */
+function movedLines(
+  snapshot: SheetSnapshot,
+  rows: boolean,
+  shifts: readonly { at: number; count: number }[],
+  limit: number,
+  moved: (index: number) => number | null,
+): SheetSnapshot {
+  const splice = <T>(list: T[], empty: T): T[] => {
+    let result = list;
+    for (const { at, count } of shifts) {
+      if (at >= result.length) continue;
+      result =
+        count > 0
+          ? result
+              .slice(0, at)
+              .concat(Array<T>(count).fill(empty), result.slice(at))
+          : result.slice(0, at).concat(result.slice(at - count));
+    }
+    return result.slice(0, limit);
+  };
+  const cells = <T>(columns: T[][], empty: T): T[][] =>
+    rows ? columns.map((column) => splice(column, empty)) : splice(columns, []);
+  const sizes = (pairs: [number, number][] | undefined) =>
+    pairs?.flatMap(([index, size]): [number, number][] => {
+      const place = moved(index);
+      return place === null ? [] : [[place, size]];
+    });
+  const hidden = (indexes: number[] | undefined) =>
+    indexes?.flatMap((index) => {
+      const place = moved(index);
+      return place === null ? [] : [place];
+    });
+  return {
+    ...snapshot,
+    columns: cells(snapshot.columns, null),
+    ...(snapshot.styleIds && { styleIds: cells(snapshot.styleIds, 0) }),
+    ...(rows
+      ? {
+          rowHeights: sizes(snapshot.rowHeights),
+          hiddenRows: hidden(snapshot.hiddenRows),
+        }
+      : {
+          columnWidths: sizes(snapshot.columnWidths),
+          hiddenColumns: hidden(snapshot.hiddenColumns),
+        }),
+  };
+}
+
 /** A sheet of the workbook, made from a snapshot of it. */
 function sheetOf(snapshot: SheetSnapshot): Sheet {
   const sheet = emptySheet(
@@ -1153,6 +1484,17 @@ function sheetOf(snapshot: SheetSnapshot): Sheet {
     (snapshot.styleIds ?? []).map((column) => [...column]),
   );
   if (snapshot.color !== undefined) sheet.color = snapshot.color;
+  const lines = (
+    sizes: [number, number][] | undefined,
+    hidden: number[] | undefined,
+  ): Lines =>
+    sizes?.length || hidden?.length
+      ? { sizes: new Map(sizes), hidden: new Set(hidden) }
+      : NO_LINES;
+  sheet.layout = {
+    rows: lines(snapshot.rowHeights, snapshot.hiddenRows),
+    columns: lines(snapshot.columnWidths, snapshot.hiddenColumns),
+  };
   for (const [row, col, text] of snapshot.formulas) {
     const ast = parse(text.slice(1));
     if (!ast) throw new Error(`Invalid formula in snapshot: ${text}`);
@@ -1162,6 +1504,7 @@ function sheetOf(snapshot: SheetSnapshot): Sheet {
 }
 
 function snapshotOf(sheet: Sheet): SheetSnapshot {
+  const { rows, columns } = sheet.layout;
   return {
     id: sheet.id,
     name: sheet.name,
@@ -1176,5 +1519,9 @@ function snapshotOf(sheet: Sheet): SheetSnapshot {
     styleIds: Array.from(sheet.styleIds, (column) =>
       Array.from(column ?? [], (id) => id ?? 0),
     ),
+    ...(rows.sizes.size > 0 && { rowHeights: [...rows.sizes] }),
+    ...(columns.sizes.size > 0 && { columnWidths: [...columns.sizes] }),
+    ...(rows.hidden.size > 0 && { hiddenRows: [...rows.hidden] }),
+    ...(columns.hidden.size > 0 && { hiddenColumns: [...columns.hidden] }),
   };
 }
