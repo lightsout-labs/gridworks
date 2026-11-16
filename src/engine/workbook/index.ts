@@ -418,6 +418,33 @@ function overlap(a: Range, b: Range): boolean {
   );
 }
 
+/**
+ * Ranges grown over the merges they overlap, and those that then overlap
+ * each other made one, as each becomes one merged cell.
+ */
+function combined(ranges: readonly Range[], merges: readonly Range[]): Range[] {
+  const result: Range[] = [];
+  for (const range of ranges) {
+    let grown = withMerges(range, merges);
+    for (let index = 0; index < result.length;) {
+      if (overlap(result[index]!, grown)) {
+        grown = withMerges(withMerges(grown, [result[index]!]), merges);
+        result.splice(index, 1);
+        index = 0;
+      } else {
+        index++;
+      }
+    }
+    result.push(grown);
+  }
+  return result;
+}
+
+/** The range of one cell. */
+function cellArea(row: number, col: number): Range {
+  return { top: row, left: col, bottom: row, right: col };
+}
+
 /** A range grown until it takes in every merge it overlaps. */
 export function withMerges(range: Range, merges: readonly Range[]): Range {
   let result = range;
@@ -796,7 +823,7 @@ export class Workbook {
       command.type === 'setStyle' || command.type === 'setBorders'
         ? command.ranges.flatMap((range) => this.inUse(sheet, range) ?? [])
         : command.type === 'merge'
-          ? command.ranges.map((range) => withMerges(range, sheet.merges))
+          ? combined(command.ranges, sheet.merges)
           : command.type === 'unmerge'
             ? this.mergesIn(sheet, command.ranges)
             : command.type === 'setCell'
@@ -1141,7 +1168,41 @@ export class Workbook {
       ({ value, formula, style }) =>
         value !== null || formula !== undefined || style !== undefined,
     );
-    return [{ type: 'restore', sheet: to.id, ranges: [area], cells: filled }];
+    // Formats bring the merges of the cells copied, as in Excel.
+    const merges: Range[] = [];
+    if (only === 'formats') {
+      const inside = from.merges.filter(
+        (merge) =>
+          merge.top >= range.top &&
+          merge.bottom <= range.bottom &&
+          merge.left >= range.left &&
+          merge.right <= range.right,
+      );
+      for (let top = area.top; top <= area.bottom; top += height) {
+        for (let left = area.left; left <= area.right; left += width) {
+          for (const merge of inside) {
+            const moved = {
+              top: merge.top + top - range.top,
+              left: merge.left + left - range.left,
+              bottom: merge.bottom + top - range.top,
+              right: merge.right + left - range.left,
+            };
+            if (moved.bottom <= area.bottom && moved.right <= area.right) {
+              merges.push(moved);
+            }
+          }
+        }
+      }
+    }
+    return [
+      {
+        type: 'restore',
+        sheet: to.id,
+        ranges: [area],
+        cells: filled,
+        ...(only === 'formats' && { merges }),
+      },
+    ];
   }
 
   /** The restore that makes a fill, read before it runs. */
@@ -1626,6 +1687,10 @@ export class Workbook {
     const fitted = new Map(ranges ? old : []);
     const heights = new Map<number, number>();
     const height = (row: number, col: number, id: number) => {
+      // Merged cells are not fitted to their text, as in Excel.
+      if (sheet.merges.some((merge) => overlap(merge, cellArea(row, col)))) {
+        return;
+      }
       const width = columns.hidden.has(col)
         ? 0
         : (columns.sizes.get(col) ?? STANDARD_COLUMN_WIDTH);

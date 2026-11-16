@@ -675,7 +675,7 @@ Notes:
 
 ## S17: Borders, merged cells and the format painter
 
-Status: In progress
+Status: Done
 
 Acceptance criteria:
 - The user can set a border on any side of the selected cells, or all, outside
@@ -689,6 +689,24 @@ Acceptance criteria:
 - Its controls are in the ribbon or a context menu, are translated in both
   languages, look right in both themes, and have hover, focus and disabled
   states and tooltips. (R37, R41, R42, R43, R44)
+
+Notes:
+- Borders are the style properties `borderTop`, `borderRight`, `borderBottom`
+  and `borderLeft`, each `{ line, color? }` (`BORDER_LINES`; no color is
+  Automatic, drawn in the theme's text color). S28 maps them to and from
+  `.xlsx` borders, and S28 also reads and writes `merges`, which each sheet
+  snapshot keeps as ranges.
+- Merges live on each sheet (`workbook.merges(sheet)`); a `restore` with
+  `merges` replaces those its ranges overlap, which is how merges are undone
+  and how pasting formats carries them. S19 (frozen panes), S22 (sort)
+  and S23 (filters) must decide what they do with merged cells; Excel
+  refuses to sort a range with merges of different sizes.
+- The view grows every selection over merges (`overMerges` in
+  `selection.ts`); a later slice that sets the selection without `select`
+  must do the same.
+- S32 (printing) draws borders and merges, as the grid does in `Grid.tsx`.
+- WebKit cannot launch on the local machine (missing system libraries);
+  `make e2e` passes on Chromium and Firefox here, and CI runs WebKit.
 
 ## S18: Number formats
 

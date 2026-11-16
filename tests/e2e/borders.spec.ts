@@ -148,3 +148,24 @@ test('translates the border, merge and painter controls', async ({ page }) => {
     await expect(button(page, name)).toBeVisible();
   }
 });
+
+test.describe('in the dark theme', () => {
+  test.use({ colorScheme: 'dark' });
+
+  test('the Borders menu and the merge buttons are dark', async ({ page }) => {
+    await openApp(page);
+    const dark = 'rgb(0, 0, 0)';
+    await expect(button(page, 'Merge cells')).toBeDisabled();
+    await button(page, 'Borders').click();
+    const menu = page.getByRole('menu');
+    await expect(menu).toBeVisible();
+    const background = await menu.evaluate(
+      (element) => getComputedStyle(element).backgroundColor,
+    );
+    const [r, g, b] = background.match(/\d+/g)!.map(Number);
+    expect(r! + g! + b!).toBeLessThan(3 * 96);
+    await expect(
+      page.getByRole('menuitem', { name: 'All borders' }),
+    ).not.toHaveCSS('color', dark);
+  });
+});

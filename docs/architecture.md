@@ -197,18 +197,21 @@ Decisions that are cheap to reverse, with their reasons:
   white. `setBorders` puts one on a side of the selected ranges (their
   top, right, bottom or left edge), on their outside edges, or on every
   side of every cell, and `null` takes them off; like `setStyle`, ranges
-  of whole lines change only the cells in use there. Each cell keeps its
+  of whole lines change only the cells in use there, so the bottom border
+  of a whole column goes on its last cell in use. Each cell keeps its
   own borders, as in Excel, so the line between two cells is drawn when
   either has it there. The Borders menu keeps the line and color last
   chosen for the next border.
 - **Merged cells are ranges kept by their sheet.** `merge` merges each
-  range, grown over the merges it overlaps, keeps the value of its
+  range, grown over the merges and the other ranges it overlaps, keeps the value of its
   top-left cell and empties the others, as Excel does after its warning;
   `unmerge` removes the merges the ranges overlap. Undo is a `restore`
   that also carries the merges of its ranges as they were. Inserting and
   deleting lines moves a merge, grows it with lines inserted inside it,
   shrinks it with lines deleted, and drops it when one cell is left.
-  Pasting, filling and the format painter neither make nor remove merges.
+  Pasting formats, and so the format painter, gives the target the merges
+  inside the cells copied in place of its own, as in Excel; other pastes
+  and fills neither make nor remove merges.
   The view grows every selection over the merges it overlaps and makes
   the top-left cell active, so a click inside a merged cell selects all of
   it, and an arrow leaves a merged cell from its far edge. The grid draws
@@ -216,8 +219,9 @@ Decisions that are cheap to reverse, with their reasons:
   and a cell's borders on the sides on the edge of its merge only. Merged
   cells are not fitted to their text, as in Excel.
 - **The format painter is a paste of formats.** Its button keeps the
-  range selected in the view; the next range a click or drag selects gets
-  its formats through `paste` with `only: 'formats'`, so a target is tiled
+  range selected in the view; the next range a click or drag selects, on
+  the cells or the headers, gets its formats and merges through `paste`
+  with `only: 'formats'`, so a target is tiled
   with whole copies, or gets one copy at its top left, as a paste is.
   Escape, or the button again, puts it away. It paints once: Excel's
   double-click to keep painting is not built.

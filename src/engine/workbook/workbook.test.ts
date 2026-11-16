@@ -1704,6 +1704,23 @@ describe('borders', () => {
     expect(style(1, 1)).toEqual({});
   });
 
+  it('puts the top border of a whole column on its first cell', () => {
+    const { workbook, sheet, set, style } = borders();
+    set(4, 0, 'x');
+    const column = { top: 0, left: 0, bottom: SHEET_ROWS - 1, right: 0 };
+    workbook.execute({
+      type: 'setBorders',
+      sheet,
+      ranges: [column],
+      sides: 'top',
+      border: thin,
+    });
+    expect(style(0, 0)).toEqual({ borderTop: thin });
+    expect(style(4, 0)).toEqual({});
+    workbook.undo();
+    expect(style(0, 0)).toEqual({});
+  });
+
   it('removes every border with none, and undoes it', () => {
     const { workbook, sheet, style } = borders();
     workbook.execute({
@@ -1754,6 +1771,56 @@ describe('merges', () => {
     expect(show(1, 1)).toBe('');
     expect(show(0, 2)).toBe('0');
     expect(show(5, 5)).toBe('1');
+  });
+
+  it('keeps a formula in the top-left cell, and merges ranges that overlap as one', () => {
+    const { workbook, sheet, set, show } = merges();
+    set(5, 5, '7');
+    set(0, 0, '=F6*2');
+    workbook.execute({
+      type: 'merge',
+      sheet,
+      ranges: [
+        { top: 0, left: 0, bottom: 1, right: 1 },
+        { top: 1, left: 1, bottom: 2, right: 2 },
+      ],
+    });
+    expect(workbook.merges(sheet)).toEqual([
+      { top: 0, left: 0, bottom: 2, right: 2 },
+    ]);
+    expect(show(0, 0)).toBe('14');
+  });
+
+  it('does not grow rows to fit the wrapped text of a merged cell', () => {
+    const { workbook, sheet, set, merge } = merges();
+    set(0, 0, 'a long text that wraps onto many lines in one column');
+    merge(0, 0, 1, 3);
+    workbook.execute({
+      type: 'setStyle',
+      sheet,
+      ranges: [{ top: 0, left: 0, bottom: 0, right: 0 }],
+      style: { wrap: true },
+    });
+    expect(workbook.layout(sheet).rows.fitted?.get(0)).toBeUndefined();
+  });
+
+  it('pastes the merges of the cells copied with their formats', () => {
+    const { workbook, sheet, merge } = merges();
+    merge(0, 0, 0, 1);
+    workbook.execute({
+      type: 'paste',
+      sheet,
+      target: { top: 3, left: 0, bottom: 4, right: 1 },
+      source: { sheet, range: { top: 0, left: 0, bottom: 0, right: 1 } },
+      only: 'formats',
+    });
+    expect(workbook.merges(sheet)).toEqual([
+      { top: 0, left: 0, bottom: 0, right: 1 },
+      { top: 3, left: 0, bottom: 3, right: 1 },
+      { top: 4, left: 0, bottom: 4, right: 1 },
+    ]);
+    workbook.undo();
+    expect(workbook.merges(sheet)).toHaveLength(1);
   });
 
   it('merges over the merges a range overlaps, and unmerges those it touches', () => {
