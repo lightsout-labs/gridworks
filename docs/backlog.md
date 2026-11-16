@@ -752,7 +752,7 @@ Notes:
 
 ## S19: Freeze panes
 
-Status: Todo
+Status: In progress
 
 Acceptance criteria:
 - The user can freeze the top row, the first column, or all rows above and

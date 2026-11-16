@@ -2,6 +2,7 @@ import {
   SHEET_COLUMNS,
   SHEET_ROWS,
   type Direction,
+  type Frozen,
   type Lines,
   type Range,
   type SheetLayout,
@@ -101,11 +102,17 @@ export class Axis {
   }
 }
 
-/** The rows and columns of a sheet, as the grid places them. */
+/**
+ * The rows and columns of a sheet, as the grid places them, and how many
+ * of them are frozen.
+ */
 export interface Layout {
   readonly rows: Axis;
   readonly cols: Axis;
+  readonly frozen: Frozen;
 }
+
+const UNFROZEN: Frozen = { rows: 0, cols: 0 };
 
 const layouts = new WeakMap<SheetLayout, Layout>();
 
@@ -116,6 +123,7 @@ export function layoutOf(sheet: SheetLayout): Layout {
     layout = {
       rows: new Axis(SHEET_ROWS, ROW_HEIGHT, sheet.rows),
       cols: new Axis(SHEET_COLUMNS, COLUMN_WIDTH, sheet.columns),
+      frozen: sheet.frozen ?? UNFROZEN,
     };
     layouts.set(sheet, layout);
   }
@@ -157,15 +165,22 @@ export function sheetSize({
   };
 }
 
-/** Where a cell is drawn on the canvas. The headers stay in place. */
+/**
+ * Where a cell is drawn on the canvas. The headers, and the frozen rows
+ * and columns, stay in place.
+ */
 export function cellRect(
   { row, col }: CellPosition,
   { scrollX, scrollY, zoom, layout }: Viewport,
 ): Rect {
-  const { rows, cols } = layout;
+  const { rows, cols, frozen } = layout;
   return {
-    x: (ROW_HEADER_WIDTH + cols.start(col)) * zoom - scrollX,
-    y: (COLUMN_HEADER_HEIGHT + rows.start(row)) * zoom - scrollY,
+    x:
+      (ROW_HEADER_WIDTH + cols.start(col)) * zoom -
+      (col < frozen.cols ? 0 : scrollX),
+    y:
+      (COLUMN_HEADER_HEIGHT + rows.start(row)) * zoom -
+      (row < frozen.rows ? 0 : scrollY),
     width: cols.size(col) * zoom,
     height: rows.size(row) * zoom,
   };
@@ -188,19 +203,105 @@ export function hitTest(x: number, y: number, viewport: Viewport): Target {
 
 /**
  * The cell at a point as if the headers were not drawn over the cells: over
- * a header, the cell scrolled behind it. A drag past the headers or the
- * edges of the canvas reaches the cells beyond them this way.
+ * a header, the cell scrolled behind it, or the first one when lines are
+ * frozen. A drag past the headers or the edges of the canvas reaches the
+ * cells beyond them this way.
  */
 export function cellAt(x: number, y: number, viewport: Viewport): CellPosition {
   return { row: rowAt(y, viewport), col: colAt(x, viewport) };
 }
 
 function rowAt(y: number, { scrollY, zoom, layout }: Viewport): number {
-  return layout.rows.at((y + scrollY) / zoom - COLUMN_HEADER_HEIGHT);
+  const frozen = layout.frozen.rows > 0 && y < frozenEnd(layout, 'rows', zoom);
+  const scroll = frozen ? 0 : scrollY;
+  return layout.rows.at((y + scroll) / zoom - COLUMN_HEADER_HEIGHT);
 }
 
 function colAt(x: number, { scrollX, zoom, layout }: Viewport): number {
-  return layout.cols.at((x + scrollX) / zoom - ROW_HEADER_WIDTH);
+  const frozen =
+    layout.frozen.cols > 0 && x < frozenEnd(layout, 'columns', zoom);
+  const scroll = frozen ? 0 : scrollX;
+  return layout.cols.at((x + scroll) / zoom - ROW_HEADER_WIDTH);
+}
+
+/**
+ * Where the frozen rows or columns end on the canvas, after the headers;
+ * where the headers end when none are.
+ */
+function frozenEnd(layout: Layout, direction: Direction, zoom: number) {
+  return direction === 'rows'
+    ? (COLUMN_HEADER_HEIGHT + layout.rows.start(layout.frozen.rows)) * zoom
+    : (ROW_HEADER_WIDTH + layout.cols.start(layout.frozen.cols)) * zoom;
+}
+
+/**
+ * A part of the canvas drawn with its own scroll position: with frozen
+ * rows or columns, up to four of them, and only one without. Within its
+ * viewport, nothing is frozen.
+ */
+export interface Pane {
+  readonly viewport: Viewport;
+  /** Where it is on the canvas, the headers left out. */
+  readonly clip: Rect;
+  /** The cells it shows, partial ones included. */
+  readonly range: Range;
+}
+
+/**
+ * The panes of a canvas of this size: the frozen rows and columns, which
+ * do not scroll, the frozen rows, which scroll sideways, the frozen
+ * columns, which scroll up and down, and the rest, in that order.
+ */
+export function panes(
+  viewport: Viewport,
+  width: number,
+  height: number,
+): Pane[] {
+  const { zoom, layout } = viewport;
+  const parts = (
+    direction: Direction,
+    header: number,
+    size: number,
+    scroll: number,
+    frozen: number,
+  ) => {
+    const end = frozenEnd(layout, direction, zoom);
+    const rest = { start: end, size: Math.max(0, size - end), scroll };
+    return frozen > 0
+      ? [{ start: header * zoom, size: end - header * zoom, scroll: 0 }, rest]
+      : [rest];
+  };
+  const unfrozen = { ...viewport, layout: { ...layout, frozen: UNFROZEN } };
+  const result: Pane[] = [];
+  for (const y of parts(
+    'rows',
+    COLUMN_HEADER_HEIGHT,
+    height,
+    viewport.scrollY,
+    layout.frozen.rows,
+  )) {
+    for (const x of parts(
+      'columns',
+      ROW_HEADER_WIDTH,
+      width,
+      viewport.scrollX,
+      layout.frozen.cols,
+    )) {
+      const pane = { ...unfrozen, scrollX: x.scroll, scrollY: y.scroll };
+      const clip = { x: x.start, y: y.start, width: x.size, height: y.size };
+      result.push({
+        viewport: pane,
+        clip,
+        range: {
+          top: rowAt(clip.y, pane),
+          left: colAt(clip.x, pane),
+          bottom: rowAt(clip.y + clip.height - 1, pane),
+          right: colAt(clip.x + clip.width - 1, pane),
+        },
+      });
+    }
+  }
+  return result;
 }
 
 /** How near a header border a point must be to drag it, in CSS pixels. */
@@ -265,17 +366,25 @@ export function scrollToShow(
   width: number,
   height: number,
 ): { scrollX: number; scrollY: number } {
-  const { scrollX, scrollY, zoom } = viewport;
+  const { scrollX, scrollY, zoom, layout } = viewport;
   const rect = cellRect(cell, viewport);
+  // A frozen cell is always shown; the others, past the frozen ones.
   const show = (start: number, size: number, from: number, to: number) => {
     if (start < from) return start - from;
     if (start + size > to) return Math.min(start + size - to, start - from);
     return 0;
   };
   return {
-    scrollX: scrollX + show(rect.x, rect.width, ROW_HEADER_WIDTH * zoom, width),
+    scrollX:
+      cell.col < layout.frozen.cols
+        ? scrollX
+        : scrollX +
+          show(rect.x, rect.width, frozenEnd(layout, 'columns', zoom), width),
     scrollY:
-      scrollY + show(rect.y, rect.height, COLUMN_HEADER_HEIGHT * zoom, height),
+      cell.row < layout.frozen.rows
+        ? scrollY
+        : scrollY +
+          show(rect.y, rect.height, frozenEnd(layout, 'rows', zoom), height),
   };
 }
 
@@ -292,10 +401,9 @@ export function isOnFillHandle(
   range: Range,
   viewport: Viewport,
 ): boolean {
-  const corner = cellRect(
-    { row: range.bottom + 1, col: range.right + 1 },
-    viewport,
-  );
+  // Its own cell's corner, which stays with it when lines are frozen.
+  const cell = cellRect({ row: range.bottom, col: range.right }, viewport);
+  const corner = { x: cell.x + cell.width, y: cell.y + cell.height };
   const reach = FILL_HANDLE / 2 + 2;
   return Math.abs(x - corner.x) <= reach && Math.abs(y - corner.y) <= reach;
 }

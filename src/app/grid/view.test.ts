@@ -1089,4 +1089,30 @@ describe('View', () => {
       expect(workbook.cell(sheet, 4, 4).style).toEqual({});
     });
   });
+
+  it('freezes the rows above and columns left of the active cell, the top row or the first column', () => {
+    const { workbook, view, sheet } = setup();
+    const frozen = () => workbook.layout(sheet).frozen;
+    // At A1 there is nothing above or left to freeze, nor anything to unfreeze.
+    expect(view.canFreeze).toBe(false);
+    expect(view.canUnfreeze).toBe(false);
+    view.type('1');
+    view.select(single({ row: 3, col: 2 }));
+    expect(view.canFreeze).toBe(true);
+    view.freeze('panes');
+    // A waiting entry is committed first.
+    expect(workbook.cell(sheet, 0, 0).display).toBe('1');
+    expect(frozen()).toEqual({ rows: 3, cols: 2 });
+    expect(view.canUnfreeze).toBe(true);
+    view.freeze('topRow');
+    expect(frozen()).toEqual({ rows: 1, cols: 0 });
+    view.freeze('firstColumn');
+    expect(frozen()).toEqual({ rows: 0, cols: 1 });
+    view.unfreeze();
+    expect(frozen()).toBeUndefined();
+    view.undo();
+    expect(frozen()).toEqual({ rows: 0, cols: 1 });
+    // Undo keeps the selection, as the change has no cells.
+    expect(view.state.selection.active).toEqual({ row: 3, col: 2 });
+  });
 });

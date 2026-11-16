@@ -411,6 +411,38 @@ export class View {
       );
   }
 
+  /** Whether there are rows above or columns left of the active cell. */
+  get canFreeze(): boolean {
+    const { active } = this.current.selection;
+    return active.row > 0 || active.col > 0;
+  }
+
+  /** Whether the shown sheet has frozen rows or columns. */
+  get canUnfreeze(): boolean {
+    return this.workbook.layout(this.current.sheet).frozen !== undefined;
+  }
+
+  /**
+   * Freezes the rows above and the columns left of the active cell, the
+   * top row, or the first column, in place of what was frozen, after
+   * committing.
+   */
+  freeze(what: 'panes' | 'topRow' | 'firstColumn'): void {
+    const { active } = this.current.selection;
+    this.setFrozen(
+      what === 'panes'
+        ? { rows: active.row, cols: active.col }
+        : what === 'topRow'
+          ? { rows: 1, cols: 0 }
+          : { rows: 0, cols: 1 },
+    );
+  }
+
+  /** Unfreezes the rows and columns of the shown sheet, after committing. */
+  unfreeze(): void {
+    this.setFrozen({ rows: 0, cols: 0 });
+  }
+
   /** Merges each selected range into one cell, after committing. */
   merge(): void {
     this.mergeCommand('merge');
@@ -779,6 +811,12 @@ export class View {
     return spans.some((span) => index >= span.start && index <= span.end)
       ? spans
       : [{ start: index, end: index }];
+  }
+
+  private setFrozen({ rows, cols }: { rows: number; cols: number }): void {
+    this.commit();
+    const { sheet } = this.current;
+    this.workbook.execute({ type: 'freeze', sheet, rows, cols });
   }
 
   private mergeCommand(type: 'merge' | 'unmerge'): void {

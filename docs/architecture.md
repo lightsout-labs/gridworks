@@ -60,7 +60,7 @@ because a requirement needs it.
 
 | Module | Interface | Hides |
 |---|---|---|
-| `engine/workbook` | `execute(command)`, `undo()`, `redo()` (each giving the cells it changed), `canUndo`, `canRedo`, `cell(sheet, row, col)` (value, formula, display text, the color its format gives it, text to edit, style, note, link), the sheet size, queries (`find`, `aggregate`, `extent`, `circularReference`, sheet and name lists, `layout`: the sizes of rows and columns and those hidden, `merges`: the merged cells), `withMerges(range, merges)` (a range grown over the merged cells it overlaps), `calculations` (a count, to measure recalculation), `subscribe(listener)`, `toSnapshot()`, `fromSnapshot(snapshot, changes, measure)` (`measure` the `TextWidth` that fits rows); for drawing cells, `FONTS`, `FONT_SIZES`, `fontPixels`, `lineHeight`, `wrapText` and the standard sizes | Column-oriented cell storage; the dependency graph and on-demand recalculation; circular-reference detection; rewriting references when cells, rows, columns and sheets move; pasting cells copied or cut, all or only their values, formulas or formats; inverse patches for undo; fitting rows to wrapped text and large fonts; fill series; sort; filters; merges; data validation; conditional format evaluation; named ranges (R1, R5, R6, R8–R10, R14, R15, R17, R19–R27). |
+| `engine/workbook` | `execute(command)`, `undo()`, `redo()` (each giving the cells it changed), `canUndo`, `canRedo`, `cell(sheet, row, col)` (value, formula, display text, the color its format gives it, text to edit, style, note, link), the sheet size, queries (`find`, `aggregate`, `extent`, `circularReference`, sheet and name lists, `layout`: the sizes of rows and columns, those hidden and those frozen, `merges`: the merged cells), `withMerges(range, merges)` (a range grown over the merged cells it overlaps), `calculations` (a count, to measure recalculation), `subscribe(listener)`, `toSnapshot()`, `fromSnapshot(snapshot, changes, measure)` (`measure` the `TextWidth` that fits rows); for drawing cells, `FONTS`, `FONT_SIZES`, `fontPixels`, `lineHeight`, `wrapText` and the standard sizes | Column-oriented cell storage; the dependency graph and on-demand recalculation; circular-reference detection; rewriting references when cells, rows, columns and sheets move; pasting cells copied or cut, all or only their values, formulas or formats; inverse patches for undo; fitting rows to wrapped text and large fonts; fill series; sort; filters; merges; data validation; conditional format evaluation; named ranges (R1, R5, R6, R8–R10, R14, R15, R17, R19–R27). |
 | `engine/formula` | `parse(text)`, `print(ast, { file })` (with the `_xlfn.` prefix of newer functions for a file), `evaluate(ast, context)`, `references(ast)`, `shift(ast, move)` (a sheet renamed, the formula moved by rows and columns, or cells cut and pasted), `calculable(ast)`, `functions` (the names of the library), `tokenize(text)` (the tokens of a formula still being typed, with their places), `argumentHint(name, index)`, `quoteSheetName(name)` | Tokenizer and parser; operators and coercion rules; the error values; the library of at least 150 functions and the names of their arguments (R11–R13, R16). Used by `engine/workbook`, by `engine/io` to check and fill in the formulas of files, and `functions`, `tokenize` and `argumentHint` by the help while typing a formula; the workbook re-exports `quoteSheetName` for the app. |
 | `engine/format` | `formatValue(value, code)`, `formatColor(value, code)`, `validFormat(code)`, `changedFormat(code, value, change)` (one decimal more or fewer, or the thousands separator turned over), `parseInput(text)`, `parseDate(text)`, `editText(value, code)`, `builtinFormat(id)`, `isDateFormat(code)`, `isTextFormat(code)`, `isGroupedFormat(code)`, `dateSerial(year, month, day)`, `dateParts(serial)` | Excel format codes and their sections, colors and literal text; date serial numbers; and recognition of typed numbers, dates, times, percentages and booleans, on top of `numfmt` (R4, R18). |
 | `engine/io` | `readXlsx(bytes, name)` (a snapshot and what was dropped), `writeXlsx(snapshot)`, `readCsv(text)`, `writeCsv(snapshot, sheet)` | Reading the parts of an `.xlsx` file; shared formulas; the mapping from a workbook snapshot to ExcelJS; the list of dropped features reported on import; CSV quoting (R30–R32). |
@@ -161,6 +161,26 @@ Decisions that are cheap to reverse, with their reasons:
   and column headers inserts, deletes, hides and shows the selected
   lines; the ribbon has no row and column commands. `.xlsx` files keep
   sizes and hidden lines from S28 on.
+- **Frozen panes are a count of rows and columns** kept in the sheet's
+  `layout` and its snapshot: `freeze` sets the rows above and columns
+  left of a cell, the top row or the first column, and 0 and 0 unfreeze,
+  recording what was frozen for undo. They are always the first lines of
+  the sheet: unlike Excel, which freezes from the row and column scrolled
+  to the top left, Gridworks freezes from A1, so a sheet scrolled down
+  shows its first rows again when frozen, and freezing at a cell further
+  down or right than the window reaches leaves nothing to scroll in view
+  until it is unfrozen. Inserting or deleting lines
+  keeps the counts. The page still scrolls natively over the whole sheet;
+  the grid places a frozen line without the scroll and the others with
+  it, so the lines just past the frozen ones slide under them, and draws
+  the canvas in up to four panes (`panes`), each clipped and scrolled its
+  own way, with a line where the frozen lines end. A selection, a merged
+  cell or text that runs over the boundary is drawn in each pane it
+  reaches, so ranges need nothing of their own; hit testing and scrolling
+  to show a cell leave frozen lines in place, and the in-cell editor of a
+  frozen cell follows the scroll. The View tab's Freeze panes menu holds
+  the four commands, Freeze panes disabled at A1 and Unfreeze panes when
+  nothing is frozen.
 - **Rows fit their text.** The workbook keeps, beside the sizes set on
   rows, the `fitted` height of each row whose wrapped text or font larger
   than the default needs more than the standard 24 pixels, and a size set
