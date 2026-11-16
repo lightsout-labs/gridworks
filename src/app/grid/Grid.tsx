@@ -15,6 +15,7 @@ import {
   fontPixels,
   lineHeight,
   type Border,
+  type DataBar,
   type Direction,
   type Range,
   type Style,
@@ -24,6 +25,7 @@ import {
   SHEET_ROWS,
 } from '../../engine/workbook';
 import {
+  barRect,
   borderAt,
   cellAt,
   cellRect,
@@ -40,6 +42,7 @@ import {
   sheetSize,
   visibleRange,
   type CellPosition,
+  type Rect,
   type Target,
   type Viewport,
 } from './geometry';
@@ -816,12 +819,16 @@ function draw(
           merge.right >= range.left,
       );
 
-    // The texts of each row, and the styles of the cells read for them.
+    // The texts of each row, and the styles and data bars of the cells
+    // read for them.
     const rows: { row: number; texts: RowText[] }[] = [];
+    const bars = new Map<string, DataBar>();
     for (let row = range.top; row <= range.bottom; row++) {
       const texts = rowTexts(
         (col) => {
-          const cell = shownCell(workbook.cell(sheet, row, col));
+          const read = workbook.cell(sheet, row, col);
+          if (read.bar) bars.set(`${row},${col}`, read.bar);
+          const cell = shownCell(read);
           looks.set(`${row},${col}`, cell.style);
           return cell;
         },
@@ -839,14 +846,24 @@ function draw(
     context.rect(clip.x, clip.y, clip.width, clip.height);
     context.clip();
 
+    // A cell's fill, and its data bar: none for a merged cell, as bars
+    // are kept only for the cells of `rowTexts`, which skips merges.
+    const drawFill = (row: number, col: number, box: Rect) => {
+      context.fillStyle = fillOf(row, col);
+      context.fillRect(box.x, box.y, box.width, box.height);
+      const bar = bars.get(`${row},${col}`);
+      const at = bar && barRect(box, bar.length, zoom);
+      if (!at) return;
+      context.fillStyle = bar!.color;
+      context.fillRect(at.x, at.y, at.width, at.height);
+    };
     for (let row = range.top; row <= range.bottom; row++) {
       for (let col = range.left; col <= range.right; col++) {
         if (mergeAt(merges, { row, col })) continue;
-        const fill = fillOf(row, col);
-        if (fill === background) continue;
-        const box = rect({ row, col });
-        context.fillStyle = fill;
-        context.fillRect(box.x, box.y, box.width, box.height);
+        if (fillOf(row, col) === background && !bars.has(`${row},${col}`)) {
+          continue;
+        }
+        drawFill(row, col, rect({ row, col }));
       }
     }
 
@@ -858,10 +875,15 @@ function draw(
     const shadesActive =
       selected && (ranges.length > 1 || !sameRange(ranges[0]!, activeArea));
     if (shadesActive) {
-      // The active cell is not shaded, as in Excel.
+      // The active cell is not shaded, as in Excel. A merged one shows no
+      // bar, wherever it is.
       const box = rangeRect(activeArea);
-      context.fillStyle = fillOf(active.row, active.col);
-      context.fillRect(box.x, box.y, box.width, box.height);
+      if (sameRange(activeArea, cellRange(active))) {
+        drawFill(active.row, active.col, box);
+      } else {
+        context.fillStyle = fillOf(active.row, active.col);
+        context.fillRect(box.x, box.y, box.width, box.height);
+      }
     }
 
     context.strokeStyle = color('--border');

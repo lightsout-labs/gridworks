@@ -891,7 +891,7 @@ Notes:
 
 ## S21: Conditional formatting: color scales and data bars
 
-Status: Todo
+Status: Done
 
 Acceptance criteria:
 - The user can apply a two-color or three-color scale to a range, and each
@@ -904,6 +904,20 @@ Acceptance criteria:
 - Its controls are in the ribbon or a context menu, are translated in both
   languages, look right in both themes, and have hover, focus and disabled
   states and tooltips. (R37, R41, R42, R43, R44)
+
+Notes:
+- Scales and bars are conditions of `Rule` with an empty `format`:
+  `{ type: 'scale', colors }` (two or three, lowest first, the middle at
+  the median) and `{ type: 'bar', color }`. `Cell.conditional.fill` holds a
+  scale's color; `Cell.bar` is `{ color, length }`, the length a share of
+  the way from min(0, lowest) to max(0, highest). S28 (XLSX) writes them as
+  `colorScale` (min, percentile 50, max) and `dataBar` (automatic bounds).
+- Only Excel's automatic bounds are built; no number, percent or formula
+  bounds, no bar gradient, border or negative axis. Merged cells show no
+  bar. The grid places a bar with `barRect` (`app/grid/geometry.ts`).
+- The app's dialog kinds `scale2` and `scale3` both map to `scale`.
+- e2e: one full run failed once in Firefox on `storage.spec.ts` (reopening
+  the browser), unrelated to this slice; the next two runs passed.
 
 ## S22: Sorting
 

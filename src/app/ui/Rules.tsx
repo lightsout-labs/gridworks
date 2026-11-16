@@ -30,9 +30,13 @@ import styles from './Shell.module.css';
 
 const ICON_SIZE = 16;
 
-type RuleType = Condition['type'];
+/** The kinds of rule: those of conditions, with scales of two and three colors. */
+type RuleType = Exclude<Condition['type'], 'scale'> | 'scale2' | 'scale3';
 
-/** The kinds of rule, in the order of Excel's Highlight Cells and Top/Bottom menus. */
+/**
+ * The kinds of rule, in the order of Excel's Highlight Cells, Top/Bottom,
+ * Data Bars and Color Scales menus.
+ */
 const TYPES: readonly RuleType[] = [
   'greater',
   'less',
@@ -42,7 +46,37 @@ const TYPES: readonly RuleType[] = [
   'duplicate',
   'top',
   'bottom',
+  'bar',
+  'scale2',
+  'scale3',
 ];
+
+/** The kind of rule a condition is. */
+function typeOf(condition: Condition): RuleType {
+  if (condition.type !== 'scale') return condition.type;
+  return condition.colors.length === 3 ? 'scale3' : 'scale2';
+}
+
+/** Excel's colors of scales, lowest first, and of data bars. */
+const SALMON = '#f8696b';
+const LIGHT_YELLOW = '#ffeb84';
+const MEDIUM_GREEN = '#63be7b';
+const STEEL_BLUE = '#638ec6';
+const SCALE_COLORS: readonly [string, Key][] = [
+  [SALMON, 'color.salmon'],
+  [LIGHT_YELLOW, 'color.lightYellow'],
+  [MEDIUM_GREEN, 'color.mediumGreen'],
+  ...PALETTE,
+];
+const BAR_COLORS: readonly [string, Key][] = [
+  [STEEL_BLUE, 'color.steelBlue'],
+  ...PALETTE,
+];
+/** The places of the colors of a scale of two or three, by their number. */
+const SCALE_STOPS: Readonly<Record<number, readonly Key[]>> = {
+  2: ['rule.lowest', 'rule.highest'],
+  3: ['rule.lowest', 'rule.median', 'rule.highest'],
+};
 
 /** Excel's default format: light red fill with dark red text. */
 const DEEP_RED = '#9c0006';
@@ -173,8 +207,22 @@ function newRule(type: RuleType, ranges: readonly Range[]): Rule {
         ? { type, count: 10 }
         : type === 'between'
           ? { type, value: '', other: '' }
-          : { type, value: '' };
-  return { ranges, condition, format: DEFAULT_FORMAT };
+          : type === 'bar'
+            ? { type, color: STEEL_BLUE }
+            : type === 'scale2'
+              ? { type: 'scale', colors: [SALMON, MEDIUM_GREEN] }
+              : type === 'scale3'
+                ? {
+                    type: 'scale',
+                    colors: [SALMON, LIGHT_YELLOW, MEDIUM_GREEN],
+                  }
+                : { type, value: '' };
+  return { ranges, condition, format: drawsItself(type) ? {} : DEFAULT_FORMAT };
+}
+
+/** Whether a kind of rule draws by its condition, not by a format. */
+function drawsItself(type: RuleType): boolean {
+  return type === 'bar' || type === 'scale2' || type === 'scale3';
 }
 
 /**
@@ -241,7 +289,12 @@ function ManageRules({ workbook, view }: { workbook: Workbook; view: View }) {
             <ul className={styles.ruleList}>
               {rules.map((rule, index) => (
                 <li key={index} className={styles.ruleRow}>
-                  <Sample format={rule.format} />
+                  {rule.condition.type === 'scale' ||
+                  rule.condition.type === 'bar' ? (
+                    <Preview condition={rule.condition} />
+                  ) : (
+                    <Sample format={rule.format} />
+                  )}
                   <span className={styles.ruleText}>
                     <span>{conditionText(rule.condition, t)}</span>
                     <span className={styles.ruleRanges}>
@@ -307,9 +360,24 @@ function ManageRules({ workbook, view }: { workbook: Workbook; view: View }) {
 
 /** A rule's condition in words, as the list of rules shows it. */
 function conditionText(condition: Condition, t: (key: Key) => string): string {
-  const text = t(`rules.text.${condition.type}`);
+  const text = t(`rules.text.${typeOf(condition)}`);
   return text.replace(/\{(\w+)\}/g, (_, name: string) =>
     String((condition as Record<string, unknown>)[name]),
+  );
+}
+
+/** The colors of a scale from lowest to highest, or a data bar. */
+function Preview({
+  condition,
+}: {
+  condition: Extract<Condition, { type: 'scale' | 'bar' }>;
+}) {
+  const background =
+    condition.type === 'scale'
+      ? `linear-gradient(to right, ${condition.colors.join(', ')})`
+      : `linear-gradient(to right, ${condition.color} 60%, transparent 60%)`;
+  return (
+    <span className={styles.ruleSample} aria-hidden style={{ background }} />
   );
 }
 
@@ -386,31 +454,53 @@ function RuleForm({
   const t = useTranslation();
   const id = useId();
   const start = initial.condition;
-  const [type, setType] = useState<RuleType>(start.type);
+  const [type, setType] = useState<RuleType>(typeOf(start));
   const [value, setValue] = useState('value' in start ? start.value : '');
   const [other, setOther] = useState('other' in start ? start.other : '');
   const [count, setCount] = useState(
     'count' in start ? String(start.count) : '10',
   );
   const [applies, setApplies] = useState(rangesText(initial.ranges));
-  const [format, setFormat] = useState<RuleFormat>(initial.format);
+  // A scale or bar turned into another kind starts from Excel's format.
+  const [format, setFormat] = useState<RuleFormat>(
+    drawsItself(typeOf(start)) ? DEFAULT_FORMAT : initial.format,
+  );
+  // The colors of each kind of scale and bar, kept while the kind changes.
+  const [scales, setScales] = useState<Record<number, readonly string[]>>(
+    () => {
+      const colors = (kind: RuleType) =>
+        (newRule(kind, []).condition as { colors: readonly string[] }).colors;
+      const result = { 2: colors('scale2'), 3: colors('scale3') };
+      return start.type === 'scale'
+        ? { ...result, [start.colors.length]: start.colors }
+        : result;
+    },
+  );
+  const [barColor, setBarColor] = useState(
+    start.type === 'bar' ? start.color : STEEL_BLUE,
+  );
+  const stops = type === 'scale2' ? 2 : type === 'scale3' ? 3 : 0;
 
   const ranges = parseRanges(applies);
   const number = Number(count);
   const condition: Condition | null =
-    type === 'duplicate'
-      ? { type }
-      : type === 'top' || type === 'bottom'
-        ? Number.isInteger(number) && number >= 1
-          ? { type, count: number }
-          : null
-        : value === ''
-          ? null
-          : type === 'between'
-            ? other === ''
+    type === 'scale2' || type === 'scale3'
+      ? { type: 'scale', colors: scales[stops]! }
+      : type === 'bar'
+        ? { type, color: barColor }
+        : type === 'duplicate'
+          ? { type }
+          : type === 'top' || type === 'bottom'
+            ? Number.isInteger(number) && number >= 1
+              ? { type, count: number }
+              : null
+            : value === ''
               ? null
-              : { type, value, other }
-            : { type, value };
+              : type === 'between'
+                ? other === ''
+                  ? null
+                  : { type, value, other }
+                : { type, value };
   const change = (property: keyof RuleFormat, setting: string | true | null) =>
     setFormat((old) => {
       const next: Record<string, unknown> = { ...old };
@@ -446,7 +536,7 @@ function RuleForm({
       onSubmit={(event) => {
         event.preventDefault();
         if (!condition || !ranges) return;
-        onSave({ ranges, condition, format });
+        onSave({ ranges, condition, format: drawsItself(type) ? {} : format });
       }}
     >
       <label className={styles.field} htmlFor={`${id}-type`}>
@@ -466,7 +556,8 @@ function RuleForm({
       </select>
       {type === 'top' || type === 'bottom'
         ? field('count', t('rule.count'), count, setCount)
-        : type !== 'duplicate' && (
+        : type !== 'duplicate' &&
+          !drawsItself(type) && (
             <>
               {field('value', t('rule.value'), value, setValue)}
               {type === 'between' &&
@@ -479,6 +570,59 @@ function RuleForm({
           {t('rule.appliesTo.invalid')}
         </p>
       )}
+      {stops > 0 &&
+        SCALE_STOPS[stops]!.map((label, at) => (
+          <Swatches
+            key={label}
+            label={t(label)}
+            colors={SCALE_COLORS}
+            chosen={scales[stops]![at]}
+            onChoose={(color) =>
+              setScales((old) => ({
+                ...old,
+                [stops]: old[stops]!.map((each, index) =>
+                  index === at ? color! : each,
+                ),
+              }))
+            }
+          />
+        ))}
+      {type === 'bar' && (
+        <Swatches
+          label={t('rule.barColor')}
+          colors={BAR_COLORS}
+          chosen={barColor}
+          onChoose={(color) => setBarColor(color!)}
+        />
+      )}
+      {!drawsItself(type) && <FormatFields format={format} change={change} />}
+      <div className={styles.dialogButtons}>
+        <button type="button" className={styles.button} onClick={onCancel}>
+          {t('cancel')}
+        </button>
+        <button
+          type="submit"
+          className={`${styles.button} ${styles.primary}`}
+          disabled={!condition || !ranges}
+        >
+          {t('ok')}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** The font styles and colors of a rule's format. */
+function FormatFields({
+  format,
+  change,
+}: {
+  format: RuleFormat;
+  change: (property: keyof RuleFormat, setting: string | true | null) => void;
+}) {
+  const t = useTranslation();
+  return (
+    <>
       <span className={styles.field}>{t('rule.format')}</span>
       <div className={styles.ruleFormat}>
         {FONT_STYLES.map(([property, label, icon]) => (
@@ -507,23 +651,11 @@ function RuleForm({
         chosen={format.fill}
         onChoose={(color) => change('fill', color)}
       />
-      <div className={styles.dialogButtons}>
-        <button type="button" className={styles.button} onClick={onCancel}>
-          {t('cancel')}
-        </button>
-        <button
-          type="submit"
-          className={`${styles.button} ${styles.primary}`}
-          disabled={!condition || !ranges}
-        >
-          {t('ok')}
-        </button>
-      </div>
-    </form>
+    </>
   );
 }
 
-/** A row of colors to choose one from, or none. */
+/** A row of colors to choose one from, or none when `none` names it. */
 function Swatches({
   label,
   none,
@@ -532,7 +664,7 @@ function Swatches({
   onChoose,
 }: {
   label: string;
-  none: string;
+  none?: string;
   colors: readonly [string, Key][];
   chosen: string | undefined;
   onChoose: (color: string | null) => void;
@@ -541,17 +673,19 @@ function Swatches({
   return (
     <div className={styles.ruleColors} role="group" aria-label={label}>
       <span className={styles.ruleColorLabel}>{label}</span>
-      <Tooltip text={none}>
-        <button
-          type="button"
-          className={styles.button}
-          aria-label={`${label}: ${none}`}
-          aria-pressed={chosen === undefined}
-          onClick={() => onChoose(null)}
-        >
-          {none}
-        </button>
-      </Tooltip>
+      {none !== undefined && (
+        <Tooltip text={none}>
+          <button
+            type="button"
+            className={styles.button}
+            aria-label={`${label}: ${none}`}
+            aria-pressed={chosen === undefined}
+            onClick={() => onChoose(null)}
+          >
+            {none}
+          </button>
+        </Tooltip>
+      )}
       {colors.map(([color, name]) => (
         <Tooltip key={color} text={t(name)}>
           <button

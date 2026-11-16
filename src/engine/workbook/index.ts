@@ -29,7 +29,7 @@ import {
   type Sheet,
   type SheetLayout,
 } from './calc';
-import { Rules, type Rule, type RuleFormat } from './rules';
+import { Rules, type DataBar, type Rule, type RuleFormat } from './rules';
 import { series } from './series';
 import {
   cellHeight,
@@ -47,7 +47,7 @@ import {
 
 export type { Value } from '../value';
 export type { Frozen, Lines, SheetLayout } from './calc';
-export type { Condition, Rule, RuleFormat } from './rules';
+export type { Condition, DataBar, Rule, RuleFormat } from './rules';
 export {
   BORDER_LINES,
   DEFAULT_FONT_SIZE,
@@ -383,6 +383,8 @@ export interface Cell {
    * over the format's color; absent when none applies (R20).
    */
   readonly conditional?: RuleFormat;
+  /** The data bar that a conditional format draws in it, if any (R20). */
+  readonly bar?: DataBar;
 }
 
 export interface SheetInfo {
@@ -689,7 +691,7 @@ export class Workbook {
       style,
       display: formatValue(value, code),
       ...(color !== undefined && { color }),
-      ...(conditional !== undefined && { conditional }),
+      ...conditional,
       // Only the formula bar and the editor need it, not every drawn cell.
       get input() {
         return formula ?? editText(value, code);

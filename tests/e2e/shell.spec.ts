@@ -366,7 +366,7 @@ test.describe('the controls', () => {
         [
           'button',
           'Conditional formatting',
-          'Format cells by their values, such as those over a value or repeated',
+          'Format cells by their values: highlight some, or shade them with color scales and data bars',
         ],
         ...statusBar,
       ],

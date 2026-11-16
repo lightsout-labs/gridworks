@@ -27,6 +27,21 @@ export interface Rect {
   readonly height: number;
 }
 
+/** The space between a data bar and the lines of its cell, at 100%. */
+const BAR_INSET = 2;
+
+/**
+ * Where a data bar is drawn in a cell's box: inside its lines, as long as
+ * its share of the width; `null` when it has no room, as in a hidden row.
+ */
+export function barRect(box: Rect, length: number, zoom: number): Rect | null {
+  const inset = BAR_INSET * zoom;
+  const width = (box.width - 2 * inset) * length;
+  const height = box.height - 2 * inset;
+  if (width <= 0 || height <= 0) return null;
+  return { x: box.x + inset, y: box.y + inset, width, height };
+}
+
 /**
  * The sizes of the rows or the columns of a sheet at 100%, a hidden one
  * of size 0. Finding a line's place or the line at a place takes a time
