@@ -223,6 +223,8 @@ function changedSection(
  */
 export function editText(value: Value, code: string = GENERAL): string {
   if (typeof value !== 'number') return formatValue(value);
+  // The common case, which find meets in every cell it searches.
+  if (code === GENERAL) return plain(value);
   if (isPercentFormat(code)) return `${plain(value * 100)}%`;
   if (isDateFormat(code)) {
     const { type } = getFormatDateInfo(code);
@@ -236,6 +238,8 @@ export function editText(value: Value, code: string = GENERAL): string {
 
 /** A number with the 15 significant digits that Excel keeps. */
 function plain(value: number): string {
+  // Whole numbers below 10^15 have no more digits than that.
+  if (Number.isInteger(value) && Math.abs(value) < 1e15) return String(value);
   return String(Number(value.toPrecision(15)));
 }
 

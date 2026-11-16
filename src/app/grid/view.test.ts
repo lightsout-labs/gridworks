@@ -26,6 +26,7 @@ describe('View', () => {
       filled: null,
       resizing: null,
       painter: null,
+      reveal: null,
     });
   });
 
@@ -1378,5 +1379,73 @@ describe('View', () => {
       expect(workbook.filter(sheet)?.columns).toEqual([]);
       expect(view.canClearFilter).toBe(false);
     });
+  });
+});
+
+describe('find and replace', () => {
+  function finding() {
+    const { workbook, view, sheet } = setup();
+    workbook.execute({ type: 'addSheet', index: 1 });
+    const other = workbook.sheets[1]!.id;
+    const set = (id: string, row: number, col: number, input: string) =>
+      workbook.execute({ type: 'setCell', sheet: id, row, col, input });
+    set(sheet, 0, 1, 'apple');
+    set(sheet, 2, 0, 'Apple pie');
+    set(other, 1, 1, 'apple');
+    return { workbook, view, sheet, other };
+  }
+
+  it('goes to the next match after the active cell, and round again', () => {
+    const { view, sheet } = finding();
+    view.select(single({ row: 1, col: 0 }));
+    expect(view.findNext({ text: 'apple' })).toEqual({ index: 2, count: 2 });
+    expect(view.state).toMatchObject({
+      sheet,
+      selection: single({ row: 2, col: 0 }),
+      reveal: { row: 2, col: 0 },
+    });
+    expect(view.findNext({ text: 'apple' })).toEqual({ index: 1, count: 2 });
+    expect(view.state.selection).toEqual(single({ row: 0, col: 1 }));
+  });
+
+  it('goes on to the next sheet when it searches the workbook', () => {
+    const { view, other } = finding();
+    view.select(single({ row: 2, col: 0 }));
+    const search = { text: 'apple', workbook: true };
+    expect(view.findNext(search)).toEqual({ index: 3, count: 3 });
+    expect(view.state).toMatchObject({
+      sheet: other,
+      selection: single({ row: 1, col: 1 }),
+    });
+    expect(view.findNext(search)).toEqual({ index: 1, count: 3 });
+  });
+
+  it('finds nothing and stays where it is', () => {
+    const { view } = finding();
+    expect(view.findNext({ text: 'pear' })).toBeNull();
+    expect(view.state.selection).toEqual(single({ row: 0, col: 0 }));
+    expect(view.state.reveal).toBeNull();
+  });
+
+  it('replaces the active cell when it matches, then goes to the next', () => {
+    const { workbook, view, sheet } = finding();
+    const search = { text: 'apple', entireCell: true };
+    expect(view.replace(search, 'pear')).toEqual({ index: 1, count: 1 });
+    expect(workbook.cell(sheet, 0, 1).display).toBe('apple');
+    expect(view.replace(search, 'pear')).toBeNull();
+    expect(workbook.cell(sheet, 0, 1).display).toBe('pear');
+    view.undo();
+    expect(workbook.cell(sheet, 0, 1).display).toBe('apple');
+  });
+
+  it('replaces every match, in the formulas, and counts them', () => {
+    const { workbook, view, sheet, other } = finding();
+    workbook.execute({ type: 'setCell', sheet, row: 3, col: 0, input: '=B1' });
+    const search = { text: 'APPLE', workbook: true, lookIn: 'values' as const };
+    expect(view.replaceAll(search, 'pear')).toBe(3);
+    expect(workbook.cell(sheet, 2, 0).display).toBe('pear pie');
+    expect(workbook.cell(other, 1, 1).display).toBe('pear');
+    expect(workbook.cell(sheet, 3, 0).formula).toBe('=B1');
+    expect(view.replaceAll(search, 'pear')).toBe(0);
   });
 });

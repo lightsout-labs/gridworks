@@ -369,9 +369,19 @@ test.describe('the controls', () => {
           'Conditional formatting',
           'Format cells by their values: highlight some, or shade them with color scales and data bars',
         ],
+        [
+          'button',
+          'Find',
+          /^Find text in the sheet or the workbook \((Ctrl\+|⌘)F\)$/,
+        ],
+        [
+          'button',
+          'Replace',
+          /^Replace text in the sheet or the workbook \((Ctrl\+|⌃)H\)$/,
+        ],
         ...statusBar,
       ],
-      33,
+      35,
     );
     await page.getByRole('tab', { name: 'View' }).click();
     await clickCell(page, 5, 5); // Away from the tab and its tooltip.

@@ -6,7 +6,15 @@ import type { KeyPress } from '../grid/navigation';
  * clipboard.
  */
 export type Shortcut =
-  'undo' | 'redo' | 'fillDown' | 'fillRight' | 'bold' | 'italic' | 'underline';
+  | 'undo'
+  | 'redo'
+  | 'fillDown'
+  | 'fillRight'
+  | 'bold'
+  | 'italic'
+  | 'underline'
+  | 'find'
+  | 'replace';
 
 /**
  * The shortcut a key runs, as in Excel, with Cmd in place of Ctrl on a
@@ -14,6 +22,11 @@ export type Shortcut =
  */
 export function shortcut(press: KeyPress, mac: boolean): Shortcut | null {
   const { key, shift, ctrl, meta, alt } = press;
+  // macOS hides the browser on Cmd+H, so Replace is Ctrl+H there, as in
+  // Excel for Mac.
+  if (mac && ctrl && !meta && !shift && !alt && key.toLowerCase() === 'h') {
+    return 'replace';
+  }
   const command = mac ? meta && !ctrl : ctrl && !meta;
   if (!command || shift || alt) return null;
   switch (key.toLowerCase()) {
@@ -31,6 +44,10 @@ export function shortcut(press: KeyPress, mac: boolean): Shortcut | null {
       return 'italic';
     case 'u':
       return 'underline';
+    case 'f':
+      return 'find';
+    case 'h':
+      return 'replace';
     default:
       return null;
   }

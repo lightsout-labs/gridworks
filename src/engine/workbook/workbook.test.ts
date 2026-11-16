@@ -8,6 +8,7 @@ import {
   type ColumnFilter,
   type Command,
   type Rule,
+  type Search,
   type StyleChange,
 } from './index';
 
@@ -2773,5 +2774,153 @@ describe('filter', () => {
   it('refuses a column outside the range', () => {
     const { filter } = filtering();
     expect(() => filter([{ col: 4, type: 'values', values: [] }])).toThrow();
+  });
+});
+
+describe('find and replace', () => {
+  function searching() {
+    const { workbook, sheet, set, show } = setup();
+    workbook.execute({ type: 'addSheet', index: 1 });
+    const other = workbook.sheets[1]!.id;
+    set(0, 0, 'Apple pie');
+    set(0, 2, 'apple');
+    set(1, 0, '0.5');
+    workbook.execute({
+      type: 'setStyle',
+      sheet,
+      ranges: [{ top: 1, left: 0, bottom: 1, right: 0 }],
+      style: { numberFormat: '0%' },
+    });
+    set(1, 1, '=A1&"!"');
+    workbook.execute({
+      type: 'setCell',
+      sheet: other,
+      row: 3,
+      col: 0,
+      input: 'APPLE',
+    });
+    const places = (search: Omit<Search, 'sheets'>, sheets = [sheet]) =>
+      workbook
+        .find({ ...search, sheets })
+        .map(
+          ({ sheet: id, row, col }) =>
+            `${id === sheet ? '' : 'other!'}${cellName(row, col)}`,
+        );
+    return { workbook, sheet, other, set, show, places };
+  }
+
+  it('finds the cells whose text contains the search, row by row, in any case', () => {
+    const { places } = searching();
+    expect(places({ text: 'APPLE', lookIn: 'values' })).toEqual([
+      'A1',
+      'C1',
+      'B2',
+    ]);
+  });
+
+  it('matches case and the entire cell', () => {
+    const { places } = searching();
+    expect(places({ text: 'apple', matchCase: true })).toEqual(['C1']);
+    expect(places({ text: 'apple', entireCell: true })).toEqual(['C1']);
+    expect(
+      places({ text: 'Apple', matchCase: true, lookIn: 'values' }),
+    ).toEqual(['A1', 'B2']);
+  });
+
+  it('looks in the shown values or in the formulas', () => {
+    const { places } = searching();
+    expect(places({ text: '50%', lookIn: 'values' })).toEqual(['A2']);
+    expect(places({ text: '50%' })).toEqual(['A2']);
+    expect(places({ text: '!', lookIn: 'values' })).toEqual(['B2']);
+    expect(places({ text: 'A1&' })).toEqual(['B2']);
+    expect(places({ text: 'A1&', lookIn: 'values' })).toEqual([]);
+  });
+
+  it('searches the sheets given, in their order', () => {
+    const { places, sheet, other } = searching();
+    expect(places({ text: 'apple', entireCell: true }, [sheet, other])).toEqual(
+      ['C1', 'other!A4'],
+    );
+    expect(places({ text: '' })).toEqual([]);
+  });
+
+  it('replaces every match in the text of each cell, as typed', () => {
+    const { workbook, sheet, other, show } = searching();
+    workbook.execute({
+      type: 'replace',
+      search: { text: 'apple', sheets: [sheet, other] },
+      replacement: 'Pear',
+    });
+    expect([show(0, 0), show(0, 2), show(1, 1)]).toEqual([
+      'Pear pie',
+      'Pear',
+      'Pear pie!',
+    ]);
+    expect(workbook.cell(sheet, 1, 1).formula).toBe('=A1&"!"');
+    expect(workbook.cell(other, 3, 0).display).toBe('Pear');
+  });
+
+  it('replaces in formulas, and types the new text again', () => {
+    const { workbook, sheet, set, show } = searching();
+    set(4, 0, '1');
+    set(4, 1, '=A5*2');
+    workbook.execute({
+      type: 'replace',
+      search: { text: 'A5', sheets: [sheet], matchCase: true },
+      replacement: 'A2',
+    });
+    expect(workbook.cell(sheet, 4, 1).formula).toBe('=A2*2');
+    expect(show(4, 1)).toBe('1');
+    workbook.execute({
+      type: 'replace',
+      search: { text: '1', sheets: [sheet], entireCell: true },
+      replacement: '1,000',
+    });
+    expect(workbook.cell(sheet, 4, 0).value).toBe(1000);
+    expect(show(4, 0)).toBe('1,000');
+  });
+
+  it('replaces only the one cell asked for', () => {
+    const { workbook, sheet, show } = searching();
+    workbook.execute({
+      type: 'replace',
+      search: {
+        text: 'apple',
+        sheets: [sheet],
+        only: { sheet, row: 0, col: 2 },
+      },
+      replacement: 'plum',
+    });
+    expect([show(0, 0), show(0, 2)]).toEqual(['Apple pie', 'plum']);
+    expect(() =>
+      workbook.execute({
+        type: 'replace',
+        search: {
+          text: 'apple',
+          sheets: [sheet],
+          only: { sheet, row: 5, col: 5 },
+        },
+        replacement: 'plum',
+      }),
+    ).toThrow();
+  });
+
+  it('undoes and redoes a replace in one step, and records what it did', () => {
+    const { workbook, sheet, other, show } = searching();
+    const commands: Command[] = [];
+    workbook.subscribe((command) => commands.push(command));
+    workbook.execute({
+      type: 'replace',
+      search: { text: 'apple', sheets: [sheet, other] },
+      replacement: '1/2',
+    });
+    expect(commands[0]?.type).toBe('group');
+    expect(workbook.cell(other, 3, 0).value).toEqual(expect.any(Number));
+    workbook.undo();
+    expect([show(0, 0), show(0, 2)]).toEqual(['Apple pie', 'apple']);
+    expect(workbook.cell(other, 3, 0).display).toBe('APPLE');
+    workbook.redo();
+    expect(show(0, 0)).toBe('1/2 pie');
+    expect(workbook.cell(other, 3, 0).value).toEqual(expect.any(Number));
   });
 });

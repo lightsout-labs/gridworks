@@ -9,6 +9,7 @@ import {
   type BorderSides,
   type ColumnFilter,
   type Range,
+  type Search,
   type SortKey,
   type Span,
   type StyleChange,
@@ -105,6 +106,22 @@ export interface ViewState {
    * selected, or `null` when it is put away.
    */
   readonly painter: { readonly sheet: string; readonly range: Range } | null;
+  /**
+   * The cell that find went to last, which the grid scrolls into view, or
+   * `null`; a new object each time.
+   */
+  readonly reveal: CellPosition | null;
+}
+
+/** What find looks for, on the shown sheet or in the whole workbook. */
+export interface Finding extends Omit<Search, 'sheets' | 'only'> {
+  readonly workbook?: boolean;
+}
+
+/** Which of the matches find went to, from 1, and how many there are. */
+export interface Found {
+  readonly index: number;
+  readonly count: number;
 }
 
 /** A row or column dragged by its border to a size, in CSS pixels at 100%. */
@@ -170,6 +187,7 @@ export class View {
       filled: null,
       resizing: null,
       painter: null,
+      reveal: null,
     };
   }
 
@@ -935,6 +953,76 @@ export class View {
       }
     }
     this.setLines(direction, spans);
+  }
+
+  /**
+   * Goes to the first match after the active cell, row by row and then
+   * sheet by sheet, or back to the first; `null` when there is none (R25).
+   */
+  findNext(finding: Finding): Found | null {
+    this.commit();
+    const found = this.workbook.find(this.search(finding));
+    if (found.length === 0) return null;
+    const order = this.workbook.sheets.map((sheet) => sheet.id);
+    const { sheet, selection } = this.current;
+    const from = [
+      order.indexOf(sheet),
+      selection.active.row,
+      selection.active.col,
+    ];
+    const after = found.findIndex((place) => {
+      const at = [order.indexOf(place.sheet), place.row, place.col];
+      const index = at.findIndex((value, part) => value !== from[part]);
+      return index >= 0 && at[index]! > from[index]!;
+    });
+    const index = Math.max(after, 0);
+    const { row, col } = found[index]!;
+    this.change({
+      sheet: found[index]!.sheet,
+      selection: overMerges(
+        single({ row, col }),
+        this.workbook.merges(found[index]!.sheet),
+      ),
+      endMode: false,
+      reveal: { row, col },
+    });
+    return { index: index + 1, count: found.length };
+  }
+
+  /**
+   * Replaces the search in the active cell when it holds it, looking in
+   * formulas, and goes to the next match.
+   */
+  replace(finding: Finding, replacement: string): Found | null {
+    this.commit();
+    const inFormulas = { ...finding, lookIn: 'formulas' } as const;
+    const { sheet, selection } = this.current;
+    const search = {
+      ...this.search(inFormulas),
+      only: { sheet, ...selection.active },
+    };
+    if (this.workbook.find(search).length > 0) {
+      this.workbook.execute({ type: 'replace', search, replacement });
+    }
+    return this.findNext(inFormulas);
+  }
+
+  /** Replaces every match, looking in formulas, and gives how many cells. */
+  replaceAll(finding: Finding, replacement: string): number {
+    this.commit();
+    const search = this.search({ ...finding, lookIn: 'formulas' });
+    const count = this.workbook.find(search).length;
+    if (count > 0)
+      this.workbook.execute({ type: 'replace', search, replacement });
+    return count;
+  }
+
+  /** The search of a finding, over the sheets it covers in tab order. */
+  private search({ workbook, ...search }: Finding): Search {
+    const sheets = workbook
+      ? this.workbook.sheets.map((sheet) => sheet.id)
+      : [this.current.sheet];
+    return { ...search, sheets };
   }
 
   /**
