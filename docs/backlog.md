@@ -949,7 +949,7 @@ Notes:
 
 ## S23: Filtering
 
-Status: Todo
+Status: Done
 
 Acceptance criteria:
 - The user can turn on a filter for a range, which puts a dropdown button in
@@ -967,6 +967,19 @@ Acceptance criteria:
 - Its controls are in the ribbon or a context menu, are translated in both
   languages, look right in both themes, and have hover, focus and disabled
   states and tooltips. (R37, R41, R42, R43, R44)
+
+Notes:
+- A sheet's filter is `workbook.filter(sheet)` (`range`, whose first row is
+  the header, and `columns` of `ColumnFilter`); the `filter` command hides
+  rows by setting `layout.rows.hidden`, so S28 (`.xlsx` read and write) can
+  map it to an `autoFilter` and the hidden rows it already writes, and S32
+  (printing) skips filtered rows like any hidden row.
+- Sorting under a filter keeps the rows it hides in place. The dropdown has
+  no sort items, and only one condition per column (no and/or).
+- The dropdown panel is a Radix dialog without an overlay: installing
+  `@radix-ui/react-popover` was refused in this session.
+- Keyboard navigation (`navigate`) now skips hidden rows and columns, which
+  closes the S15 note.
 
 ## S24: Find and replace
 

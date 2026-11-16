@@ -38,6 +38,7 @@ import {
 } from './Format';
 import type { Language } from './i18n';
 import { RuleControls } from './Rules';
+import { FilterControls } from './Filter';
 import { SortControls } from './Sort';
 import styles from './Shell.module.css';
 import type { Theme } from './theme';
@@ -168,6 +169,9 @@ export function Ribbon({
       <Tabs.Content className={styles.ribbonPanel} value="data">
         <Group label={t('sort')}>
           <SortControls workbook={workbook} view={view} />
+        </Group>
+        <Group label={t('filter.group')}>
+          <FilterControls workbook={workbook} view={view} />
         </Group>
       </Tabs.Content>
       <Tabs.Content className={styles.ribbonPanel} value="view">

@@ -42,6 +42,11 @@ export interface SheetContents {
   extent(): { rows: number; cols: number };
   /** The ranges merged into one cell, which a step leaves from its edge. */
   readonly merges?: readonly Range[];
+  /** The rows and columns hidden, which the arrows pass over. */
+  readonly hidden?: {
+    readonly rows: ReadonlySet<number>;
+    readonly cols: ReadonlySet<number>;
+  };
 }
 
 const ARROWS: Record<string, [number, number]> = {
@@ -133,7 +138,11 @@ function target(
           : cols < 0
             ? merge.left
             : from.col;
-      return { row: row + rows, col: col + cols };
+      const hidden = sheet.hidden;
+      return {
+        row: over(row, rows, LAST_ROW, hidden?.rows),
+        col: over(col, cols, LAST_COL, hidden?.cols),
+      };
     }
     case 'edge':
       return edge(from, navigation.rows, navigation.cols, sheet);
@@ -149,6 +158,27 @@ function target(
 }
 
 /**
+ * The line `count` lines shown away from `from`, or the last one shown
+ * before the edge of the sheet.
+ */
+function over(
+  from: number,
+  count: number,
+  last: number,
+  hidden: ReadonlySet<number> = new Set(),
+): number {
+  const step = Math.sign(count);
+  let place = from;
+  for (let left = Math.abs(count); left > 0; left--) {
+    let next = place + step;
+    while (hidden.has(next)) next += step;
+    if (next < 0 || next > last) break;
+    place = next;
+  }
+  return place;
+}
+
+/**
  * Where Ctrl+arrow goes: from inside a block of filled cells, to its last
  * cell; otherwise, to the next filled cell, or the edge of the sheet.
  */
@@ -158,23 +188,30 @@ function edge(
   cols: number,
   sheet: SheetContents,
 ): CellPosition {
-  const inSheet = (row: number, col: number) =>
-    row >= 0 && row <= LAST_ROW && col >= 0 && col <= LAST_COL;
-  const filled = (row: number, col: number) => !sheet.isEmpty(row, col);
-  let { row, col } = from;
-  if (!inSheet(row + rows, col + cols)) return from;
-  if (filled(row, col) && filled(row + rows, col + cols)) {
-    while (inSheet(row + rows, col + cols) && filled(row + rows, col + cols)) {
-      row += rows;
-      col += cols;
+  const filled = ({ row, col }: CellPosition) => !sheet.isEmpty(row, col);
+  /** The next cell shown on the way, or `null` at the edge of the sheet. */
+  const next = (cell: CellPosition): CellPosition | null => {
+    const moved = {
+      row: over(cell.row, rows, LAST_ROW, sheet.hidden?.rows),
+      col: over(cell.col, cols, LAST_COL, sheet.hidden?.cols),
+    };
+    return moved.row === cell.row && moved.col === cell.col ? null : moved;
+  };
+  let cell = from;
+  let ahead = next(cell);
+  if (!ahead) return from;
+  if (filled(cell) && filled(ahead)) {
+    while (ahead && filled(ahead)) {
+      cell = ahead;
+      ahead = next(cell);
     }
-    return { row, col };
+    return cell;
   }
   do {
-    row += rows;
-    col += cols;
-  } while (inSheet(row + rows, col + cols) && !filled(row, col));
-  return { row, col };
+    cell = ahead;
+    ahead = next(cell);
+  } while (ahead && !filled(cell));
+  return cell;
 }
 
 /**

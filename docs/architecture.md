@@ -60,12 +60,12 @@ because a requirement needs it.
 
 | Module | Interface | Hides |
 |---|---|---|
-| `engine/workbook` | `execute(command)`, `undo()`, `redo()` (each giving the cells it changed), `canUndo`, `canRedo`, `cell(sheet, row, col)` (value, formula, display text, the color its format gives it, text to edit, style, what conditional formats change of it and the data bar they draw, note, link), the sheet size, queries (`find`, `aggregate`, `extent`, `circularReference`, `fillsSeries`, sheet and name lists, `layout`: the sizes of rows and columns, those hidden and those frozen, `merges`: the merged cells, `rules`: the conditional formats), `withMerges(range, merges)` (a range grown over the merged cells it overlaps), `calculations` (a count, to measure recalculation), `subscribe(listener)`, `toSnapshot()`, `fromSnapshot(snapshot, changes, measure)` (`measure` the `TextWidth` that fits rows); for drawing cells, `FONTS`, `FONT_SIZES`, `fontPixels`, `lineHeight`, `wrapText` and the standard sizes | Column-oriented cell storage; the dependency graph and on-demand recalculation; circular-reference detection; rewriting references when cells, rows, columns and sheets move; pasting cells copied or cut, all or only their values, formulas or formats; inverse patches for undo; fitting rows to wrapped text and large fonts; fill series; sort; filters; merges; data validation; conditional format evaluation; named ranges (R1, R5, R6, R8–R10, R14, R15, R17, R19–R27). |
+| `engine/workbook` | `execute(command)`, `undo()`, `redo()` (each giving the cells it changed), `canUndo`, `canRedo`, `cell(sheet, row, col)` (value, formula, display text, the color its format gives it, text to edit, style, what conditional formats change of it and the data bar they draw, note, link), the sheet size, queries (`find`, `aggregate`, `extent`, `circularReference`, `fillsSeries`, sheet and name lists, `layout`: the sizes of rows and columns, those hidden and those frozen, `merges`: the merged cells, `rules`: the conditional formats, `filter` and `filterValues`: the filter and the values its checklist offers), `withMerges(range, merges)` (a range grown over the merged cells it overlaps), `calculations` (a count, to measure recalculation), `subscribe(listener)`, `toSnapshot()`, `fromSnapshot(snapshot, changes, measure)` (`measure` the `TextWidth` that fits rows); for drawing cells, `FONTS`, `FONT_SIZES`, `fontPixels`, `lineHeight`, `wrapText` and the standard sizes | Column-oriented cell storage; the dependency graph and on-demand recalculation; circular-reference detection; rewriting references when cells, rows, columns and sheets move; pasting cells copied or cut, all or only their values, formulas or formats; inverse patches for undo; fitting rows to wrapped text and large fonts; fill series; sort; filters; merges; data validation; conditional format evaluation; named ranges (R1, R5, R6, R8–R10, R14, R15, R17, R19–R27). |
 | `engine/formula` | `parse(text)`, `print(ast, { file })` (with the `_xlfn.` prefix of newer functions for a file), `evaluate(ast, context)`, `references(ast)`, `shift(ast, move)` (a sheet renamed, the formula moved by rows and columns, or cells cut and pasted), `calculable(ast)`, `functions` (the names of the library), `tokenize(text)` (the tokens of a formula still being typed, with their places), `argumentHint(name, index)`, `quoteSheetName(name)` | Tokenizer and parser; operators and coercion rules; the error values; the library of at least 150 functions and the names of their arguments (R11–R13, R16). Used by `engine/workbook`, by `engine/io` to check and fill in the formulas of files, and `functions`, `tokenize` and `argumentHint` by the help while typing a formula, `parse` and `references` by the app to read the cells a conditional format applies to; the workbook re-exports `quoteSheetName` for the app. |
 | `engine/format` | `formatValue(value, code)`, `formatColor(value, code)`, `validFormat(code)`, `changedFormat(code, value, change)` (one decimal more or fewer, or the thousands separator turned over), `parseInput(text)`, `parseDate(text)`, `editText(value, code)`, `builtinFormat(id)`, `isDateFormat(code)`, `isTextFormat(code)`, `isGroupedFormat(code)`, `dateSerial(year, month, day)`, `dateParts(serial)` | Excel format codes and their sections, colors and literal text; date serial numbers; and recognition of typed numbers, dates, times, percentages and booleans, on top of `numfmt` (R4, R18). |
 | `engine/io` | `readXlsx(bytes, name)` (a snapshot and what was dropped), `writeXlsx(snapshot)`, `readCsv(text)`, `writeCsv(snapshot, sheet)` | Reading the parts of an `.xlsx` file; shared formulas; the mapping from a workbook snapshot to ExcelJS; the list of dropped features reported on import; CSV quoting (R30–R32). |
 | `app/platform` | The `Platform` interface: `openFile()`, `saveFile(name, bytes)`, `workbooks` (list, load, record a change, save, rename, delete), `preferences` (get, set), `listenToClipboard(listener)` (the user's copy, cut and paste outside a text box), `writeClipboard(contents)` (tab-separated text and an HTML table), `print(document)`; and `webPlatform`, its one implementation | File inputs and downloads; the IndexedDB schema; clipboard events and the copy command; the print frame (R33, R34, R51). |
-| `app/grid` | `<Grid workbook view menu fillOptions />` and the `View` it edits (active sheet, selection, zoom, entry, End mode, the cells copied or cut, the range the fill handle is dragged over and the last fill, the range of the format painter); `<FormulaEditor>` and `keyAction`, which the formula bar shares to edit the same entry | Canvas drawing and virtualization; frozen panes; hit testing; text measurement, fonts, colors, fills, alignment, wrapping and overflow; `####` for numbers too wide; borders and merged cells; selection, resize, fill-handle and reference-picking gestures; the moving border of the cells copied; the in-cell editor and its Enter and Edit modes; function completion, the argument hint, reference colors and F4 (`formula.ts`); keyboard navigation and editing keys as in Excel (R2, R3, R4, R8, R9, R16, R21, R45). |
+| `app/grid` | `<Grid workbook view menu fillOptions filterButton />` and the `View` it edits (active sheet, selection, zoom, entry, End mode, the cells copied or cut, the range the fill handle is dragged over and the last fill, the range of the format painter); `<FormulaEditor>` and `keyAction`, which the formula bar shares to edit the same entry | Canvas drawing and virtualization; frozen panes; hit testing; text measurement, fonts, colors, fills, alignment, wrapping and overflow; `####` for numbers too wide; borders and merged cells; selection, resize, fill-handle and reference-picking gestures; the moving border of the cells copied; the in-cell editor and its Enter and Edit modes; function completion, the argument hint, reference colors and F4 (`formula.ts`); keyboard navigation and editing keys as in Excel (R2, R3, R4, R8, R9, R16, R21, R45). |
 | `app/ui` | `<App platform />` | The start screen, ribbon, formula bar and name box, sheet tabs, status bar, context menus (the cell menu is the `menu` of the grid), dialogs and side panels; shortcuts; translation dictionaries; themes; autosave timing; building the printable document (R34, R36–R44). |
 
 Boundaries, enforced by the build so that R50 and R51 cannot erode:
@@ -165,7 +165,42 @@ Decisions that are cheap to reverse, with their reasons:
   table around it as Excel does. The Data tab holds Sort A to Z and Sort Z
   to A by the active cell's column, and Custom sort, a dialog of levels,
   each a column and an order, whose columns the header row names when the
-  first row holds headers.
+  first row holds headers. Under a filter, the rows it hides keep their
+  places and the rows shown are sorted among themselves, as in Excel;
+  rows hidden by hand outside the filter's range are sorted as before.
+- **A filter is kept by its sheet and hides rows in its layout** (R24).
+  A sheet has one filter, as in Excel: a range whose first row holds the
+  headers, and for some of its columns what the rows below must have to be
+  shown: display texts checked in a list (`''` for empty cells), a text
+  that the display text equals, contains, begins or ends with in any case,
+  or a number that the value equals, is greater or less than, or lies
+  between. Filters of several columns combine. The `filter` command
+  replaces the sheet's filter, or removes it with `null`, and sets the
+  `hidden` rows of the layout below the headers of the old and new ranges:
+  hidden where the new filter does not show them, shown otherwise; rows
+  hidden by hand there are shown, and rows elsewhere keep theirs. So the
+  grid, hit testing, the row headers' gap, navigation and snapshots need
+  nothing of their own, and rows stay as they were filtered until the
+  filter changes, as in Excel. Undo is a `filter` command with the old
+  filter and the rows that were hidden (`hidden`), which it sets in place
+  of what a filter finds. Inserting and deleting lines moves and shrinks
+  the range as a rule's, drops the filter of a column deleted, and drops
+  the whole filter with its header row, leaving its rows as they are.
+  `filterValues` lists a column's display texts in the rows the other
+  columns' filters show, as values sort. The view turns a filter on over
+  the one range selected, or the data around the active cell (Ctrl+A's
+  region) when one cell is selected, cut down to the cells in use. The
+  Data tab holds Filter, which turns it on and off, and Clear, which
+  clears every column; the grid places the button the app gives it at the
+  right of each header cell of the filter, and it opens a panel under it
+  (a Radix dialog without an overlay, placed under the button)
+  with Clear filter, a choice of the values or a condition, a search box
+  over a checklist whose search keeps only the values it finds, as
+  Excel's, and the condition's value. Excel's sort items in the dropdown,
+  its second condition joined by and or or, and its blue row numbers are
+  not built. A filter allows merged cells, and hides the rows of a merge
+  like any other, as Excel does. Keyboard navigation passes over hidden
+  rows and columns, and Ctrl+arrow treats them as absent.
 - **Inserting or deleting rows or columns rebuilds the sheets it
   changes.** `insertLines` and `deleteLines` name spans of rows or columns;
   an insertion puts as many empty lines before each span as it has, as

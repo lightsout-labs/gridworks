@@ -63,6 +63,45 @@ describe('keyboard navigation', () => {
     expect(activeAfter(at(3, 0), step(-20, 0))).toEqual({ row: 0, col: 0 });
   });
 
+  it('steps over hidden rows and columns, and stays when none is left', () => {
+    const sheet: SheetContents = {
+      ...empty,
+      hidden: { rows: new Set([2, 3]), cols: new Set([0]) },
+    };
+    expect(activeAfter(at(1, 1), step(1, 0), sheet)).toEqual({
+      row: 4,
+      col: 1,
+    });
+    expect(activeAfter(at(4, 1), step(-1, 0), sheet)).toEqual({
+      row: 1,
+      col: 1,
+    });
+    // A page step counts the rows shown.
+    expect(activeAfter(at(0, 1), step(3, 0), sheet)).toEqual({
+      row: 5,
+      col: 1,
+    });
+    expect(activeAfter(at(5, 1), step(0, -1), sheet)).toEqual({
+      row: 5,
+      col: 1,
+    });
+  });
+
+  it('goes to the edge of the data over hidden rows', () => {
+    const sheet: SheetContents = {
+      ...contents('0,0', '1,0', '2,0', '5,0'),
+      hidden: { rows: new Set([2, 3]), cols: new Set() },
+    };
+    expect(activeAfter(at(0, 0), edge(1, 0), sheet)).toEqual({
+      row: 1,
+      col: 0,
+    });
+    expect(activeAfter(at(1, 0), edge(1, 0), sheet)).toEqual({
+      row: 5,
+      col: 0,
+    });
+  });
+
   it('collapses a range to one cell when it moves', () => {
     const range = navigate(at(1, 1), step(2, 2, true), empty);
     expect(navigate(range, step(1, 0), empty)).toEqual(at(2, 1));

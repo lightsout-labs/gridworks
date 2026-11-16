@@ -1305,4 +1305,78 @@ describe('View', () => {
       expect(view.sortRange).toBeNull();
     });
   });
+
+  describe('filter', () => {
+    const range = (top: number, left: number, bottom = top, right = left) => ({
+      top,
+      left,
+      bottom,
+      right,
+    });
+
+    /** A table A2:B4 under an empty first row. */
+    function filtering() {
+      const { workbook, view, sheet } = setup();
+      const rows = [
+        ['Name', 'Score'],
+        ['amy', '2'],
+        ['bob', '7'],
+      ];
+      rows.forEach((cells, row) =>
+        cells.forEach((input, col) =>
+          workbook.execute({
+            type: 'setCell',
+            sheet,
+            row: row + 1,
+            col,
+            input,
+          }),
+        ),
+      );
+      const hidden = () => [...workbook.layout(sheet).rows.hidden];
+      return { workbook, view, sheet, hidden };
+    }
+
+    it('turns a filter on over the data around one cell, and off again', () => {
+      const { workbook, view, sheet } = filtering();
+      expect(view.canFilter).toBe(false);
+      view.select(single({ row: 2, col: 1 }));
+      expect(view.canFilter).toBe(true);
+      view.toggleFilter();
+      expect(workbook.filter(sheet)).toEqual({
+        range: range(1, 0, 3, 1),
+        columns: [],
+      });
+      // Anywhere on the sheet, the button turns it off.
+      view.select(single({ row: 9, col: 9 }));
+      expect(view.canFilter).toBe(true);
+      view.toggleFilter();
+      expect(workbook.filter(sheet)).toBeNull();
+    });
+
+    it('turns a filter on over the selected range, cut down to the cells in use', () => {
+      const { workbook, view, sheet } = filtering();
+      view.select(covering([range(1, 0, SHEET_ROWS - 1, 0)]));
+      view.toggleFilter();
+      expect(workbook.filter(sheet)?.range).toEqual(range(1, 0, 3, 0));
+    });
+
+    it('filters a column, changes and clears it, and clears every column', () => {
+      const { workbook, view, sheet, hidden } = filtering();
+      view.select(single({ row: 1, col: 0 }));
+      view.toggleFilter();
+      view.filterBy({ col: 1, type: 'number', test: 'greater', value: 5 });
+      expect(hidden()).toEqual([2]);
+      view.filterBy({ col: 0, type: 'values', values: ['amy'] });
+      expect(hidden().sort()).toEqual([2, 3]);
+      expect(workbook.filter(sheet)?.columns).toHaveLength(2);
+      view.unfilter(1);
+      expect(hidden()).toEqual([3]);
+      expect(view.canClearFilter).toBe(true);
+      view.clearFilter();
+      expect(hidden()).toEqual([]);
+      expect(workbook.filter(sheet)?.columns).toEqual([]);
+      expect(view.canClearFilter).toBe(false);
+    });
+  });
 });

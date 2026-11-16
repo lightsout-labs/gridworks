@@ -29,9 +29,10 @@ import {
   type Sheet,
   type SheetLayout,
 } from './calc';
+import { meets, type ColumnFilter, type Filter } from './filter';
 import { Rules, type DataBar, type Rule, type RuleFormat } from './rules';
 import { series } from './series';
-import { sortOrder, type SortKey } from './sort';
+import { compare, sortOrder, type SortKey } from './sort';
 import {
   cellHeight,
   changedStyle,
@@ -48,6 +49,7 @@ import {
 
 export type { Value } from '../value';
 export type { Frozen, Lines, SheetLayout } from './calc';
+export type { ColumnFilter, Filter, NumberTest, TextTest } from './filter';
 export type { Condition, DataBar, Rule, RuleFormat } from './rules';
 export type { SortKey } from './sort';
 export {
@@ -229,6 +231,19 @@ export type Command =
       readonly type: 'setRules';
       readonly sheet: string;
       readonly rules: readonly Rule[];
+    }
+  | {
+      /**
+       * Gives a sheet this filter in place of its own, or none, and hides
+       * the rows below the filter's headers that it does not show, as they
+       * are then; the rows of the filter it replaces are shown first (R24).
+       * `hidden` hides those rows of both filters in place of what the
+       * filter finds: how the workbook undoes a filter.
+       */
+      readonly type: 'filter';
+      readonly sheet: string;
+      readonly filter: Filter | null;
+      readonly hidden?: readonly number[];
     }
   | {
       /**
@@ -435,6 +450,8 @@ export interface SheetSnapshot extends SheetInfo {
   readonly frozen?: Frozen;
   /** The conditional formats, the first first; absent for none. */
   readonly conditionalFormats?: Rule[];
+  /** The filter, whose rows it hides are among `hiddenRows`; absent for none. */
+  readonly filter?: Filter;
 }
 
 /**
@@ -461,6 +478,7 @@ type SetLines = Extract<Command, { type: 'setLines' }>;
 type RestoreSheets = Extract<Command, { type: 'restoreSheets' }>;
 type Fill = Extract<Command, { type: 'fill' }>;
 type Sort = Extract<Command, { type: 'sort' }>;
+type SetFilter = Extract<Command, { type: 'filter' }>;
 type CellCommand = Extract<
   Command,
   {
@@ -776,6 +794,37 @@ export class Workbook {
     return this.sheet(sheetId).rules;
   }
 
+  /** The filter of a sheet, or `null`. */
+  filter(sheetId: string): Filter | null {
+    return this.sheet(sheetId).filter;
+  }
+
+  /**
+   * The display texts of a column of the sheet's filter, below its
+   * headers, in the rows that the filters of its other columns show: each
+   * once, as values sort, with `''` for empty cells last.
+   */
+  filterValues(sheetId: string, col: number): string[] {
+    const sheet = this.sheet(sheetId);
+    const { filter } = sheet;
+    if (!filter) return [];
+    const others = filter.columns.filter((each) => each.col !== col);
+    const found = new Map<string, Value>();
+    for (let row = filter.range.top + 1; row <= filter.range.bottom; row++) {
+      if (!this.shows(sheet, others, row)) continue;
+      const display = this.display(sheet, row, col);
+      if (!found.has(display))
+        found.set(display, this.calc.cell(sheet, row, col));
+    }
+    return [...found]
+      .sort(([, a], [, b]) =>
+        a === null || b === null
+          ? Number(a === null) - Number(b === null)
+          : compare(a, b),
+      )
+      .map(([display]) => display);
+  }
+
   /** The ranges merged into one cell: the same array until they change. */
   merges(sheetId: string): readonly Range[] {
     return this.sheet(sheetId).merges;
@@ -885,6 +934,8 @@ export class Workbook {
       applied = this.freeze(command);
     } else if (command.type === 'setRules') {
       applied = this.setRules(command);
+    } else if (command.type === 'filter') {
+      applied = this.setFilter(command);
     } else if (command.type === 'setLines') {
       applied = this.setLines(command);
       // Wrapped text takes more or fewer lines in another width.
@@ -1176,6 +1227,83 @@ export class Workbook {
     };
   }
 
+  /**
+   * Replaces the filter of a sheet, hiding the rows it does not show and
+   * showing the others of it and of the filter it replaces.
+   */
+  private setFilter(command: SetFilter): Applied {
+    const sheet = this.sheet(command.sheet);
+    const { filter } = command;
+    if (
+      filter?.columns.some(
+        ({ col }) => col < filter.range.left || col > filter.range.right,
+      )
+    ) {
+      throw new Error('A filter column outside its range');
+    }
+    const old = sheet.filter;
+    // The rows below the headers of both filters.
+    const rows = new Set<number>();
+    for (const { range } of [old, filter].filter((each) => each !== null)) {
+      for (let row = range.top + 1; row <= range.bottom; row++) rows.add(row);
+    }
+    const hides = command.hidden
+      ? new Set(command.hidden)
+      : new Set(
+          [...rows].filter(
+            (row) => filter && !this.shows(sheet, filter.columns, row),
+          ),
+        );
+    const before = sheet.layout.rows.hidden;
+    const hidden = new Set(before);
+    for (const row of rows) {
+      if (hides.has(row)) hidden.add(row);
+      else hidden.delete(row);
+    }
+    sheet.layout = {
+      ...sheet.layout,
+      rows: { ...sheet.layout.rows, hidden },
+    };
+    sheet.filter = filter;
+    return {
+      executed: command,
+      reverse: {
+        type: 'filter',
+        sheet: sheet.id,
+        filter: old,
+        hidden: [...rows].filter((row) => before.has(row)),
+      },
+      change: {
+        sheet: sheet.id,
+        ranges: [old, filter].flatMap((each) => (each ? [each.range] : [])),
+      },
+    };
+  }
+
+  /** Whether a row meets the filters of columns. */
+  private shows(
+    sheet: Sheet,
+    columns: readonly ColumnFilter[],
+    row: number,
+  ): boolean {
+    return columns.every((column) =>
+      meets(
+        column,
+        this.calc.cell(sheet, row, column.col),
+        this.display(sheet, row, column.col),
+      ),
+    );
+  }
+
+  /** The text a cell shows in its number format. */
+  private display(sheet: Sheet, row: number, col: number): string {
+    const style = this.styles[sheet.styleIds[col]?.[row] ?? 0]!;
+    return formatValue(
+      this.calc.cell(sheet, row, col),
+      style.numberFormat ?? GENERAL,
+    );
+  }
+
   /** Sets the sizes and visibility of rows or columns. */
   private setLines(command: SetLines): Applied {
     const sheet = this.sheet(command.sheet);
@@ -1402,13 +1530,24 @@ export class Workbook {
       return { type: 'restore', sheet: id, ranges: [], cells: [] };
     }
     const area = { ...used, top };
-    const order = sortOrder(area.bottom - top + 1, keys, (row, key) =>
-      this.calc.cell(sheet, top + row, keys[key]!.col),
+    // Under a filter, the rows it hides keep their places, as in Excel.
+    const { filter } = sheet;
+    const filtered = (row: number) =>
+      filter !== null &&
+      row > filter.range.top &&
+      row <= filter.range.bottom &&
+      sheet.layout.rows.hidden.has(row);
+    const rows = Array.from(
+      { length: area.bottom - top + 1 },
+      (_, index) => top + index,
+    ).filter((row) => !filtered(row));
+    const order = sortOrder(rows.length, keys, (index, key) =>
+      this.calc.cell(sheet, rows[index]!, keys[key]!.col),
     );
     // Where each row goes.
-    const places = new Map(order.map((from, to) => [top + from, top + to]));
+    const places = new Map(order.map((from, to) => [rows[from]!, rows[to]!]));
     const cells = this.contents(sheet, [area]).map((cell) => {
-      const row = places.get(cell.row)!;
+      const row = places.get(cell.row) ?? cell.row;
       if (cell.formula === undefined || row === cell.row) {
         return { ...cell, row };
       }
@@ -2104,8 +2243,32 @@ function movedLines(
     });
     return ranges.length === 0 ? [] : [{ ...rule, ranges }];
   });
+  // A filter keeps the lines of its range that stay, and the columns; it
+  // is dropped with its header row.
+  const { filter: old, ...rest } = snapshot;
+  const kept =
+    old &&
+    (!rows || moved(old.range.top) !== null) &&
+    (rows
+      ? span(old.range.top, old.range.bottom)
+      : span(old.range.left, old.range.right));
+  const filter: Filter | undefined =
+    old && kept
+      ? {
+          range: rows
+            ? { ...old.range, top: kept[0], bottom: kept[1] }
+            : { ...old.range, left: kept[0], right: kept[1] },
+          columns: rows
+            ? old.columns
+            : old.columns.flatMap((column) => {
+                const col = moved(column.col);
+                return col === null ? [] : [{ ...column, col }];
+              }),
+        }
+      : undefined;
   return {
-    ...snapshot,
+    ...rest,
+    ...(filter && { filter }),
     ...(merges && { merges }),
     ...(conditionalFormats && { conditionalFormats }),
     columns: cells(snapshot.columns, null),
@@ -2150,6 +2313,7 @@ function sheetOf(snapshot: SheetSnapshot): Sheet {
   if (snapshot.conditionalFormats) {
     sheet.rules = snapshot.conditionalFormats.map((rule) => ({ ...rule }));
   }
+  if (snapshot.filter) sheet.filter = snapshot.filter;
   for (const [row, col, text] of snapshot.formulas) {
     const ast = parse(text.slice(1));
     if (!ast) throw new Error(`Invalid formula in snapshot: ${text}`);
@@ -2181,5 +2345,6 @@ function snapshotOf(sheet: Sheet): SheetSnapshot {
     ...(sheet.merges.length > 0 && { merges: [...sheet.merges] }),
     ...(frozen && { frozen: { ...frozen } }),
     ...(sheet.rules.length > 0 && { conditionalFormats: [...sheet.rules] }),
+    ...(sheet.filter && { filter: sheet.filter }),
   };
 }
