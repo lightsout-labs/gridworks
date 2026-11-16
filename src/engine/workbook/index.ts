@@ -31,6 +31,7 @@ import {
 } from './calc';
 import { Rules, type DataBar, type Rule, type RuleFormat } from './rules';
 import { series } from './series';
+import { sortOrder, type SortKey } from './sort';
 import {
   cellHeight,
   changedStyle,
@@ -48,6 +49,7 @@ import {
 export type { Value } from '../value';
 export type { Frozen, Lines, SheetLayout } from './calc';
 export type { Condition, DataBar, Rule, RuleFormat } from './rules';
+export type { SortKey } from './sort';
 export {
   BORDER_LINES,
   DEFAULT_FONT_SIZE,
@@ -183,6 +185,22 @@ export type Command =
       readonly source: Range;
       readonly target: Range;
       readonly how?: 'copy' | 'series' | 'formats' | 'values';
+    }
+  | {
+      /**
+       * Sorts the rows of a range by the values of columns, the first key
+       * first, as Excel sorts: numbers, then text in any case, booleans and
+       * errors, and empty cells last either way. Whole rows of the range
+       * move with their formats, and the relative references of their
+       * formulas move with them. `headers` leaves the first row in place.
+       * Ranges over whole rows or columns sort the cells in use only, and a
+       * range with merged cells is refused. Listeners get it as a `group`.
+       */
+      readonly type: 'sort';
+      readonly sheet: string;
+      readonly range: Range;
+      readonly keys: readonly SortKey[];
+      readonly headers?: boolean;
     }
   | MoveLines
   | ({
@@ -442,6 +460,7 @@ type SheetChange = Extract<
 type SetLines = Extract<Command, { type: 'setLines' }>;
 type RestoreSheets = Extract<Command, { type: 'restoreSheets' }>;
 type Fill = Extract<Command, { type: 'fill' }>;
+type Sort = Extract<Command, { type: 'sort' }>;
 type CellCommand = Extract<
   Command,
   {
@@ -820,6 +839,7 @@ export class Workbook {
     } else if (
       command.type === 'paste' ||
       command.type === 'fill' ||
+      command.type === 'sort' ||
       command.type === 'group'
     ) {
       const restores =
@@ -827,7 +847,9 @@ export class Workbook {
           ? this.pasted(command)
           : command.type === 'fill'
             ? [this.filled(command)]
-            : command.restores;
+            : command.type === 'sort'
+              ? [this.sorted(command)]
+              : command.restores;
       const each = restores.map((restore) => {
         const done = this.changeCells(restore);
         this.calc.changed(this.sheet(restore.sheet), done.change.ranges);
@@ -1363,6 +1385,38 @@ export class Workbook {
       }
     }
     return { type: 'restore', sheet: sheet.id, ranges: [area], cells };
+  }
+
+  /** The restore that makes a sort, read before it runs. */
+  private sorted({ sheet: id, range, keys, headers }: Sort): Restore {
+    const sheet = this.sheet(id);
+    if (sheet.merges.some((merge) => overlap(merge, range))) {
+      throw new Error('A range with merged cells cannot be sorted');
+    }
+    if (keys.some(({ col }) => col < range.left || col > range.right)) {
+      throw new Error('A sort key outside the range');
+    }
+    const used = this.inUse(sheet, range);
+    const top = (used?.top ?? 0) + (headers ? 1 : 0);
+    if (!used || top > used.bottom) {
+      return { type: 'restore', sheet: id, ranges: [], cells: [] };
+    }
+    const area = { ...used, top };
+    const order = sortOrder(area.bottom - top + 1, keys, (row, key) =>
+      this.calc.cell(sheet, top + row, keys[key]!.col),
+    );
+    // Where each row goes.
+    const places = new Map(order.map((from, to) => [top + from, top + to]));
+    const cells = this.contents(sheet, [area]).map((cell) => {
+      const row = places.get(cell.row)!;
+      if (cell.formula === undefined || row === cell.row) {
+        return { ...cell, row };
+      }
+      const { ast } = sheet.formulas.get(key(cell.row, cell.col))!;
+      const move: Move = { type: 'offset', rows: row - cell.row, cols: 0 };
+      return { ...cell, row, formula: `=${print(shift(ast, move))}` };
+    });
+    return { type: 'restore', sheet: id, ranges: [area], cells };
   }
 
   /**

@@ -38,6 +38,7 @@ import {
 } from './Format';
 import type { Language } from './i18n';
 import { RuleControls } from './Rules';
+import { SortControls } from './Sort';
 import styles from './Shell.module.css';
 import type { Theme } from './theme';
 
@@ -95,6 +96,11 @@ export function Ribbon({
           <Tooltip text={t('tab.formulas.tooltip')}>
             <Tabs.Trigger className={styles.ribbonTab} value="formulas">
               {t('tab.formulas')}
+            </Tabs.Trigger>
+          </Tooltip>
+          <Tooltip text={t('tab.data.tooltip')}>
+            <Tabs.Trigger className={styles.ribbonTab} value="data">
+              {t('tab.data')}
             </Tabs.Trigger>
           </Tooltip>
           <Tooltip text={t('tab.view.tooltip')}>
@@ -157,6 +163,11 @@ export function Ribbon({
             keepsEntry
             labeled
           />
+        </Group>
+      </Tabs.Content>
+      <Tabs.Content className={styles.ribbonPanel} value="data">
+        <Group label={t('sort')}>
+          <SortControls workbook={workbook} view={view} />
         </Group>
       </Tabs.Content>
       <Tabs.Content className={styles.ribbonPanel} value="view">

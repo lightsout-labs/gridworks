@@ -921,7 +921,7 @@ Notes:
 
 ## S22: Sorting
 
-Status: Todo
+Status: Done
 
 Acceptance criteria:
 - The user can sort the selected range ascending or descending by the column
@@ -936,6 +936,16 @@ Acceptance criteria:
 - Its controls are in the ribbon or a context menu, are translated in both
   languages, look right in both themes, and have hover, focus and disabled
   states and tooltips. (R37, R41, R42, R43, R44)
+
+Notes:
+- `sort` is a command of `range`, `keys` (`{ col, descending? }`, columns
+  of the sheet) and `headers?`; it is recorded as a `group` of one
+  `restore`, and a range with merged cells is refused. `compare` in
+  `engine/workbook/sort.ts` is Excel's order of values, which conditional
+  formats share. S23 (filters) can sort from its header dropdown with the
+  same command and `headers: true`, and decide whether sorting a filtered
+  range skips hidden rows, as Excel does. The Data tab holds the sort
+  group; S23 adds its filter controls there.
 
 ## S23: Filtering
 

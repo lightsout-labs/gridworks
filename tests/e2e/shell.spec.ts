@@ -289,6 +289,7 @@ test.describe('the controls', () => {
         ['tab', 'File', 'Open and save workbooks'],
         ['tab', 'Home', 'The most used commands'],
         ['tab', 'Formulas', 'Functions to use in formulas'],
+        ['tab', 'Data', 'Sort data'],
         ['tab', 'View', 'Appearance, language and frozen panes'],
         ['button', 'Undo', /^Undo the last change \((Ctrl\+|⌘)Z\)$/],
         ['button', 'Redo', /^Redo the last change undone \((Ctrl\+|⌘)Y\)$/],
@@ -389,6 +390,33 @@ test.describe('the controls', () => {
       ],
       8,
     );
+    // Two cells in use, selected, enable sorting.
+    await clickCell(page, 0, 1);
+    await enter(page, 'x');
+    await clickCell(page, 0, 0);
+    await page.keyboard.press('Shift+ArrowRight');
+    await page.getByRole('tab', { name: 'Data' }).click();
+    await check(
+      [
+        [
+          'button',
+          'Sort A to Z',
+          "Sort the selected rows by the active cell's column, smallest first",
+        ],
+        [
+          'button',
+          'Sort Z to A',
+          "Sort the selected rows by the active cell's column, largest first",
+        ],
+        [
+          'button',
+          'Custom sort',
+          'Sort the selected rows by one or more columns',
+        ],
+        ...statusBar,
+      ],
+      6,
+    );
     await page.getByRole('tab', { name: 'Formulas' }).click();
     await clickCell(page, 5, 5);
     await check(
@@ -416,7 +444,7 @@ test.describe('the controls', () => {
     await expect(page.getByRole('textbox')).toHaveCount(1);
     await expect(
       page.getByRole('tablist', { name: 'Ribbon' }).getByRole('tab'),
-    ).toHaveCount(4);
+    ).toHaveCount(5);
   });
 
   test('are rounded and show hover, keyboard focus and disabled states with a short transition', async ({

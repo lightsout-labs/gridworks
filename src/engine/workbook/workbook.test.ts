@@ -2376,3 +2376,167 @@ describe('conditional formats', () => {
     ]);
   });
 });
+
+describe('sort', () => {
+  const range = (top: number, left: number, bottom = top, right = left) => ({
+    top,
+    left,
+    bottom,
+    right,
+  });
+
+  function sorting() {
+    const { workbook, sheet, set, show } = setup();
+    const column = (col: number, top: number, bottom: number) =>
+      Array.from({ length: bottom - top + 1 }, (_, index) =>
+        show(top + index, col),
+      );
+    const sort = (
+      area: ReturnType<typeof range>,
+      keys: { col: number; descending?: boolean }[],
+      headers = false,
+    ) =>
+      workbook.execute({
+        type: 'sort',
+        sheet,
+        range: area,
+        keys,
+        ...(headers && { headers }),
+      });
+    return { workbook, sheet, set, show, column, sort };
+  }
+
+  it('moves whole rows of the range by one column, ascending or descending', () => {
+    const { set, column, sort } = sorting();
+    ['3', '1', '2'].forEach((input, row) => set(row, 0, input));
+    ['c', 'a', 'b'].forEach((input, row) => set(row, 1, input));
+    set(3, 0, '0');
+    const change = sort(range(0, 0, 2, 1), [{ col: 0 }]);
+    expect(change.ranges).toEqual([range(0, 0, 2, 1)]);
+    expect(column(0, 0, 3)).toEqual(['1', '2', '3', '0']);
+    expect(column(1, 0, 2)).toEqual(['a', 'b', 'c']);
+    sort(range(0, 0, 2, 1), [{ col: 1, descending: true }]);
+    expect(column(0, 0, 2)).toEqual(['3', '2', '1']);
+    expect(column(1, 0, 2)).toEqual(['c', 'b', 'a']);
+  });
+
+  it('puts numbers before text in any case, then booleans and errors, and empty cells last either way', () => {
+    const { set, column, sort } = sorting();
+    const inputs = ['b', '', '=1/0', 'TRUE', '10', 'A', '', '2', 'FALSE'];
+    inputs.forEach((input, row) => input && set(row, 0, input));
+    sort(range(0, 0, 8, 0), [{ col: 0 }]);
+    expect(column(0, 0, 8)).toEqual([
+      '2',
+      '10',
+      'A',
+      'b',
+      'FALSE',
+      'TRUE',
+      '#DIV/0!',
+      '',
+      '',
+    ]);
+    sort(range(0, 0, 8, 0), [{ col: 0, descending: true }]);
+    expect(column(0, 0, 8)).toEqual([
+      '#DIV/0!',
+      'TRUE',
+      'FALSE',
+      'b',
+      'A',
+      '10',
+      '2',
+      '',
+      '',
+    ]);
+  });
+
+  it('breaks ties by the next column, keeps the order of equal rows, and can leave a header row', () => {
+    const { set, column, sort } = sorting();
+    const rows = [
+      ['Name', 'Team'],
+      ['dan', 'b'],
+      ['amy', 'a'],
+      ['Cat', 'b'],
+      ['bob', 'a'],
+      ['eve', 'B'],
+    ];
+    rows.forEach((cells, row) =>
+      cells.forEach((input, col) => set(row, col, input)),
+    );
+    sort(range(0, 0, 5, 1), [{ col: 1 }], true);
+    expect(column(0, 0, 5)).toEqual([
+      'Name',
+      'amy',
+      'bob',
+      'dan',
+      'Cat',
+      'eve',
+    ]);
+    sort(range(0, 0, 5, 1), [{ col: 1, descending: true }, { col: 0 }], true);
+    expect(column(0, 0, 5)).toEqual([
+      'Name',
+      'Cat',
+      'dan',
+      'eve',
+      'amy',
+      'bob',
+    ]);
+  });
+
+  it('sorts by formula results, moves formats, and moves the relative references of formulas', () => {
+    const { workbook, sheet, set, show, sort } = sorting();
+    set(0, 3, '100');
+    set(0, 0, '5');
+    set(1, 0, '1');
+    set(0, 1, '=A1*10');
+    set(1, 1, '=A2*10+$D$1');
+    set(0, 2, '50%');
+    workbook.execute({
+      type: 'setStyle',
+      sheet,
+      ranges: [range(1, 0)],
+      style: { bold: true },
+    });
+    // Sorted by the formulas' results: 50 and 110.
+    sort(range(0, 0, 1, 2), [{ col: 1, descending: true }]);
+    expect(workbook.cell(sheet, 0, 1).formula).toBe('=A1*10+$D$1');
+    expect(workbook.cell(sheet, 1, 1).formula).toBe('=A2*10');
+    expect(show(0, 1)).toBe('110');
+    expect(show(1, 1)).toBe('50');
+    expect(workbook.cell(sheet, 0, 0).style).toEqual({ bold: true });
+    expect(workbook.cell(sheet, 1, 0).style).toEqual({});
+    expect(show(1, 2)).toBe('50%');
+  });
+
+  it('is undone and redone, and replayed as the cells it wrote', () => {
+    const { workbook, sheet, set, column, sort } = sorting();
+    ['b', 'c', 'a'].forEach((input, row) => set(row, 0, input));
+    const before = workbook.toSnapshot();
+    const commands: Command[] = [];
+    workbook.subscribe((command) => commands.push(command));
+    sort(range(0, 0, 2, 0), [{ col: 0 }]);
+    expect(commands[0]!.type).toBe('group');
+    const replayed = Workbook.fromSnapshot(before, commands);
+    expect(replayed.cell(sheet, 0, 0).display).toBe('a');
+    expect(workbook.undo()).toEqual({ sheet, ranges: [range(0, 0, 2, 0)] });
+    expect(column(0, 0, 2)).toEqual(['b', 'c', 'a']);
+    workbook.redo();
+    expect(column(0, 0, 2)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('sorts whole columns over the cells in use only', () => {
+    const { set, column, sort } = sorting();
+    ['2', '', '1'].forEach((input, row) => input && set(row, 0, input));
+    const change = sort(range(0, 0, SHEET_ROWS - 1, 0), [{ col: 0 }]);
+    expect(change.ranges).toEqual([range(0, 0, 2, 0)]);
+    expect(column(0, 0, 2)).toEqual(['1', '2', '']);
+  });
+
+  it('refuses a range with merged cells, as Excel refuses merges of different sizes', () => {
+    const { workbook, sheet, set, column, sort } = sorting();
+    ['2', '1', '3'].forEach((input, row) => set(row, 0, input));
+    workbook.execute({ type: 'merge', sheet, ranges: [range(2, 0, 2, 1)] });
+    expect(() => sort(range(0, 0, 2, 1), [{ col: 0 }])).toThrow();
+    expect(column(0, 0, 2)).toEqual(['2', '1', '3']);
+  });
+});

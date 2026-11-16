@@ -8,6 +8,7 @@ import {
   type Border,
   type BorderSides,
   type Range,
+  type SortKey,
   type Span,
   type StyleChange,
   type TextWidth,
@@ -500,6 +501,64 @@ export class View {
   /** Unfreezes the rows and columns of the shown sheet, after committing. */
   unfreeze(): void {
     this.setFrozen({ rows: 0, cols: 0 });
+  }
+
+  /**
+   * The range a sort sorts: the one range selected, its whole rows or
+   * columns cut down to the cells in use, or `null` when that is a single
+   * cell or none, there are several ranges, or it holds merged cells,
+   * which Excel refuses to sort when they differ in size.
+   */
+  get sortRange(): Range | null {
+    const { sheet, selection } = this.current;
+    if (selection.ranges.length !== 1) return null;
+    const { rows, cols } = this.workbook.extent(sheet);
+    const selected = selection.ranges[0]!;
+    const range = {
+      ...selected,
+      bottom: Math.min(selected.bottom, rows - 1),
+      right: Math.min(selected.right, cols - 1),
+    };
+    const merged = this.workbook
+      .merges(sheet)
+      .some(
+        (merge) =>
+          range.top <= merge.bottom &&
+          merge.top <= range.bottom &&
+          range.left <= merge.right &&
+          merge.left <= range.right,
+      );
+    const empty = range.bottom < range.top || range.right < range.left;
+    const one = range.top === range.bottom && range.left === range.right;
+    return empty || one || merged ? null : range;
+  }
+
+  /**
+   * Sorts the rows of `sortRange` by columns, leaving the first row in
+   * place when it holds `headers`, after committing an entry.
+   */
+  sort(keys: readonly SortKey[], headers = false): void {
+    this.commit();
+    const range = this.sortRange;
+    if (!range) return;
+    const { sheet } = this.current;
+    this.workbook.execute({
+      type: 'sort',
+      sheet,
+      range,
+      keys,
+      ...(headers && { headers }),
+    });
+  }
+
+  /**
+   * Sorts `sortRange` by the column of the active cell. One right of the
+   * cells in use is empty, and sorting by it changes nothing, as in Excel.
+   */
+  sortByActive(descending: boolean): void {
+    const { col } = this.current.selection.active;
+    if (col > (this.sortRange?.right ?? -1)) return;
+    this.sort([{ col, ...(descending && { descending }) }]);
   }
 
   /** Merges each selected range into one cell, after committing. */
