@@ -89,6 +89,26 @@ describe('keyAction', () => {
     expect(action(press('Home'), 'enter')).toBeNull();
   });
 
+  it('points with the arrows in Enter mode where a reference can go', () => {
+    const point = (key: KeyPress) =>
+      keyAction(key, {
+        mac: false,
+        mode: 'enter',
+        endMode: false,
+        page: { rows: 20, cols: 8 },
+        canPoint: true,
+      });
+    expect(point(press('ArrowRight'))).toEqual({
+      ...step(0, 1),
+      type: 'point',
+    });
+    expect(point(press('ArrowUp', { shift: true }))).toEqual({
+      ...step(-1, 0, true),
+      type: 'point',
+    });
+    expect(point(press('Enter'))).toEqual(step(1, 0));
+  });
+
   it('navigates without an entry', () => {
     expect(action(press('ArrowDown'), null)).toEqual(step(1, 0));
     expect(action(press('Home', { ctrl: true }), null)).toEqual({

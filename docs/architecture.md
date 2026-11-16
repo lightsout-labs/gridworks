@@ -386,7 +386,14 @@ Decisions that are cheap to reverse, with their reasons:
   keeps the entry going in the formula bar, references picked there name
   the sheet, the grid there shows no selection, and committing or
   cancelling shows the entry's sheet again. Elsewhere a click commits, as
-  before.
+  before. The entry keeps the cells of the reference just picked as a
+  selection of its own, `point`, which Shift with a click and a drag
+  stretch from where it started; Ctrl/Cmd with a click adds a comma and a
+  new reference after it. In Enter mode the arrows point too, wherever a
+  reference can go: `keyAction` gives `point` in place of `navigate`, and
+  the view moves `point` as navigation moves the selection, starting from
+  the cell edited. Any other change to the text or the caret forgets
+  `point`, so the next arrow after an operator starts from that cell again.
 - **The editors draw a formula's text in colors** by laying a copy of the
   text, with each reference in a span of its color, over the input box,
   whose own text is transparent and which still draws the caret and the

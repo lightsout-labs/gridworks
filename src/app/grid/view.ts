@@ -28,7 +28,13 @@ import { fromClipboard, toClipboard } from './clipboard';
 import type { EntryMode } from './keys';
 import { navigate, type Navigation, type SheetContents } from './navigation';
 import type { CellPosition } from './geometry';
-import { covering, overMerges, single, type Selection } from './selection';
+import {
+  covering,
+  extendTo,
+  overMerges,
+  single,
+  type Selection,
+} from './selection';
 import { TEXT_PADDING } from './text';
 
 export const ZOOM_MIN = 0.5;
@@ -60,6 +66,11 @@ export interface Entry {
    * it, until the text or the caret changes.
    */
   readonly allFunctions: boolean;
+  /**
+   * The cells of the reference just picked or pointed at, on the shown
+   * sheet, which Shift and the arrows move from, or `null`.
+   */
+  readonly point: Selection | null;
 }
 
 export interface ViewState {
@@ -170,14 +181,8 @@ export class View {
       return;
     }
     this.commit();
-    const { workbook } = this;
-    const { sheet, selection } = this.current;
-    const contents: SheetContents = {
-      isEmpty: (row, col) => workbook.cell(sheet, row, col).value === null,
-      extent: () => workbook.extent(sheet),
-      merges: workbook.merges(sheet),
-    };
-    this.select(navigate(selection, navigation, contents));
+    const { selection } = this.current;
+    this.select(navigate(selection, navigation, this.sheetContents()));
   }
 
   /**
@@ -189,7 +194,7 @@ export class View {
     const { entry, sheet } = this.current;
     this.change({
       entry: entry
-        ? { ...entry, text, caret, allFunctions: false }
+        ? { ...entry, text, caret, allFunctions: false, point: null }
         : {
             text,
             mode: 'enter',
@@ -197,6 +202,7 @@ export class View {
             sheet,
             caret,
             allFunctions: false,
+            point: null,
           },
     });
   }
@@ -205,7 +211,9 @@ export class View {
   moveCaret(caret: number): void {
     const { entry } = this.current;
     if (entry && entry.caret !== caret) {
-      this.change({ entry: { ...entry, caret, allFunctions: false } });
+      this.change({
+        entry: { ...entry, caret, allFunctions: false, point: null },
+      });
     }
   }
 
@@ -219,18 +227,33 @@ export class View {
   }
 
   /**
-   * Puts a reference to a range of the shown sheet at the caret of the
-   * entry, in place of the one picked just before.
+   * Puts a reference to a cell of the shown sheet at the caret of the
+   * entry, in place of the one picked just before (`replace`, a click);
+   * stretched from where that one started (`extend`, Shift or a drag);
+   * or after it and a comma (`add`, Ctrl or Cmd). Without a reference
+   * before the caret, each picks the cell alone.
    */
-  pick({ top, left, bottom, right }: Range): void {
-    const { entry, sheet } = this.current;
+  pick(
+    cell: CellPosition,
+    mode: 'replace' | 'extend' | 'add' = 'replace',
+  ): void {
+    const point = this.current.entry?.point;
+    this.pointAt(
+      mode === 'extend' && point ? extendTo(point, cell) : single(cell),
+      mode === 'add',
+    );
+  }
+
+  /**
+   * Moves the reference pointed at for the formula by the keyboard, or
+   * extends it, as the arrows move the selection; the first starts from
+   * the cell edited.
+   */
+  point(navigation: Navigation): void {
+    const { entry, selection } = this.current;
     if (!entry) return;
-    const name = this.workbook.sheets.find((each) => each.id === sheet)!.name;
-    const prefix = sheet === entry.sheet ? '' : `${quoteSheetName(name)}!`;
-    const end =
-      top === bottom && left === right ? '' : `:${cellName(bottom, right)}`;
-    const reference = prefix + cellName(top, left) + end;
-    this.edited(insertReference(entry.text, entry.caret, reference));
+    const from = entry.point ?? single(selection.active);
+    this.pointAt(navigate(from, navigation, this.sheetContents()));
   }
 
   /** Cycles the reference at the caret between absolute and relative, as F4. */
@@ -280,6 +303,7 @@ export class View {
         sheet: entry?.sheet ?? sheet,
         caret: entry?.caret ?? text.length,
         allFunctions: entry?.allFunctions ?? false,
+        point: entry?.point ?? null,
       },
     });
   }
@@ -305,7 +329,10 @@ export class View {
   showSheet(sheet: string): void {
     const { entry } = this.current;
     if (entry && this.canPick) {
-      this.change({ sheet, entry: { ...entry, place: 'formulaBar' } });
+      this.change({
+        sheet,
+        entry: { ...entry, place: 'formulaBar', point: null },
+      });
       return;
     }
     this.commit();
@@ -871,9 +898,42 @@ export class View {
     return toClipboard(rows);
   }
 
-  private edited({ text, caret }: Edit): void {
-    const entry = { ...this.current.entry!, text, caret, allFunctions: false };
+  private edited({ text, caret }: Edit, point: Selection | null = null): void {
+    const entry = {
+      ...this.current.entry!,
+      text,
+      caret,
+      allFunctions: false,
+      point,
+    };
     this.change({ entry });
+  }
+
+  /** Puts a reference to the last range of `point` at the caret. */
+  private pointAt(point: Selection, add = false): void {
+    const { entry, sheet } = this.current;
+    if (!entry) return;
+    const { top, left, bottom, right } = point.ranges[point.ranges.length - 1]!;
+    const name = this.workbook.sheets.find((each) => each.id === sheet)!.name;
+    const prefix = sheet === entry.sheet ? '' : `${quoteSheetName(name)}!`;
+    const end =
+      top === bottom && left === right ? '' : `:${cellName(bottom, right)}`;
+    const reference = prefix + cellName(top, left) + end;
+    this.edited(
+      insertReference(entry.text, entry.caret, reference, add),
+      point,
+    );
+  }
+
+  /** What navigation needs to know of the shown sheet. */
+  private sheetContents(): SheetContents {
+    const { workbook } = this;
+    const { sheet } = this.current;
+    return {
+      isEmpty: (row, col) => workbook.cell(sheet, row, col).value === null,
+      extent: () => workbook.extent(sheet),
+      merges: workbook.merges(sheet),
+    };
   }
 
   private reverse(run: () => Change | null): void {

@@ -784,7 +784,7 @@ Notes:
 
 ## S33: Picking references with Shift, Ctrl and the arrow keys
 
-Status: Todo
+Status: In progress
 
 Acceptance criteria:
 - While typing a formula, a click on A1 then a Shift+click on C3 gives the
