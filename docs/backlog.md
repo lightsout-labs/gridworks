@@ -752,7 +752,7 @@ Notes:
 
 ## S19: Freeze panes
 
-Status: Todo
+Status: Done
 
 Acceptance criteria:
 - The user can freeze the top row, the first column, or all rows above and
@@ -765,6 +765,22 @@ Acceptance criteria:
 - Its controls are in the ribbon or a context menu, are translated in both
   languages, look right in both themes, and have hover, focus and disabled
   states and tooltips. (R37, R41, R42, R43, R44)
+
+Notes:
+- Frozen panes are `layout(sheet).frozen` (`{ rows, cols }`, absent when
+  none), set by the `freeze` command and kept in the snapshot as
+  `frozen`. S28 (`.xlsx`) must read and write them as the sheet view's
+  `pane` (`xSplit`, `ySplit`, state `frozen`); Gridworks always freezes
+  from A1, so a `topLeftCell` other than the split is not kept.
+- The grid draws the canvas in `panes` (geometry.ts), each with its own
+  unfrozen viewport and clipped to the canvas; anything new drawn on the
+  cells must be drawn inside the pane loop of `draw`, and anything placed
+  over a cell must go through the frozen-aware `cellRect`.
+- Loading a stored workbook dropped every sheet field but values, styles
+  and formulas, so line sizes, hidden lines and merges (S15, S17) were
+  lost after an autosave and a reload; the web platform now loads the
+  whole sheet record. S20 onward add fields with nothing to change there.
+- WebKit could not run locally (missing system libraries); CI runs it.
 
 ## S20: Conditional formatting: value rules
 

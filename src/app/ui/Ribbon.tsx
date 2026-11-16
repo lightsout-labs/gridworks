@@ -11,6 +11,7 @@ import {
   Paintbrush,
   Redo2,
   Scissors,
+  Snowflake,
   Sun,
   Table2,
   Undo2,
@@ -171,6 +172,9 @@ export function Ribbon({
             onChoose={() => onTheme('dark')}
           />
         </Group>
+        <Group label={t('window')}>
+          <FreezeControls workbook={workbook} view={view} />
+        </Group>
         <Group label={t('language')}>
           {/* Each language is named in itself, whatever the interface is in. */}
           <Choice
@@ -230,6 +234,70 @@ function History({ workbook, view }: { workbook: Workbook; view: View }) {
         onRun={() => view.redo()}
       />
     </>
+  );
+}
+
+/**
+ * The Freeze panes menu: freezing at the active cell, the top row or the
+ * first column, and unfreezing, each enabled when it can be done.
+ */
+function FreezeControls({
+  workbook,
+  view,
+}: {
+  workbook: Workbook;
+  view: View;
+}) {
+  const t = useTranslation();
+  const subscribe = useCallback(
+    (listener: () => void) => {
+      const unsubscribeWorkbook = workbook.subscribe(listener);
+      const unsubscribeView = view.subscribe(listener);
+      return () => {
+        unsubscribeWorkbook();
+        unsubscribeView();
+      };
+    },
+    [workbook, view],
+  );
+  const canFreeze = useSyncExternalStore(subscribe, () => view.canFreeze);
+  const canUnfreeze = useSyncExternalStore(subscribe, () => view.canUnfreeze);
+  const items = [
+    ['freeze.panes', !canFreeze, () => view.freeze('panes')],
+    ['freeze.topRow', false, () => view.freeze('topRow')],
+    ['freeze.firstColumn', false, () => view.freeze('firstColumn')],
+    ['unfreeze', !canUnfreeze, () => view.unfreeze()],
+  ] as const;
+  return (
+    <DropdownMenu.Root>
+      <Tooltip text={t('freeze.tooltip')}>
+        <DropdownMenu.Trigger asChild>
+          <button type="button" className={styles.button}>
+            <Snowflake size={ICON_SIZE} aria-hidden />
+            {t('freeze')}
+            <ChevronDown size={12} aria-hidden />
+          </button>
+        </DropdownMenu.Trigger>
+      </Tooltip>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          className={styles.menu}
+          align="start"
+          sideOffset={4}
+        >
+          {items.map(([label, disabled, onSelect]) => (
+            <DropdownMenu.Item
+              key={label}
+              className={styles.menuItem}
+              disabled={disabled}
+              onSelect={onSelect}
+            >
+              {t(label)}
+            </DropdownMenu.Item>
+          ))}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
   );
 }
 

@@ -1360,6 +1360,39 @@ describe('rows and columns', () => {
     expect(workbook.layout(sheet)).toBe(workbook.layout(sheet));
   });
 
+  it('freezes and unfreezes rows and columns, with undo, redo and the snapshot', () => {
+    const { workbook, sheet, insert, remove } = lines();
+    expect(workbook.layout(sheet).frozen).toBeUndefined();
+    workbook.execute({ type: 'freeze', sheet, rows: 2, cols: 1 });
+    expect(workbook.layout(sheet).frozen).toEqual({ rows: 2, cols: 1 });
+    const reopened = Workbook.fromSnapshot(workbook.toSnapshot());
+    expect(reopened.layout(sheet).frozen).toEqual({ rows: 2, cols: 1 });
+
+    // Inserting and deleting lines keeps what is frozen.
+    insert('rows', [0, 0]);
+    remove('columns', [0, 0]);
+    expect(workbook.layout(sheet).frozen).toEqual({ rows: 2, cols: 1 });
+    workbook.undo();
+    workbook.undo();
+
+    workbook.execute({ type: 'freeze', sheet, rows: 0, cols: 0 });
+    expect(workbook.layout(sheet).frozen).toBeUndefined();
+    expect(workbook.toSnapshot().sheets[0]!.frozen).toBeUndefined();
+    expect(workbook.undo()).toEqual({ sheet, ranges: [] });
+    expect(workbook.layout(sheet).frozen).toEqual({ rows: 2, cols: 1 });
+    workbook.undo();
+    expect(workbook.layout(sheet).frozen).toBeUndefined();
+    workbook.redo();
+    expect(workbook.layout(sheet).frozen).toEqual({ rows: 2, cols: 1 });
+
+    expect(() =>
+      workbook.execute({ type: 'freeze', sheet, rows: SHEET_ROWS, cols: 0 }),
+    ).toThrow();
+    expect(() =>
+      workbook.execute({ type: 'freeze', sheet, rows: 0, cols: -1 }),
+    ).toThrow();
+  });
+
   it('moves the sizes and hidden lines with the rows and columns', () => {
     const { workbook, sheet, insert, remove } = lines();
     workbook.execute({

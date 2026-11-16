@@ -106,17 +106,12 @@ async function load(id: string): Promise<Stored | null> {
         styles: workbook.styles,
         sheets: await Promise.all(
           workbook.sheetIds.map(async (sheetId) => {
-            const record = await result<SheetRecord>(
+            const record: Partial<SheetRecord> = await result<SheetRecord>(
               sheetStore.get([id, sheetId]),
             );
-            return {
-              id: record.id,
-              name: record.name,
-              ...(record.color !== undefined && { color: record.color }),
-              columns: record.columns,
-              formulas: record.formulas,
-              styleIds: record.styleIds,
-            };
+            // Everything the snapshot of the sheet holds, but the key.
+            delete record.workbook;
+            return record as SheetSnapshot;
           }),
         ),
       }

@@ -289,7 +289,7 @@ test.describe('the controls', () => {
         ['tab', 'File', 'Open and save workbooks'],
         ['tab', 'Home', 'The most used commands'],
         ['tab', 'Formulas', 'Functions to use in formulas'],
-        ['tab', 'View', 'Appearance and language'],
+        ['tab', 'View', 'Appearance, language and frozen panes'],
         ['button', 'Undo', /^Undo the last change \((Ctrl\+|⌘)Z\)$/],
         ['button', 'Redo', /^Redo the last change undone \((Ctrl\+|⌘)Y\)$/],
         [
@@ -373,11 +373,16 @@ test.describe('the controls', () => {
       [
         ['button', 'Light', 'Use the light theme'],
         ['button', 'Dark', 'Use the dark theme'],
+        [
+          'button',
+          'Freeze panes',
+          'Keep rows and columns in place while the rest of the sheet scrolls',
+        ],
         ['button', 'English', 'Show the interface in English'],
         ['button', '中文', 'Show the interface in Simplified Chinese'],
         ...statusBar,
       ],
-      7,
+      8,
     );
     await page.getByRole('tab', { name: 'Formulas' }).click();
     await clickCell(page, 5, 5);

@@ -24,6 +24,7 @@ import {
   NO_LINES,
   place,
   type Constant,
+  type Frozen,
   type Lines,
   type Sheet,
   type SheetLayout,
@@ -44,7 +45,7 @@ import {
 } from './style';
 
 export type { Value } from '../value';
-export type { Lines, SheetLayout } from './calc';
+export type { Frozen, Lines, SheetLayout } from './calc';
 export {
   BORDER_LINES,
   DEFAULT_FONT_SIZE,
@@ -186,6 +187,16 @@ export type Command =
        */
       readonly type: 'setLines';
     } & LinesOf<LineSpan>)
+  | {
+      /**
+       * Freezes the rows above `rows` and the columns left of `cols`, so
+       * that they stay in place while the others scroll; 0 and 0 unfreeze.
+       */
+      readonly type: 'freeze';
+      readonly sheet: string;
+      readonly rows: number;
+      readonly cols: number;
+    }
   | {
       /**
        * Puts sheets back as they were, giving the cells of `ranges` of
@@ -380,6 +391,8 @@ export interface SheetSnapshot extends SheetInfo {
   readonly hiddenColumns?: number[];
   /** The ranges merged into one cell; absent for none. */
   readonly merges?: Range[];
+  /** The rows and columns frozen; absent for none. */
+  readonly frozen?: Frozen;
 }
 
 /**
@@ -808,6 +821,8 @@ export class Workbook {
       // Formulas have moved, so what each reads is found again.
       this.calc.rebuild();
       this.fitNewSheets();
+    } else if (command.type === 'freeze') {
+      applied = this.freeze(command);
     } else if (command.type === 'setLines') {
       applied = this.setLines(command);
       // Wrapped text takes more or fewer lines in another width.
@@ -1056,6 +1071,29 @@ export class Workbook {
       executed: command,
       reverse: { ...command, sheets: before },
       change: { sheet, ranges },
+    };
+  }
+
+  /** Freezes rows and columns, or unfreezes them. */
+  private freeze(command: Extract<Command, { type: 'freeze' }>): Applied {
+    const sheet = this.sheet(command.sheet);
+    const { rows, cols } = command;
+    const valid = (count: number, limit: number) =>
+      Number.isInteger(count) && count >= 0 && count < limit;
+    if (!valid(rows, SHEET_ROWS) || !valid(cols, SHEET_COLUMNS)) {
+      throw new Error(`Invalid frozen panes: ${rows} rows, ${cols} columns`);
+    }
+    const old = sheet.layout.frozen ?? { rows: 0, cols: 0 };
+    const { rows: rowLines, columns } = sheet.layout;
+    sheet.layout = {
+      rows: rowLines,
+      columns,
+      ...((rows > 0 || cols > 0) && { frozen: { rows, cols } }),
+    };
+    return {
+      executed: command,
+      reverse: { ...command, ...old },
+      change: { sheet: sheet.id, ranges: [] },
     };
   }
 
@@ -1941,6 +1979,7 @@ function sheetOf(snapshot: SheetSnapshot): Sheet {
   sheet.layout = {
     rows: lines(snapshot.rowHeights, snapshot.hiddenRows),
     columns: lines(snapshot.columnWidths, snapshot.hiddenColumns),
+    ...(snapshot.frozen && { frozen: { ...snapshot.frozen } }),
   };
   if (snapshot.merges)
     sheet.merges = snapshot.merges.map((each) => ({ ...each }));
@@ -1953,7 +1992,7 @@ function sheetOf(snapshot: SheetSnapshot): Sheet {
 }
 
 function snapshotOf(sheet: Sheet): SheetSnapshot {
-  const { rows, columns } = sheet.layout;
+  const { rows, columns, frozen } = sheet.layout;
   return {
     id: sheet.id,
     name: sheet.name,
@@ -1973,5 +2012,6 @@ function snapshotOf(sheet: Sheet): SheetSnapshot {
     ...(rows.hidden.size > 0 && { hiddenRows: [...rows.hidden] }),
     ...(columns.hidden.size > 0 && { hiddenColumns: [...columns.hidden] }),
     ...(sheet.merges.length > 0 && { merges: [...sheet.merges] }),
+    ...(frozen && { frozen: { ...frozen } }),
   };
 }

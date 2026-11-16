@@ -45,6 +45,14 @@ export const NO_LINES: Lines = { sizes: new Map(), hidden: new Set() };
 export interface SheetLayout {
   readonly rows: Lines;
   readonly columns: Lines;
+  /** How many rows from the top and columns from the left are frozen. */
+  readonly frozen?: Frozen;
+}
+
+/** Rows and columns that stay in place while the others scroll. */
+export interface Frozen {
+  readonly rows: number;
+  readonly cols: number;
 }
 
 export interface Sheet {

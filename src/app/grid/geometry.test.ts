@@ -9,6 +9,7 @@ import {
   hitTest,
   isOnFillHandle,
   layoutOf,
+  panes,
   ROW_HEADER_WIDTH,
   ROW_HEIGHT,
   scrollToShow,
@@ -270,5 +271,133 @@ describe('grid geometry', () => {
       direction: 'rows',
       index: 1,
     });
+  });
+
+  it('keeps frozen rows and columns in place while the others scroll under them', () => {
+    const NONE = { sizes: new Map(), hidden: new Set<number>() };
+    const layout = layoutOf({
+      rows: NONE,
+      columns: NONE,
+      frozen: { rows: 2, cols: 1 },
+    });
+    const scrolled = { scrollX: 300, scrollY: 240, zoom: 1, layout };
+    const right = ROW_HEADER_WIDTH + COLUMN_WIDTH;
+    const below = COLUMN_HEADER_HEIGHT + 2 * ROW_HEIGHT;
+    // A frozen cell stays where it is; the others move by the scroll.
+    expect(cellRect({ row: 1, col: 0 }, scrolled)).toMatchObject({
+      x: ROW_HEADER_WIDTH,
+      y: COLUMN_HEADER_HEIGHT + ROW_HEIGHT,
+    });
+    expect(cellRect({ row: 12, col: 4 }, scrolled)).toMatchObject({
+      x: ROW_HEADER_WIDTH + 4 * COLUMN_WIDTH - 300,
+      y: COLUMN_HEADER_HEIGHT + 12 * ROW_HEIGHT - 240,
+    });
+    // Hit testing finds the frozen cells, and those scrolled past them.
+    expect(hitTest(ROW_HEADER_WIDTH + 1, below - 1, scrolled)).toEqual({
+      kind: 'cell',
+      row: 1,
+      col: 0,
+    });
+    expect(hitTest(right + 1, below + 1, scrolled)).toEqual({
+      kind: 'cell',
+      row: 12,
+      col: 4,
+    });
+    expect(hitTest(5, below - 1, scrolled)).toEqual({ kind: 'row', row: 1 });
+    expect(hitTest(right + 1, 5, scrolled)).toEqual({
+      kind: 'column',
+      col: 4,
+    });
+    // The fill handle of a range ending on the last frozen row is on it.
+    const handle = cellRect({ row: 1, col: 0 }, scrolled);
+    expect(
+      isOnFillHandle(
+        handle.x + handle.width,
+        handle.y + handle.height,
+        { top: 0, left: 0, bottom: 1, right: 0 },
+        scrolled,
+      ),
+    ).toBe(true);
+    // A cell is shown past the frozen ones, and a frozen one needs no scroll.
+    const width = right + 4 * COLUMN_WIDTH;
+    const height = below + 5 * ROW_HEIGHT;
+    expect(scrollToShow({ row: 3, col: 2 }, scrolled, width, height)).toEqual({
+      scrollX: COLUMN_WIDTH,
+      scrollY: ROW_HEIGHT,
+    });
+    expect(scrollToShow({ row: 0, col: 0 }, scrolled, width, height)).toEqual({
+      scrollX: 300,
+      scrollY: 240,
+    });
+    // The canvas is drawn in four panes, each scrolled its own way.
+    expect(panes(scrolled, width, height)).toMatchObject([
+      {
+        viewport: { ...scrolled, scrollX: 0, scrollY: 0, layout: UNIFORM },
+        clip: {
+          x: ROW_HEADER_WIDTH,
+          y: COLUMN_HEADER_HEIGHT,
+          width: COLUMN_WIDTH,
+          height: 2 * ROW_HEIGHT,
+        },
+      },
+      {
+        viewport: { ...scrolled, scrollY: 0, layout: UNIFORM },
+        clip: {
+          x: right,
+          y: COLUMN_HEADER_HEIGHT,
+          width: width - right,
+          height: 2 * ROW_HEIGHT,
+        },
+      },
+      {
+        viewport: { ...scrolled, scrollX: 0, layout: UNIFORM },
+        clip: {
+          x: ROW_HEADER_WIDTH,
+          y: below,
+          width: COLUMN_WIDTH,
+          height: height - below,
+        },
+      },
+      {
+        viewport: { ...scrolled, layout: UNIFORM },
+        clip: {
+          x: right,
+          y: below,
+          width: width - right,
+          height: height - below,
+        },
+      },
+    ]);
+    // Frozen lines past the canvas are left out, and nothing scrolls.
+    const tall = {
+      ...top,
+      layout: layoutOf({
+        rows: NONE,
+        columns: NONE,
+        frozen: { rows: SHEET_ROWS - 1, cols: 0 },
+      }),
+    };
+    expect(panes(tall, width, height)).toMatchObject([
+      {
+        clip: {
+          y: COLUMN_HEADER_HEIGHT,
+          height: height - COLUMN_HEADER_HEIGHT,
+        },
+        range: { top: 0, bottom: 6 },
+      },
+      { clip: { y: height, height: 0 } },
+    ]);
+    // Without frozen lines, there is one pane.
+    expect(panes(top, width, height)).toMatchObject([
+      {
+        viewport: top,
+        clip: {
+          x: ROW_HEADER_WIDTH,
+          y: COLUMN_HEADER_HEIGHT,
+          width: width - ROW_HEADER_WIDTH,
+          height: height - COLUMN_HEADER_HEIGHT,
+        },
+      },
+    ]);
   });
 });
