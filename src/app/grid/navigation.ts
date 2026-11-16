@@ -1,6 +1,6 @@
 import { SHEET_COLUMNS, SHEET_ROWS, type Range } from '../../engine/workbook';
 import type { CellPosition } from './geometry';
-import { extendTo, single, type Selection } from './selection';
+import { extendTo, mergeAt, single, type Selection } from './selection';
 
 const LAST_ROW = SHEET_ROWS - 1;
 const LAST_COL = SHEET_COLUMNS - 1;
@@ -40,6 +40,8 @@ export interface SheetContents {
   isEmpty(row: number, col: number): boolean;
   /** How many rows and columns, from A1, the cells in use extend over. */
   extent(): { rows: number; cols: number };
+  /** The ranges merged into one cell, which a step leaves from its edge. */
+  readonly merges?: readonly Range[];
 }
 
 const ARROWS: Record<string, [number, number]> = {
@@ -114,11 +116,25 @@ function target(
   sheet: SheetContents,
 ): CellPosition {
   switch (navigation.type) {
-    case 'step':
-      return {
-        row: from.row + navigation.rows,
-        col: from.col + navigation.cols,
-      };
+    case 'step': {
+      const { rows, cols } = navigation;
+      const merge = mergeAt(sheet.merges ?? [], from);
+      const row = !merge
+        ? from.row
+        : rows > 0
+          ? merge.bottom
+          : rows < 0
+            ? merge.top
+            : from.row;
+      const col = !merge
+        ? from.col
+        : cols > 0
+          ? merge.right
+          : cols < 0
+            ? merge.left
+            : from.col;
+      return { row: row + rows, col: col + cols };
+    }
     case 'edge':
       return edge(from, navigation.rows, navigation.cols, sheet);
     case 'rowStart':

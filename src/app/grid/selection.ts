@@ -1,4 +1,9 @@
-import { SHEET_COLUMNS, SHEET_ROWS, type Range } from '../../engine/workbook';
+import {
+  SHEET_COLUMNS,
+  SHEET_ROWS,
+  withMerges,
+  type Range,
+} from '../../engine/workbook';
 import type { CellPosition, Target } from './geometry';
 
 const LAST_ROW = SHEET_ROWS - 1;
@@ -14,6 +19,38 @@ export interface Selection {
   readonly active: CellPosition;
   readonly anchor: CellPosition;
   readonly focus: CellPosition;
+}
+
+/** The merge a cell is in, or `undefined`. */
+export function mergeAt(
+  merges: readonly Range[],
+  { row, col }: CellPosition,
+): Range | undefined {
+  return merges.find(
+    (merge) =>
+      row >= merge.top &&
+      row <= merge.bottom &&
+      col >= merge.left &&
+      col <= merge.right,
+  );
+}
+
+/**
+ * The selection with each range grown over the merged cells it overlaps,
+ * and the top-left cell of a merged cell active in place of another of
+ * its cells, as Excel selects a merged cell as one.
+ */
+export function overMerges(
+  selection: Selection,
+  merges: readonly Range[],
+): Selection {
+  if (merges.length === 0) return selection;
+  const merge = mergeAt(merges, selection.active);
+  return {
+    ...selection,
+    ranges: selection.ranges.map((range) => withMerges(range, merges)),
+    active: merge ? { row: merge.top, col: merge.left } : selection.active,
+  };
 }
 
 /** The range between two corners. */

@@ -675,7 +675,7 @@ Notes:
 
 ## S17: Borders, merged cells and the format painter
 
-Status: Todo
+Status: In progress
 
 Acceptance criteria:
 - The user can set a border on any side of the selected cells, or all, outside

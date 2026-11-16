@@ -29,6 +29,8 @@ import {
   mayGrowRow,
   STANDARD_COLUMN_WIDTH,
   STANDARD_ROW_HEIGHT,
+  type Border,
+  type BorderSides,
   type Style,
   type StyleChange,
   type TextWidth,
@@ -37,6 +39,7 @@ import {
 export type { Value } from '../value';
 export type { Lines, SheetLayout } from './calc';
 export {
+  BORDER_LINES,
   DEFAULT_FONT_SIZE,
   FONT_SIZES,
   FONTS,
@@ -46,6 +49,8 @@ export {
   STANDARD_ROW_HEIGHT,
   TEXT_PADDING,
   wrapText,
+  type Border,
+  type BorderSides,
   type Style,
   type StyleChange,
   type TextWidth,
@@ -98,6 +103,33 @@ export type Command =
       readonly sheet: string;
       readonly ranges: readonly Range[];
       readonly style: StyleChange;
+    }
+  | {
+      /**
+       * Puts a border on sides of the cells of ranges, or takes it off
+       * when `null`, keeping the rest of their style. Ranges over whole
+       * rows or columns change only the cells in use there.
+       */
+      readonly type: 'setBorders';
+      readonly sheet: string;
+      readonly ranges: readonly Range[];
+      readonly sides: BorderSides;
+      readonly border: Border | null;
+    }
+  | {
+      /**
+       * Merges each range into one cell, with the merges it overlaps: the
+       * top-left cell keeps its value, and the others are emptied.
+       */
+      readonly type: 'merge';
+      readonly sheet: string;
+      readonly ranges: readonly Range[];
+    }
+  | {
+      /** Unmerges the merged cells that ranges overlap. */
+      readonly type: 'unmerge';
+      readonly sheet: string;
+      readonly ranges: readonly Range[];
     }
   | {
       /** Empties the cells of ranges, keeping their formats. */
@@ -250,6 +282,11 @@ export interface Restore {
   readonly sheet: string;
   readonly ranges: readonly Range[];
   readonly cells: readonly CellContents[];
+  /**
+   * When present, the merges that overlap the ranges are replaced by
+   * these; otherwise they stay as they are.
+   */
+  readonly merges?: readonly Range[];
 }
 
 /** A cell's contents and style, as a `restore` command puts them back. */
@@ -329,6 +366,8 @@ export interface SheetSnapshot extends SheetInfo {
   /** Absent for none. */
   readonly hiddenRows?: number[];
   readonly hiddenColumns?: number[];
+  /** The ranges merged into one cell; absent for none. */
+  readonly merges?: Range[];
 }
 
 /**
@@ -354,6 +393,55 @@ type SheetChange = Extract<
 type SetLines = Extract<Command, { type: 'setLines' }>;
 type RestoreSheets = Extract<Command, { type: 'restoreSheets' }>;
 type Fill = Extract<Command, { type: 'fill' }>;
+type CellCommand = Extract<
+  Command,
+  {
+    type:
+      | 'setCell'
+      | 'setCells'
+      | 'clear'
+      | 'restore'
+      | 'setStyle'
+      | 'setBorders'
+      | 'merge'
+      | 'unmerge';
+  }
+>;
+
+/** Whether two ranges share a cell. */
+function overlap(a: Range, b: Range): boolean {
+  return (
+    a.top <= b.bottom &&
+    b.top <= a.bottom &&
+    a.left <= b.right &&
+    b.left <= a.right
+  );
+}
+
+/** A range grown until it takes in every merge it overlaps. */
+export function withMerges(range: Range, merges: readonly Range[]): Range {
+  let result = range;
+  for (let grown = true; grown;) {
+    grown = false;
+    for (const merge of merges) {
+      if (!overlap(result, merge)) continue;
+      const top = Math.min(result.top, merge.top);
+      const left = Math.min(result.left, merge.left);
+      const bottom = Math.max(result.bottom, merge.bottom);
+      const right = Math.max(result.right, merge.right);
+      if (
+        top !== result.top ||
+        left !== result.left ||
+        bottom !== result.bottom ||
+        right !== result.right
+      ) {
+        result = { top, left, bottom, right };
+        grown = true;
+      }
+    }
+  }
+  return result;
+}
 
 /** The cells a `setCells` command sets, inside the sheet. */
 function blockOf(command: Extract<Command, { type: 'setCells' }>): Range {
@@ -577,6 +665,11 @@ export class Workbook {
     return this.sheet(sheetId).layout;
   }
 
+  /** The ranges merged into one cell: the same array until they change. */
+  merges(sheetId: string): readonly Range[] {
+    return this.sheet(sheetId).merges;
+  }
+
   /** How many rows and columns, from A1, the cells in use extend over. */
   extent(sheetId: string): { rows: number; cols: number } {
     const sheet = this.sheet(sheetId);
@@ -622,7 +715,10 @@ export class Workbook {
       command.type === 'setCells' ||
       command.type === 'clear' ||
       command.type === 'restore' ||
-      command.type === 'setStyle'
+      command.type === 'setStyle' ||
+      command.type === 'setBorders' ||
+      command.type === 'merge' ||
+      command.type === 'unmerge'
     ) {
       applied = this.changeCells(command);
       const sheet = this.sheet(command.sheet);
@@ -694,33 +790,41 @@ export class Workbook {
     return change;
   }
 
-  private changeCells(
-    command: Extract<
-      Command,
-      { type: 'setCell' | 'setCells' | 'clear' | 'restore' | 'setStyle' }
-    >,
-  ): Applied {
+  private changeCells(command: CellCommand): Applied {
     const sheet = this.sheet(command.sheet);
     const ranges =
-      command.type === 'setStyle'
+      command.type === 'setStyle' || command.type === 'setBorders'
         ? command.ranges.flatMap((range) => this.inUse(sheet, range) ?? [])
-        : command.type === 'setCell'
-          ? [
-              {
-                top: command.row,
-                left: command.col,
-                bottom: command.row,
-                right: command.col,
-              },
-            ]
-          : command.type === 'setCells'
-            ? [blockOf(command)]
-            : command.ranges;
+        : command.type === 'merge'
+          ? command.ranges.map((range) => withMerges(range, sheet.merges))
+          : command.type === 'unmerge'
+            ? this.mergesIn(sheet, command.ranges)
+            : command.type === 'setCell'
+              ? [
+                  {
+                    top: command.row,
+                    left: command.col,
+                    bottom: command.row,
+                    right: command.col,
+                  },
+                ]
+              : command.type === 'setCells'
+                ? [blockOf(command)]
+                : command.ranges;
+    const merging =
+      command.type === 'merge' ||
+      command.type === 'unmerge' ||
+      (command.type === 'restore' && command.merges !== undefined);
     const reverse: Restore = {
       type: 'restore',
       sheet: sheet.id,
       ranges,
       cells: this.contents(sheet, ranges),
+      ...(merging && {
+        merges: sheet.merges.filter((merge) =>
+          ranges.some((range) => overlap(range, merge)),
+        ),
+      }),
     };
     let executed: Command = command;
     if (command.type === 'setCell' || command.type === 'setCells') {
@@ -734,6 +838,12 @@ export class Workbook {
       for (const range of command.ranges) this.clear(sheet, range);
     } else if (command.type === 'setStyle') {
       for (const range of ranges) this.setStyle(sheet, range, command.style);
+    } else if (command.type === 'setBorders') {
+      for (const range of ranges) this.setBorders(sheet, range, command);
+    } else if (command.type === 'merge') {
+      this.merge(sheet, ranges);
+    } else if (command.type === 'unmerge') {
+      this.unmerge(sheet, ranges);
     } else {
       this.restore(sheet, command);
     }
@@ -1298,7 +1408,7 @@ export class Workbook {
   }
 
   /** Empties the ranges of a `restore`, styles too, and fills in its cells. */
-  private restore(sheet: Sheet, { ranges, cells }: Restore): void {
+  private restore(sheet: Sheet, { ranges, cells, merges }: Restore): void {
     for (const range of ranges) {
       this.clear(sheet, range);
       const { top, left, bottom, right } = range;
@@ -1319,6 +1429,10 @@ export class Workbook {
       }
       (sheet.columns[col] ??= [])[row] = value;
       if (style) (sheet.styleIds[col] ??= [])[row] = this.styleId(style);
+    }
+    if (merges) {
+      this.unmerge(sheet, ranges);
+      sheet.merges = [...sheet.merges, ...merges];
     }
   }
 
@@ -1392,6 +1506,72 @@ export class Workbook {
         );
       }
     }
+  }
+
+  /**
+   * Puts a border on sides of the cells of a range: those at its edges
+   * for the sides of the range, every side for `all`.
+   */
+  private setBorders(
+    sheet: Sheet,
+    range: Range,
+    { sides, border }: Extract<Command, { type: 'setBorders' }>,
+  ): void {
+    // Kept in one order, so that equal borders make equal styles.
+    const line = border && {
+      line: border.line,
+      ...(border.color !== undefined && { color: border.color }),
+    };
+    const { top, left, bottom, right } = range;
+    const edges: [BorderSides, keyof Style, Range][] = [
+      ['top', 'borderTop', { ...range, bottom: top }],
+      ['right', 'borderRight', { ...range, left: right }],
+      ['bottom', 'borderBottom', { ...range, top: bottom }],
+      ['left', 'borderLeft', { ...range, right: left }],
+    ];
+    for (const [side, property, edge] of edges) {
+      if (sides === 'all') {
+        this.setStyle(sheet, range, { [property]: line });
+      } else if (sides === 'outside' || sides === side) {
+        this.setStyle(sheet, edge, { [property]: line });
+      }
+    }
+  }
+
+  /** Merges ranges, emptying all but their top-left cells. */
+  private merge(sheet: Sheet, ranges: readonly Range[]): void {
+    this.unmerge(sheet, ranges);
+    for (const range of ranges) {
+      const { top, left } = range;
+      const kept = sheet.formulas.get(key(top, left))?.text;
+      const value = sheet.columns[left]?.[top] ?? null;
+      this.clear(sheet, range);
+      if (kept !== undefined) {
+        this.calc.put(sheet, top, left, kept, parse(kept.slice(1))!);
+      } else if (value !== null) {
+        sheet.columns[left]![top] = value;
+      }
+    }
+    const merged = ranges.filter(
+      ({ top, left, bottom, right }) => top !== bottom || left !== right,
+    );
+    sheet.merges = [...sheet.merges, ...merged];
+  }
+
+  /** Unmerges the merges that ranges overlap. */
+  private unmerge(sheet: Sheet, ranges: readonly Range[]): void {
+    const kept = sheet.merges.filter(
+      (merge) => !ranges.some((range) => overlap(range, merge)),
+    );
+    if (kept.length !== sheet.merges.length) sheet.merges = kept;
+  }
+
+  /** The merges that ranges overlap, or the ranges when there are none. */
+  private mergesIn(sheet: Sheet, ranges: readonly Range[]): Range[] {
+    const merges = sheet.merges.filter((merge) =>
+      ranges.some((range) => overlap(range, merge)),
+    );
+    return merges.length > 0 ? merges : [...ranges];
   }
 
   /**
@@ -1616,8 +1796,32 @@ function movedLines(
       const place = moved(index);
       return place === null ? [] : [place];
     });
+  // A merge keeps the lines of it that stay, and grows with those inserted
+  // inside it; one left with a single cell is no longer a merge.
+  const span = (start: number, end: number): [number, number] | null => {
+    let first = start;
+    while (first <= end && moved(first) === null) first++;
+    let last = end;
+    while (last >= first && moved(last) === null) last--;
+    if (first > last) return null;
+    return [moved(first)!, moved(last)!];
+  };
+  const merges = snapshot.merges?.flatMap((merge) => {
+    const lines = rows
+      ? span(merge.top, merge.bottom)
+      : span(merge.left, merge.right);
+    if (!lines) return [];
+    const [start, end] = lines;
+    const result = rows
+      ? { ...merge, top: start, bottom: end }
+      : { ...merge, left: start, right: end };
+    return result.top === result.bottom && result.left === result.right
+      ? []
+      : [result];
+  });
   return {
     ...snapshot,
+    ...(merges && { merges }),
     columns: cells(snapshot.columns, null),
     ...(snapshot.styleIds && { styleIds: cells(snapshot.styleIds, 0) }),
     ...(rows
@@ -1652,6 +1856,8 @@ function sheetOf(snapshot: SheetSnapshot): Sheet {
     rows: lines(snapshot.rowHeights, snapshot.hiddenRows),
     columns: lines(snapshot.columnWidths, snapshot.hiddenColumns),
   };
+  if (snapshot.merges)
+    sheet.merges = snapshot.merges.map((each) => ({ ...each }));
   for (const [row, col, text] of snapshot.formulas) {
     const ast = parse(text.slice(1));
     if (!ast) throw new Error(`Invalid formula in snapshot: ${text}`);
@@ -1680,5 +1886,6 @@ function snapshotOf(sheet: Sheet): SheetSnapshot {
     ...(columns.sizes.size > 0 && { columnWidths: [...columns.sizes] }),
     ...(rows.hidden.size > 0 && { hiddenRows: [...rows.hidden] }),
     ...(columns.hidden.size > 0 && { hiddenColumns: [...columns.hidden] }),
+    ...(sheet.merges.length > 0 && { merges: [...sheet.merges] }),
   };
 }

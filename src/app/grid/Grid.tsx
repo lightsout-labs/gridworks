@@ -14,6 +14,7 @@ import {
   columnName,
   fontPixels,
   lineHeight,
+  type Border,
   type Direction,
   type Range,
   type Style,
@@ -45,8 +46,9 @@ import { formulaHelp, type Highlight } from './formula';
 import { FormulaEditor } from './FormulaEditor';
 import styles from './Grid.module.css';
 import { keyAction } from './keys';
-import { pick } from './selection';
+import { mergeAt, pick } from './selection';
 import {
+  cellText,
   cssFont,
   rowTexts,
   TEXT_PADDING,
@@ -274,6 +276,8 @@ export function Grid({
     };
     const onUp = () => {
       if (drag.current === 'fill') view.fill();
+      // The format painter paints the range a click or drag selects.
+      else if (typeof drag.current === 'string') view.paint();
       if (resizeDrag.current) view.resize();
       drag.current = null;
       resizeDrag.current = null;
@@ -469,7 +473,11 @@ export function Grid({
   };
 
   const sheetArea = sheetSize({ zoom, layout });
-  const editor = cellRect(active, { scrollX: 0, scrollY: 0, zoom, layout });
+  // A merged cell is edited in the whole of its box.
+  const editor = areaRect(
+    mergeAt(workbook.merges(sheet), active) ?? cellRange(active),
+    { scrollX: 0, scrollY: 0, zoom, layout },
+  );
   const shownCopy =
     copied && copied.sheet === sheet ? rangeName(copied.range) : undefined;
   return (
@@ -495,7 +503,9 @@ export function Grid({
                     : 'col-resize'
                   : onFillHandle(event)
                     ? 'crosshair'
-                    : '';
+                    : view.state.painter
+                      ? 'copy'
+                      : '';
               }}
               onDoubleClick={onDoubleClick}
               onContextMenu={onContextMenu}
@@ -532,6 +542,84 @@ export function Grid({
       {menu(menuLines)}
     </ContextMenu.Root>
   );
+}
+
+/** The range of one cell. */
+function cellRange({ row, col }: CellPosition): Range {
+  return { top: row, left: col, bottom: row, right: col };
+}
+
+/** Where a range of cells is on the canvas. */
+function areaRect({ top, left, bottom, right }: Range, viewport: Viewport) {
+  const start = cellRect({ row: top, col: left }, viewport);
+  const end = cellRect({ row: bottom, col: right }, viewport);
+  return {
+    x: start.x,
+    y: start.y,
+    width: end.x + end.width - start.x,
+    height: end.y + end.height - start.y,
+  };
+}
+
+function sameRange(a: Range, b: Range): boolean {
+  return (
+    a.top === b.top &&
+    a.left === b.left &&
+    a.bottom === b.bottom &&
+    a.right === b.right
+  );
+}
+
+/** The widths of the lines of borders, in CSS pixels whatever the zoom. */
+const BORDER_WIDTHS: Record<Border['line'], number> = {
+  thin: 1,
+  medium: 2,
+  thick: 3,
+  dashed: 1,
+  dotted: 1,
+  double: 1,
+};
+
+/**
+ * Draws a border on a side of a box, over its grid line: solid, in dashes
+ * or dots, or as two lines.
+ */
+function drawBorder(
+  context: CanvasRenderingContext2D,
+  { line, color }: Border,
+  side: 'top' | 'right' | 'bottom' | 'left',
+  box: { x: number; y: number; width: number; height: number },
+  automatic: string,
+): void {
+  context.fillStyle = color ?? automatic;
+  const across = side === 'top' || side === 'bottom';
+  const at = Math.round(
+    side === 'top'
+      ? box.y
+      : side === 'bottom'
+        ? box.y + box.height
+        : side === 'left'
+          ? box.x
+          : box.x + box.width,
+  );
+  const from = Math.round(across ? box.x : box.y);
+  const to = Math.round(across ? box.x + box.width : box.y + box.height);
+  const width = BORDER_WIDTHS[line];
+  const stroke = (start: number, length: number, offset: number) => {
+    if (across) context.fillRect(start, at + offset, length, width);
+    else context.fillRect(at + offset, start, width, length);
+  };
+  if (line === 'double') {
+    stroke(from, to - from + 1, -1);
+    stroke(from, to - from + 1, 1);
+  } else if (line === 'dashed' || line === 'dotted') {
+    const [dash, gap] = line === 'dashed' ? [4, 2] : [1, 1];
+    for (let start = from; start <= to; start += dash + gap) {
+      stroke(start, Math.min(dash, to - start + 1), 0);
+    }
+  } else {
+    stroke(from, to - from + 1, -Math.floor((width - 1) / 2));
+  }
 }
 
 /** The name of a range, as in `A1:B2`, or of its one cell. */
@@ -626,16 +714,18 @@ function draw(
   const range = visibleRange(width, height, viewport);
   const { ranges, active } = selection;
   const rect = (cell: CellPosition) => cellRect(cell, viewport);
-  const rangeRect = ({ top, left, bottom, right }: Range) => {
-    const start = rect({ row: top, col: left });
-    const end = rect({ row: bottom, col: right });
-    return {
-      x: start.x,
-      y: start.y,
-      width: end.x + end.width - start.x,
-      height: end.y + end.height - start.y,
-    };
-  };
+  const rangeRect = (each: Range) => areaRect(each, viewport);
+  // The merged cells in sight, each drawn as one cell.
+  const merges = workbook
+    .merges(sheet)
+    .filter(
+      (merge) =>
+        merge.top <= range.bottom &&
+        merge.bottom >= range.top &&
+        merge.left <= range.right &&
+        merge.right >= range.left,
+    );
+  const activeArea = mergeAt(merges, active) ?? cellRange(active);
   const font = `${FONT_SIZE * zoom}px ${style.fontFamily}`;
 
   context.fillStyle = color('--background');
@@ -652,31 +742,36 @@ function draw(
     return context.measureText(text).width / zoom;
   };
   const background = color('--background');
-  const fills = new Map<string, string>();
+  const looks = new Map<string, Style>();
   const rows: { row: number; texts: RowText[] }[] = [];
   for (let row = range.top; row <= range.bottom; row++) {
     const texts = rowTexts(
       (col) => {
         const cell = workbook.cell(sheet, row, col);
-        fills.set(`${row},${col}`, cell.style.fill ?? '');
+        looks.set(`${row},${col}`, cell.style);
         return cell;
       },
       range.left,
       range.right,
       measure,
       (col) => layout.cols.size(col),
+      (col) => mergeAt(merges, { row, col }) !== undefined,
     );
     rows.push({ row, texts });
   }
   // The texts read every visible cell; a cell outside them, such as an
   // active cell scrolled away, is read here.
-  const fillOf = (row: number, col: number) => {
+  const lookOf = (row: number, col: number): Style => {
     const key = `${row},${col}`;
-    if (!fills.has(key)) {
-      fills.set(key, workbook.cell(sheet, row, col).style.fill ?? '');
+    let look = looks.get(key);
+    if (!look) {
+      look = workbook.cell(sheet, row, col).style;
+      looks.set(key, look);
     }
-    return fills.get(key) || background;
+    return look;
   };
+  const fillOf = (row: number, col: number) =>
+    lookOf(row, col).fill ?? background;
 
   // The cells, kept out of the headers.
   context.save();
@@ -686,6 +781,7 @@ function draw(
 
   for (let row = range.top; row <= range.bottom; row++) {
     for (let col = range.left; col <= range.right; col++) {
+      if (mergeAt(merges, { row, col })) continue;
       const fill = fillOf(row, col);
       if (fill === background) continue;
       const box = rect({ row, col });
@@ -702,9 +798,11 @@ function draw(
     const box = rangeRect(each);
     context.fillRect(box.x, box.y, box.width, box.height);
   }
-  if (selected && (ranges.length > 1 || !isSingleCell(ranges[0]!))) {
+  const shadesActive =
+    selected && (ranges.length > 1 || !sameRange(ranges[0]!, activeArea));
+  if (shadesActive) {
     // The active cell is not shaded, as in Excel.
-    const box = rect(active);
+    const box = rangeRect(activeArea);
     context.fillStyle = fillOf(active.row, active.col);
     context.fillRect(box.x, box.y, box.width, box.height);
   }
@@ -726,6 +824,43 @@ function draw(
 
   context.textBaseline = 'middle';
   const padding = TEXT_PADDING * zoom;
+  const textColor = (look: Style) =>
+    look.color ??
+    (look.fill !== undefined ? textColorOn(look.fill) : color('--text'));
+
+  // Each merged cell, over the grid lines inside it, with the fill and
+  // text of its top-left cell.
+  for (const merge of merges) {
+    const box = rangeRect(merge);
+    if (box.width <= 0 || box.height <= 0) continue;
+    const { top: row, left: col } = merge;
+    context.save();
+    context.beginPath();
+    context.rect(box.x + 1, box.y + 1, box.width - 1, box.height - 1);
+    context.clip();
+    context.fillStyle = fillOf(row, col);
+    context.fillRect(box.x, box.y, box.width, box.height);
+    const shaded =
+      selected &&
+      ranges.some((each) => overlaps(each, merge)) &&
+      !(shadesActive && sameRange(merge, activeArea)) &&
+      !(ranges.length === 1 && sameRange(ranges[0]!, merge));
+    if (shaded) {
+      context.fillStyle = color('--selection');
+      context.fillRect(box.x, box.y, box.width, box.height);
+    }
+    const cell = workbook.cell(sheet, row, col);
+    if (cell.display !== '') {
+      const { lines, align } = cellText(cell, box.width / zoom, measure);
+      drawText(context, lines, cell.style, align, box, {
+        zoom,
+        padding,
+        color: textColor(cell.style),
+        setFont,
+      });
+    }
+    context.restore();
+  }
   for (const { row, texts } of rows) {
     for (const { col, lines, style: look, align, from, to } of texts) {
       const box = rect({ row, col });
@@ -754,12 +889,41 @@ function draw(
       drawText(context, lines, look, align, box, {
         zoom,
         padding,
-        color:
-          look.color ??
-          (look.fill !== undefined ? textColorOn(look.fill) : color('--text')),
+        color: textColor(look),
         setFont,
       });
       context.restore();
+    }
+  }
+
+  // The borders of the cells, but not on the sides inside a merged cell.
+  const automatic = color('--text');
+  for (let row = range.top; row <= range.bottom; row++) {
+    for (let col = range.left; col <= range.right; col++) {
+      const look = lookOf(row, col);
+      const sides = [
+        ['top', look.borderTop],
+        ['right', look.borderRight],
+        ['bottom', look.borderBottom],
+        ['left', look.borderLeft],
+      ] as const;
+      if (sides.every(([, border]) => border === undefined)) continue;
+      const box = rect({ row, col });
+      if (box.width === 0 || box.height === 0) continue;
+      const merge = mergeAt(merges, { row, col });
+      for (const [side, border] of sides) {
+        if (!border) continue;
+        const inside =
+          merge &&
+          (side === 'top'
+            ? row > merge.top
+            : side === 'bottom'
+              ? row < merge.bottom
+              : side === 'left'
+                ? col > merge.left
+                : col < merge.right);
+        if (!inside) drawBorder(context, border, side, box, automatic);
+      }
     }
   }
 
@@ -791,7 +955,7 @@ function draw(
       context.fillRect(x - size / 2, y - size / 2, size, size);
     }
   } else if (selected) {
-    const box = rect(active);
+    const box = rangeRect(activeArea);
     context.lineWidth = 1;
     context.strokeRect(box.x + 0.5, box.y + 0.5, box.width, box.height);
   }
@@ -918,6 +1082,15 @@ function shownReferences(
     reference.sheet === undefined
       ? entry.sheet === sheet
       : reference.sheet.toLowerCase() === name,
+  );
+}
+
+function overlaps(a: Range, b: Range): boolean {
+  return (
+    a.top <= b.bottom &&
+    b.top <= a.bottom &&
+    a.left <= b.right &&
+    b.left <= a.right
   );
 }
 

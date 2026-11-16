@@ -1635,3 +1635,217 @@ describe('cell formats', () => {
     expect(fitted(1)).toBeUndefined();
   });
 });
+
+describe('borders', () => {
+  const thin = { line: 'thin', color: '#ff0000' } as const;
+  const A1B2 = { top: 0, left: 0, bottom: 1, right: 1 };
+
+  function borders() {
+    const { workbook, sheet, set } = setup();
+    const style = (row: number, col: number) =>
+      workbook.cell(sheet, row, col).style;
+    return { workbook, sheet, set, style };
+  }
+
+  it('sets borders on every side of every cell, keeping the rest of their style', () => {
+    const { workbook, sheet, style } = borders();
+    workbook.execute({
+      type: 'setStyle',
+      sheet,
+      ranges: [A1B2],
+      style: { bold: true },
+    });
+    workbook.execute({
+      type: 'setBorders',
+      sheet,
+      ranges: [A1B2],
+      sides: 'all',
+      border: thin,
+    });
+    for (const [row, col] of [
+      [0, 0],
+      [1, 1],
+    ] as const) {
+      expect(style(row, col)).toEqual({
+        bold: true,
+        borderTop: thin,
+        borderRight: thin,
+        borderBottom: thin,
+        borderLeft: thin,
+      });
+    }
+  });
+
+  it('sets the outside borders and those of one side on the edges of each range', () => {
+    const { workbook, sheet, style } = borders();
+    const range = { top: 0, left: 0, bottom: 2, right: 2 };
+    const thick = { line: 'thick' } as const;
+    workbook.execute({
+      type: 'setBorders',
+      sheet,
+      ranges: [range],
+      sides: 'outside',
+      border: thick,
+    });
+    expect(style(0, 0)).toEqual({ borderTop: thick, borderLeft: thick });
+    expect(style(0, 1)).toEqual({ borderTop: thick });
+    expect(style(2, 2)).toEqual({ borderRight: thick, borderBottom: thick });
+    expect(style(1, 1)).toEqual({});
+
+    workbook.execute({
+      type: 'setBorders',
+      sheet,
+      ranges: [range],
+      sides: 'bottom',
+      border: thin,
+    });
+    expect(style(2, 1)).toEqual({ borderBottom: thin });
+    expect(style(2, 2)).toEqual({ borderRight: thick, borderBottom: thin });
+    expect(style(1, 1)).toEqual({});
+  });
+
+  it('removes every border with none, and undoes it', () => {
+    const { workbook, sheet, style } = borders();
+    workbook.execute({
+      type: 'setBorders',
+      sheet,
+      ranges: [A1B2],
+      sides: 'all',
+      border: thin,
+    });
+    workbook.execute({
+      type: 'setBorders',
+      sheet,
+      ranges: [A1B2],
+      sides: 'all',
+      border: null,
+    });
+    expect(style(1, 0)).toEqual({});
+    expect(workbook.undo()).toEqual({ sheet, ranges: [A1B2] });
+    expect(style(1, 0).borderLeft).toEqual(thin);
+    workbook.redo();
+    expect(style(1, 0)).toEqual({});
+  });
+});
+
+describe('merges', () => {
+  function merges() {
+    const { workbook, sheet, set, show } = setup();
+    const merge = (top: number, left: number, bottom: number, right: number) =>
+      workbook.execute({
+        type: 'merge',
+        sheet,
+        ranges: [{ top, left, bottom, right }],
+      });
+    return { workbook, sheet, set, show, merge };
+  }
+
+  it('merges a range into its top-left cell, keeping only its value', () => {
+    const { workbook, sheet, set, show, merge } = merges();
+    set(0, 0, 'keep');
+    set(1, 1, 'lose');
+    set(0, 2, '=B2');
+    set(5, 5, '1');
+    merge(0, 0, 1, 1);
+    expect(workbook.merges(sheet)).toEqual([
+      { top: 0, left: 0, bottom: 1, right: 1 },
+    ]);
+    expect(show(0, 0)).toBe('keep');
+    expect(show(1, 1)).toBe('');
+    expect(show(0, 2)).toBe('0');
+    expect(show(5, 5)).toBe('1');
+  });
+
+  it('merges over the merges a range overlaps, and unmerges those it touches', () => {
+    const { workbook, sheet, merge } = merges();
+    merge(0, 0, 1, 1);
+    merge(1, 1, 3, 1);
+    expect(workbook.merges(sheet)).toEqual([
+      { top: 0, left: 0, bottom: 3, right: 1 },
+    ]);
+    merge(5, 0, 5, 3);
+    workbook.execute({
+      type: 'unmerge',
+      sheet,
+      ranges: [{ top: 2, left: 0, bottom: 5, right: 0 }],
+    });
+    expect(workbook.merges(sheet)).toEqual([]);
+  });
+
+  it('undoes and redoes a merge and an unmerge, which listeners can replay', () => {
+    const { workbook, sheet, set, show, merge } = merges();
+    const replay = Workbook.fromSnapshot(workbook.toSnapshot());
+    workbook.subscribe((command) => replay.execute(command));
+    set(0, 0, 'a');
+    set(0, 1, 'b');
+    merge(0, 0, 0, 1);
+    const range = { top: 0, left: 0, bottom: 0, right: 1 };
+    expect(workbook.undo()).toEqual({ sheet, ranges: [range] });
+    expect(workbook.merges(sheet)).toEqual([]);
+    expect(show(0, 1)).toBe('b');
+    workbook.redo();
+    expect(workbook.merges(sheet)).toEqual([range]);
+    expect(show(0, 1)).toBe('');
+
+    workbook.execute({ type: 'unmerge', sheet, ranges: [range] });
+    expect(workbook.merges(sheet)).toEqual([]);
+    workbook.undo();
+    expect(workbook.merges(sheet)).toEqual([range]);
+    workbook.redo();
+    expect(replay.toSnapshot()).toEqual(workbook.toSnapshot());
+    expect(Workbook.fromSnapshot(workbook.toSnapshot()).merges(sheet)).toEqual(
+      [],
+    );
+  });
+
+  it('keeps merges in snapshots and copies of sheets', () => {
+    const { workbook, sheet, merge } = merges();
+    merge(2, 2, 4, 3);
+    const range = { top: 2, left: 2, bottom: 4, right: 3 };
+    expect(Workbook.fromSnapshot(workbook.toSnapshot()).merges(sheet)).toEqual([
+      range,
+    ]);
+    const copy = workbook.execute({
+      type: 'addSheet',
+      index: 1,
+      copyOf: sheet,
+    });
+    expect(workbook.merges(copy.sheet)).toEqual([range]);
+  });
+
+  it('moves, grows, shrinks and drops merges with rows and columns inserted and deleted', () => {
+    const { workbook, sheet, merge } = merges();
+    merge(2, 0, 4, 0);
+    merge(0, 2, 0, 3);
+    const lines = (
+      type: 'insertLines' | 'deleteLines',
+      direction: 'rows' | 'columns',
+      start: number,
+      end: number,
+    ) =>
+      workbook.execute({
+        type,
+        sheet,
+        direction,
+        spans: [{ start, end }],
+      });
+    lines('insertLines', 'rows', 0, 0);
+    lines('insertLines', 'rows', 4, 5);
+    expect(workbook.merges(sheet)).toContainEqual({
+      top: 3,
+      left: 0,
+      bottom: 7,
+      right: 0,
+    });
+    lines('deleteLines', 'rows', 2, 6);
+    expect(workbook.merges(sheet)).toEqual([
+      { top: 1, left: 2, bottom: 1, right: 3 },
+    ]);
+    lines('deleteLines', 'columns', 3, 3);
+    expect(workbook.merges(sheet)).toEqual([]);
+    workbook.undo();
+    expect(workbook.merges(sheet)).toEqual([
+      { top: 1, left: 2, bottom: 1, right: 3 },
+    ]);
+  });
+});

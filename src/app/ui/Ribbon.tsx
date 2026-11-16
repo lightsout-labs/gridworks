@@ -8,6 +8,7 @@ import {
   FolderOpen,
   SquareFunction,
   Moon,
+  Paintbrush,
   Redo2,
   Scissors,
   Sun,
@@ -27,7 +28,12 @@ import type { View } from '../grid/view';
 import type { ClipboardContents } from '../platform';
 import { PASTE_SPECIAL, useCopied } from './CellMenu';
 import { Tooltip, useTranslation } from './controls';
-import { AlignmentControls, FontControls } from './Format';
+import {
+  AlignmentControls,
+  BorderControls,
+  FontControls,
+  MergeControls,
+} from './Format';
 import type { Language } from './i18n';
 import styles from './Shell.module.css';
 import type { Theme } from './theme';
@@ -124,9 +130,11 @@ export function Ribbon({
         </Group>
         <Group label={t('font')}>
           <FontControls workbook={workbook} view={view} />
+          <BorderControls view={view} />
         </Group>
         <Group label={t('alignment')}>
           <AlignmentControls workbook={workbook} view={view} />
+          <MergeControls workbook={workbook} view={view} />
         </Group>
       </Tabs.Content>
       <Tabs.Content className={styles.ribbonPanel} value="formulas">
@@ -231,6 +239,10 @@ function Clipboard({
 }) {
   const t = useTranslation();
   const copied = useCopied(view);
+  const painting = useSyncExternalStore(
+    view.subscribe,
+    () => view.state.painter !== null,
+  );
   const key = MAC ? '⌘' : 'Ctrl+';
   return (
     <>
@@ -287,6 +299,15 @@ function Clipboard({
         disabled={false}
         onRun={() => onCopy(view.copy())}
       />
+      <Choice
+        icon={Paintbrush}
+        label={t('painter')}
+        tooltip={t('painter.tooltip')}
+        chosen={painting}
+        onChoose={() => view.startPainter()}
+        iconOnly
+        keepsFocus
+      />
     </>
   );
 }
@@ -337,12 +358,21 @@ function Choice({
   tooltip,
   chosen,
   onChoose,
+  iconOnly = false,
+  keepsFocus = false,
 }: {
   icon?: LucideIcon;
   label: string;
   tooltip: string;
   chosen: boolean;
   onChoose: () => void;
+  /** Shown by its icon alone, the label naming it for assistive technology. */
+  iconOnly?: boolean;
+  /**
+   * Leaves the keyboard where it was, as on the grid for the format
+   * painter, which Escape there puts away.
+   */
+  keepsFocus?: boolean;
 }) {
   return (
     <Tooltip text={tooltip}>
@@ -350,10 +380,12 @@ function Choice({
         type="button"
         className={styles.button}
         aria-pressed={chosen}
+        aria-label={iconOnly ? label : undefined}
+        onMouseDown={keepsFocus ? (event) => event.preventDefault() : undefined}
         onClick={onChoose}
       >
         {Icon && <Icon size={ICON_SIZE} aria-hidden />}
-        {label}
+        {!iconOnly && label}
       </button>
     </Tooltip>
   );

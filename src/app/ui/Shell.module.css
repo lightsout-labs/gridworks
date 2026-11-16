@@ -386,6 +386,19 @@
   background: var(--border);
 }
 
+.menuLabel {
+  padding: 4px 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* A sample of a border's line, in a menu item. */
+.linePreview {
+  width: 64px;
+  height: 0;
+  border-color: var(--text);
+}
+
 .menuCheck {
   margin-left: auto;
   color: var(--accent);
