@@ -20,7 +20,7 @@ Gridworks needs the Node.js version in [.nvmrc](.nvmrc) and `make`.
 |---|---|
 | Install | `npm ci`, then `npx playwright install` once for the end-to-end tests |
 | Run locally | `npm run dev`, then open <http://localhost:5173/gridworks/> |
-| Test | `make check` (format, lint, types, unit tests with coverage, documents) and `make e2e` (the built app in Chromium, Firefox and WebKit) |
+| Test | `make check` (format, lint, types, unit tests with coverage, documents) `make e2e` (the built app in Chromium, Firefox and WebKit), and `make perf` (the time limits for scrolling, recalculation and opening files) |
 | Build | `npm run build`, which writes the static site to `dist/` |
 
 Every merge to `main` is deployed to the address above by

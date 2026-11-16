@@ -507,27 +507,32 @@ unit tested, and counts toward the coverage floor.
 |---|---|
 | `make check` | `prettier --check`, `eslint`, `tsc --noEmit` for both the engine and the app configuration, `vitest run --coverage` with a floor of 90% of lines in `src/engine` and in the parts of `src/app` that have no DOM, `scripts/check-docs.py` |
 | `make e2e` | Builds the production bundle, serves it with `vite preview` under `/gridworks/`, and runs the Playwright tests against it |
+| `make perf` | The time limits of R45–R47 in `tests/perf`: the engine's with Vitest, then the app's with Playwright on Chromium against the production bundle, one test at a time |
 
-CI runs both on every pull request as the required checks `check` and `e2e`.
+CI runs all three on every pull request: `check` and `e2e` as required
+checks, and `perf` as a check that does not block a merge, because a shared
+CI machine is slower, and varies more, than the laptop the time limits are
+set for. A `perf` failure is confirmed or dismissed by running `make perf`
+on such a laptop.
 
 ## Testing
 
 | Level | Covers | How |
 |---|---|---|
-| Unit | The engine through its four interfaces: every command and its undo, every function against results taken from Excel's documentation, reference rewriting, recalculation and its time limit (R46), number formats, XLSX and CSV round trips and the 10 MB open time (R47) | Vitest in the Node environment, with no DOM available |
+| Unit | The engine through its four interfaces: every command and its undo, every function against results taken from Excel's documentation, reference rewriting, recalculation, number formats, XLSX and CSV round trips | Vitest in the Node environment, with no DOM available |
 | Unit | App logic that needs no browser: grid geometry, selection and keyboard navigation, the status bar summary, translation completeness for both languages, shortcut tables, the printable document | Vitest |
 | End to end | Each slice's user flow in the built app: keyboard and mouse on the grid, the ribbon, menus and dialogs, storage across reloads, file open and save, both themes and languages, offline use | Playwright on Chromium, Firefox and WebKit |
 | End to end | The system clipboard (R7), with another application played by a text box outside the app, in a file whose tests run alone, after all others and one browser at a time, in Playwright projects of their own, as every copy in any test shares the system clipboard | Playwright |
-| End to end, Chromium only | Scrolling speed (R45), measured as the time to draw each frame, one scroll step a frame, while scrolling a sheet of 100,000 by 100 populated cells stored directly in IndexedDB; every frame must draw within 16 ms | Playwright |
-| End to end | Recalculation time (R46): a chain of 100,000 formulas, stored directly in IndexedDB as for R45, whose start is edited | Playwright |
+| Time limits, unit | Recalculating a chain of 100,000 formulas within a second (R46) and opening a 10 MB file within 5 seconds (R47), in the engine | Vitest, `make perf` |
+| Time limits, end to end, Chromium only | Scrolling speed (R45), measured as the time to draw each frame, one scroll step a frame, while scrolling a sheet of 100,000 by 100 populated cells stored directly in IndexedDB; every frame must draw within 16 ms. Recalculation time (R46): a chain of 100,000 formulas, stored the same way, whose start is edited, with input going on meanwhile | Playwright, `make perf` |
 
 Two requirements cannot be fully checked by automated tests and are checked
 by the human at release acceptance: that files saved by Gridworks open in
 Microsoft Excel itself (R30), and the 60 frames per second on a mid-range
 laptop (R45). The automated tests cover them as far as they can: files
 built by `tests/xlsx.ts` with the parts and markup that Excel writes,
-round trips through the writer and reader, and a frame-time budget with
-headroom for CI machines.
+round trips through the writer and reader, and a frame-time budget in
+`make perf`.
 
 ## Deployment
 
