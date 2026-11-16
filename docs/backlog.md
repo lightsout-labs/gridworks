@@ -1,6 +1,6 @@
 # Backlog
 
-Status: Approved
+Status: Draft
 
 Slices for Gridworks, built in this order. Each one is testable end to end.
 
@@ -812,6 +812,29 @@ Notes:
   any new way to change the entry's text must go through `View` so that
   `point` is forgotten.
 
+
+## S34: Fill options and numbered text
+
+Status: Todo
+
+Acceptance criteria:
+- Filling from `Item 1` gives `Item 2`, `Item 3`; from `Item 1` and
+  `Item 3` gives `Item 5`, `Item 7`; from `A001` gives `A002`; and from
+  `Item 9` gives `Item 10`, in any of the four directions. (R8)
+- A fill-handle drag released with Ctrl (Option on macOS) held counts one
+  number on by one, and copies a selection that would otherwise extend a
+  series, such as `1`, `2` or `Item 1`. (R8)
+- After a fill, an Auto Fill Options button appears at the bottom-right
+  corner of the filled range and opens a menu of Copy Cells, Fill Series,
+  Fill Formatting Only and Fill Without Formatting; Fill Series is shown
+  only when the cells can form a series. (R8)
+- Choosing an option redoes the fill that way: Copy Cells repeats the
+  source, Fill Series extends it, Fill Formatting Only copies formats and
+  keeps the values, and Fill Without Formatting fills values and formulas
+  and keeps the formats. One undo restores the cells as they were before
+  the fill. (R8, R5)
+- The button goes away at the next change to the workbook, and the menu
+  is in English and Simplified Chinese. (R8)
 
 ## S20: Conditional formatting: value rules
 

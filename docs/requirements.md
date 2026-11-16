@@ -1,6 +1,6 @@
 # Requirements
 
-Status: Approved
+Status: Draft
 
 ## Goal
 
@@ -37,9 +37,20 @@ applications.
    clipboard: a range copied from Excel or Google Sheets pastes as a grid of
    cells, and a range copied from Gridworks pastes into them as a grid.
 8. Dragging the fill handle fills a range by copying values, extending
-   series (numbers, dates, weekday and month names), and adjusting relative
-   references in formulas. Double-clicking the fill handle fills down to
-   match the adjacent column.
+   series (numbers, dates, weekday and month names, and text that ends in a
+   number), and adjusting relative references in formulas. Double-clicking
+   the fill handle fills down to match the adjacent column. As in Excel:
+   - Text that ends in a number counts on by that number, keeping its
+     leading zeros: `Item 1` fills `Item 2`, `Item 3`; `Item 1` and
+     `Item 3` fill `Item 5`, `Item 7`; `A001` fills `A002`.
+   - Holding Ctrl (Option on macOS) while releasing a fill-handle drag
+     swaps copying and extending a series: one number then counts on by
+     one, and a selection that would extend a series is copied instead.
+   - After a fill, an Auto Fill Options button at the bottom-right corner
+     of the filled range opens a menu of Copy Cells, Fill Series (when the
+     cells can form a series), Fill Formatting Only and Fill Without
+     Formatting. Choosing one redoes the fill that way, as a single step to
+     undo. The button goes away at the next change to the workbook.
 9. The user can insert, delete, hide, unhide and resize rows and columns.
    Double-clicking a header border auto-fits the size to its content.
    Formulas that refer to moved cells are updated.
@@ -262,3 +273,6 @@ requirement above.
 - **Name**: Gridworks.
 - **Repository documents**: a README, an MIT license and a `CLAUDE.md` are
   required.
+- **Fill handle**: the Ctrl (Option on macOS) toggle between copy and
+  series, the Auto Fill Options menu, and counting on text that ends in a
+  number all work as in Excel.
