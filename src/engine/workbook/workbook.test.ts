@@ -1212,7 +1212,11 @@ describe('fill', () => {
     expect([8, 9].map((row) => show(row, 3))).toEqual(['Item 1', 'Item 2']);
     fill(range(10, 3), range(10, 1, 10, 3));
     expect(show(10, 1)).toBe('Item 1');
-    // Different texts before the numbers, or uneven steps, are copied.
+    // Different texts before the numbers, or uneven or no steps, are copied.
+    set(16, 0, 'Item 1');
+    set(17, 0, 'Item 1');
+    fill(range(16, 0, 17, 0), range(16, 0, 18, 0));
+    expect(show(18, 0)).toBe('Item 1');
     set(12, 0, 'Item 1');
     set(13, 0, 'Part 2');
     set(12, 1, 'Item 1');
@@ -1250,10 +1254,19 @@ describe('fill', () => {
     fillAs('formats', range(5, 0), range(5, 0, 7, 0));
     expect([6, 7].map((row) => show(row, 0))).toEqual(['50%', 'kept']);
     set(9, 0, '1');
+    set(9, 1, '=A10*2');
     set(10, 0, '25%');
-    fillAs('values', range(9, 0), range(9, 0, 10, 0));
-    expect(show(10, 0)).toBe('100%');
-    expect(workbook.cell(sheet, 9, 0).style.numberFormat).toBeUndefined();
+    set(10, 1, '25%');
+    workbook.execute({
+      type: 'setStyle',
+      sheet,
+      ranges: [range(9, 0, 9, 1)],
+      style: { bold: true },
+    });
+    fillAs('values', range(9, 0, 9, 1), range(9, 0, 10, 1));
+    expect([show(10, 0), show(10, 1)]).toEqual(['100%', '200%']);
+    expect(workbook.cell(sheet, 10, 1).formula).toBe('=A11*2');
+    expect(workbook.cell(sheet, 10, 0).style.bold).toBeUndefined();
   });
 
   it('tells whether a fill extends a series', () => {

@@ -815,7 +815,7 @@ Notes:
 
 ## S34: Fill options and numbered text
 
-Status: In progress
+Status: Done
 
 Acceptance criteria:
 - Filling from `Item 1` gives `Item 2`, `Item 3`; from `Item 1` and
@@ -835,6 +835,14 @@ Acceptance criteria:
   the fill. (R8, R5)
 - The button goes away at the next change to the workbook, and the menu
   is in English and Simplified Chinese. (R8)
+
+Notes:
+- The view keeps the last fill-handle fill as `filled` until another
+  change; `refill(how)` undoes it and runs `fill` again with `how`. A
+  later Paste Options button (if any) can follow the same pattern.
+- `fill` takes `how` (`copy`, `series`, `formats`, `values`), and
+  `fillsSeries(fill)` tells whether a fill extends any series; the Fill
+  Series dialog of a later slice can build on both.
 
 ## S20: Conditional formatting: value rules
 

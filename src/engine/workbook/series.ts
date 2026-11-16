@@ -82,7 +82,7 @@ export function series(seeds: readonly Seed[], count = false): Series | null {
 
 /**
  * Texts that are the same but for the number they end in, each step the
- * same, continued with as many digits as the first has, at least; below
+ * same and not zero, continued with as many digits as the first has, at least; below
  * zero, the number counts up again, as in Excel.
  */
 function numbered(texts: readonly string[]): Series | null {
@@ -92,7 +92,10 @@ function numbered(texts: readonly string[]): Series | null {
   if (parts.some((part) => part?.[1] !== prefix)) return null;
   const numbers = parts.map((part) => Number(part![2]));
   const step = numbers.length === 1 ? 1 : numbers[1]! - numbers[0]!;
-  if (numbers.some((n, place) => n !== numbers[0]! + step * place)) {
+  if (
+    step === 0 ||
+    numbers.some((n, place) => n !== numbers[0]! + step * place)
+  ) {
     return null;
   }
   return (place) =>

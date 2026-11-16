@@ -672,7 +672,8 @@ export class View {
     this.filling = true;
     try {
       this.workbook.undo();
-      this.workbook.execute({ type: 'fill', ...filled, how });
+      const { sheet, source, target } = filled;
+      this.workbook.execute({ type: 'fill', sheet, source, target, how });
     } finally {
       this.filling = false;
     }

@@ -144,6 +144,11 @@ test('the Auto Fill Options button redoes a fill another way until the next chan
   await dragFill(page, [1, 0], [3, 0]);
   await expectCell(page, 3, 0, 'A4 4');
 
+  // At the bottom-right corner of the cells filled.
+  const corner = await handle(page, 3, 0);
+  const box = (await options.boundingBox())!;
+  expect(Math.abs(box.x - corner.x)).toBeLessThan(6);
+  expect(Math.abs(box.y - corner.y)).toBeLessThan(6);
   await options.click();
   await expect(page.getByRole('menuitem')).toHaveText([
     'Copy Cells',
