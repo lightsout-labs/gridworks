@@ -1272,6 +1272,12 @@ describe('View', () => {
       view.sortByActive(true);
       expect(column(1)).toEqual(['3', '2', '1']);
       expect(view.state.selection.ranges).toEqual([range(0, 0, 2, 1)]);
+      // An active cell right of the cells in use sorts by an empty column,
+      // which changes nothing, as in Excel.
+      view.select(extendTo(single({ row: 0, col: 2 }), { row: 2, col: 0 }));
+      expect(view.sortRange).toEqual(range(0, 0, 2, 1));
+      view.sortByActive(false);
+      expect(column(1)).toEqual(['3', '2', '1']);
     });
 
     it('sorts by several columns, with a header row, after committing an entry', () => {

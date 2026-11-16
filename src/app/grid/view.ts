@@ -551,9 +551,13 @@ export class View {
     });
   }
 
-  /** Sorts `sortRange` by the column of the active cell. */
+  /**
+   * Sorts `sortRange` by the column of the active cell. One right of the
+   * cells in use is empty, and sorting by it changes nothing, as in Excel.
+   */
   sortByActive(descending: boolean): void {
     const { col } = this.current.selection.active;
+    if (col > (this.sortRange?.right ?? -1)) return;
     this.sort([{ col, ...(descending && { descending }) }]);
   }
 

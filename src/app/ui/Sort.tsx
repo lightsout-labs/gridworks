@@ -50,6 +50,9 @@ export function SortControls({
   );
   const range = JSON.parse(rangeText) as Range | null;
   const [open, setOpen] = useState(false);
+  // Closed for good when the selection can no longer be sorted, so that it
+  // does not open again by itself.
+  if (open && !range) setOpen(false);
   return (
     <>
       <SortButton
@@ -73,7 +76,7 @@ export function SortControls({
         disabled={!range}
         onClick={() => setOpen(true)}
       />
-      <Dialog.Root open={open && range !== null} onOpenChange={setOpen}>
+      <Dialog.Root open={open} onOpenChange={setOpen}>
         <Dialog.Portal>
           <Dialog.Overlay className={styles.overlay} />
           <Dialog.Content className={`${styles.dialog} ${styles.wideDialog}`}>
@@ -151,7 +154,10 @@ function SortForm({
   const t = useTranslation();
   const id = useId();
   const [headers, setHeaders] = useState(false);
-  const [keys, setKeys] = useState<SortKey[]>([{ col: active }]);
+  // The active cell may be right of the columns in use.
+  const [keys, setKeys] = useState<SortKey[]>([
+    { col: Math.min(active, range.right) },
+  ]);
   const columns = Array.from(
     { length: range.right - range.left + 1 },
     (_, index) => range.left + index,
