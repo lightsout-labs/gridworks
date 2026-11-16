@@ -1558,6 +1558,23 @@ describe('cell formats', () => {
       value: '=1+1',
       formula: null,
     });
+    // A formula already there is replaced, and pasted text is kept too.
+    set(1, 1, '=2+2');
+    format(A1B2, { numberFormat: '@' });
+    set(1, 1, '=A1');
+    expect(workbook.cell(sheet, 1, 1)).toMatchObject({
+      value: '=A1',
+      formula: null,
+    });
+    workbook.execute({
+      type: 'setCells',
+      sheet,
+      row: 0,
+      col: 0,
+      inputs: [['0012', '1/2/2026']],
+    });
+    expect(workbook.cell(sheet, 0, 0).value).toBe('0012');
+    expect(workbook.cell(sheet, 0, 1).value).toBe('1/2/2026');
     // Elsewhere the same entry is a number.
     set(2, 0, '007');
     expect(workbook.cell(sheet, 2, 0).value).toBe(7);

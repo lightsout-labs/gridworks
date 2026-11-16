@@ -337,16 +337,17 @@ export class View {
   /**
    * Gives the selected cells the format of the active cell with one more or
    * one fewer decimal place, or the thousands separator turned on or off,
-   * as Excel does.
+   * as Excel does; nothing changes when that of the active cell would not.
    */
   adjustFormat(change: FormatChange): void {
     this.commit();
     const { sheet, selection } = this.current;
     const { row, col } = selection.active;
     const { value, style } = this.workbook.cell(sheet, row, col);
-    this.format({
-      numberFormat: changedFormat(style.numberFormat ?? GENERAL, value, change),
-    });
+    const code = style.numberFormat ?? GENERAL;
+    const changed = changedFormat(code, value, change);
+    // A date, a time or text keeps its format, and so do the other cells.
+    if (changed !== code) this.format({ numberFormat: changed });
   }
 
   /**

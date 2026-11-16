@@ -696,12 +696,12 @@
   margin-top: 20px;
 }
 
-.primary,
-.primary:hover {
+.primary:not(:disabled),
+.primary:not(:disabled):hover {
   background: var(--accent);
   color: var(--background);
 }
 
-.primary:hover:not(:disabled) {
+.primary:not(:disabled):hover {
   filter: brightness(1.1);
 }

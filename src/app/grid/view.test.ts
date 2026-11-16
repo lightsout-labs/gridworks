@@ -944,6 +944,20 @@ describe('View', () => {
       expect(workbook.cell(sheet, 0, 0).style.numberFormat).toBe('0.0');
       workbook.undo();
       expect(workbook.cell(sheet, 0, 0).style.numberFormat).toBe('#,##0.0');
+
+      // A date in the active cell changes nothing, in it or the others.
+      workbook.execute({
+        type: 'setCell',
+        sheet,
+        row: 0,
+        col: 0,
+        input: '1/2/2026',
+      });
+      const canRedo = workbook.canRedo;
+      view.adjustFormat('moreDecimals');
+      expect(workbook.cell(sheet, 0, 0).style.numberFormat).toBe('m/d/yyyy');
+      expect(workbook.cell(sheet, 1, 0).style.numberFormat).toBe('#,##0.0');
+      expect(workbook.canRedo).toBe(canRedo);
     });
   });
 

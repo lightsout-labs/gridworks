@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   changedFormat,
+  isGroupedFormat,
   editText,
   formatColor,
   formatValue,
@@ -156,8 +157,15 @@ describe('changedFormat', () => {
     ['0.00;(0.00)', 'thousands', '#,##0.00;(#,##0.00)'],
     ['m/d/yyyy', 'moreDecimals', 'm/d/yyyy'],
     ['@', 'thousands', '@'],
+    ['# ?/?', 'moreDecimals', '# ?/?'],
   ] as const)('changes %j by %s into %j', (code, change, changed) => {
     expect(changedFormat(code, 1, change)).toBe(changed);
+  });
+
+  it('tells whether a code separates thousands', () => {
+    expect(isGroupedFormat('"$"#,##0.00')).toBe(true);
+    expect(isGroupedFormat('0.00;(#,##0.00)')).toBe(false);
+    expect(isGroupedFormat('0\\,000')).toBe(false);
   });
 
   it('starts a General cell from the decimals its value shows, as Excel does', () => {

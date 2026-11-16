@@ -116,6 +116,16 @@ test('applies a custom format code from a dialog that previews it', async ({
     dialog.getByText('This format code is not valid.'),
   ).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'OK' })).toBeDisabled();
+  // It looks disabled, even under the pointer.
+  await dialog.getByRole('button', { name: 'OK' }).hover({ force: true });
+  await expect(dialog.getByRole('button', { name: 'OK' })).toHaveCSS(
+    'opacity',
+    '0.5',
+  );
+  await expect(dialog.getByRole('button', { name: 'OK' })).toHaveCSS(
+    'background-color',
+    'rgba(0, 0, 0, 0)',
+  );
 
   await code.fill('[Red]0.0;[Blue](0.0);"zero";"Text: "@');
   await expect(dialog.getByLabel('Preview')).toHaveText('(3.0)');

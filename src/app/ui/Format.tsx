@@ -53,6 +53,7 @@ import {
   formatColor,
   formatValue,
   GENERAL,
+  isGroupedFormat,
   validFormat,
 } from '../../engine/format';
 import { MAC } from '../grid/Grid';
@@ -659,7 +660,7 @@ export function NumberControls({
   const [custom, setCustom] = useState(false);
   const code = style.numberFormat ?? GENERAL;
   const known = NUMBER_FORMATS.find(([each]) => each === code);
-  const grouped = /#,#/.test(code.replace(/"[^"]*"/g, ''));
+  const grouped = isGroupedFormat(code);
   return (
     <>
       <Menu

@@ -710,7 +710,7 @@ Notes:
 
 ## S18: Number formats
 
-Status: In progress
+Status: Done
 
 Acceptance criteria:
 - The ribbon applies the general, number, currency, accounting, percentage,
@@ -726,6 +726,29 @@ Acceptance criteria:
 - Its controls are in the ribbon or a context menu, are translated in both
   languages, look right in both themes, and have hover, focus and disabled
   states and tooltips. (R37, R41, R42, R43, R44)
+
+Notes:
+- Number formats are the `numberFormat` style property, set through
+  `setStyle`; `engine/format` adds `formatColor`, `validFormat`,
+  `changedFormat`, `isTextFormat` and `isGroupedFormat`, and `Cell.color`
+  carries a `[Red]`-style color. S28 (XLSX) reads and writes these codes as
+  `numFmt`s, and S20 (conditional formats) draws its colors over both the
+  style's and the format's.
+- The fill character of a code (`* `) is dropped, not repeated across the
+  cell; the accounting format therefore does not push `$` to the left edge.
+- A cell formatted `@` keeps typed and pasted input as text, formulas
+  included; giving the format does not convert values already there.
+- The ribbon panel now scrolls sideways when wider than the window (the Home
+  tab was already wider than 1280 px). Later slices that add groups to it
+  should keep it from growing much more.
+- The clipboard HTML still holds shown text only (S13 note); S28 may carry
+  formats there if needed.
+- The new `@radix-ui/react-dialog` is the dialog primitive later dialogs
+  (S20 rules, S23 filters, S32 printing) can share; its styles are
+  `.dialog`, `.field`, `.textInput` and `.primary` in `Shell.module.css`.
+- WebKit still cannot launch locally; `make e2e` passed on Chromium and
+  Firefox, and CI runs WebKit.
+
 
 ## S19: Freeze panes
 

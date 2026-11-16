@@ -128,6 +128,11 @@ export function formatColor(value: Value, code: string): string | undefined {
   return COLORS[color.toLowerCase()] ?? color.toLowerCase();
 }
 
+/** Whether a format code separates the thousands of positive numbers. */
+export function isGroupedFormat(code: string): boolean {
+  return getFormatInfo(code).grouped === 1;
+}
+
 /** The changes that the ribbon makes to the format of numbers. */
 export type FormatChange = 'moreDecimals' | 'fewerDecimals' | 'thousands';
 
@@ -135,7 +140,7 @@ export type FormatChange = 'moreDecimals' | 'fewerDecimals' | 'thousands';
  * A format code with one more or one fewer decimal place, or with the
  * thousands separator turned on or off, in each section that shows a
  * number. A General format starts from the decimals its value shows, as
- * in Excel; dates, times and text do not change.
+ * in Excel; dates, times, fractions and text do not change.
  */
 export function changedFormat(
   code: string,
@@ -144,7 +149,7 @@ export function changedFormat(
 ): string {
   if (code === GENERAL) code = shownDecimals(value);
   if (isDateFormat(code) || isTextFormat(code)) return code;
-  const grouped = getFormatInfo(code).grouped === 1;
+  const grouped = isGroupedFormat(code);
   const sections: string[][] = [[]];
   for (const token of tokenize(code)) {
     if (token.type === 'BREAK') sections.push([]);
@@ -177,7 +182,10 @@ function changedSection(
   const digits = raws
     .slice(0, number)
     .flatMap((raw, index) => (DIGIT.test(raw) ? [index] : []));
-  if (!digits.some((index) => raws[index] !== '?')) return [...raws];
+  const fraction = raws.includes('/');
+  if (fraction || !digits.some((index) => raws[index] !== '?')) {
+    return [...raws];
+  }
   const first = digits[0]!;
   const last = digits.at(-1)!;
   const point = raws.indexOf('.');
