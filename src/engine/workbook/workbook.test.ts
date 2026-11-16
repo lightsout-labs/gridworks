@@ -2206,6 +2206,63 @@ describe('conditional formats', () => {
     expect(cell.style).toEqual({ bold: true, fill: '#00b050' });
   });
 
+  it('shades each number by where it lies between the lowest and highest, or the median for three colors', () => {
+    const values = ['0', '10', '5', 'text', '', '=A2*2'];
+    const fills = (colors: string[]) => {
+      const { workbook, sheet } = rules({ type: 'scale', colors }, values);
+      return values.map((_, row) => workbook.cell(sheet, row, 0).conditional);
+    };
+    // 0, 10, 5 and 20: lowest 0, highest 20, median 7.5.
+    expect(fills(['#000000', '#ff8040'])).toEqual([
+      { fill: '#000000' },
+      { fill: '#804020' },
+      { fill: '#402010' },
+      undefined,
+      undefined,
+      { fill: '#ff8040' },
+    ]);
+    expect(fills(['#ff0000', '#ffffff', '#0000ff'])).toEqual([
+      { fill: '#ff0000' },
+      { fill: '#ccccff' },
+      { fill: '#ffaaaa' },
+      undefined,
+      undefined,
+      { fill: '#0000ff' },
+    ]);
+  });
+
+  it('gives each number a bar as long as its share of the highest, from zero or the lowest below it', () => {
+    const bars = (values: string[]) => {
+      const { workbook, sheet } = rules(
+        { type: 'bar', color: '#638ec6' },
+        values,
+      );
+      return values.map((_, row) => workbook.cell(sheet, row, 0).bar?.length);
+    };
+    expect(bars(['5', '20', '10', 'text', '0'])).toEqual([
+      0.25,
+      1,
+      0.5,
+      undefined,
+      0,
+    ]);
+    expect(bars(['-10', '30', '10'])).toEqual([0, 1, 0.5]);
+    const { workbook, sheet } = rules({ type: 'bar', color: '#638ec6' }, ['3']);
+    expect(workbook.cell(sheet, 0, 0)).toMatchObject({
+      bar: { color: '#638ec6', length: 1 },
+    });
+    expect(workbook.cell(sheet, 0, 0).conditional).toBeUndefined();
+  });
+
+  it('updates scales and bars when values change', () => {
+    const { workbook, sheet, set } = rules({ type: 'bar', color: '#638ec6' }, [
+      '5',
+      '10',
+    ]);
+    set(1, 0, '20');
+    expect(workbook.cell(sheet, 0, 0).bar?.length).toBe(0.25);
+  });
+
   it('follows changed values and formula results', () => {
     const { set, formatted } = rules({ type: 'top', count: 1 }, ['4', '=A1*2']);
     expect(formatted()).toEqual([1]);

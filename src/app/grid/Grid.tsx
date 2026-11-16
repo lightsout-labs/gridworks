@@ -15,6 +15,7 @@ import {
   fontPixels,
   lineHeight,
   type Border,
+  type DataBar,
   type Direction,
   type Range,
   type Style,
@@ -40,6 +41,7 @@ import {
   sheetSize,
   visibleRange,
   type CellPosition,
+  type Rect,
   type Target,
   type Viewport,
 } from './geometry';
@@ -70,6 +72,9 @@ export const measureText: TextWidth = (text: string, style: Style) => {
   measuring.font = cssFont(style, 1);
   return measuring.measureText(text).width;
 };
+
+/** The space between a data bar and the lines of its cell, at 100%. */
+const BAR_INSET = 2;
 
 /** How often the border of the cells copied moves, in milliseconds. */
 const MARCH = 100;
@@ -816,12 +821,16 @@ function draw(
           merge.right >= range.left,
       );
 
-    // The texts of each row, and the styles of the cells read for them.
+    // The texts of each row, and the styles and data bars of the cells
+    // read for them.
     const rows: { row: number; texts: RowText[] }[] = [];
+    const bars = new Map<string, DataBar>();
     for (let row = range.top; row <= range.bottom; row++) {
       const texts = rowTexts(
         (col) => {
-          const cell = shownCell(workbook.cell(sheet, row, col));
+          const read = workbook.cell(sheet, row, col);
+          if (read.bar) bars.set(`${row},${col}`, read.bar);
+          const cell = shownCell(read);
           looks.set(`${row},${col}`, cell.style);
           return cell;
         },
@@ -839,14 +848,29 @@ function draw(
     context.rect(clip.x, clip.y, clip.width, clip.height);
     context.clip();
 
+    // A cell's fill, and its data bar inside its lines, as long as the
+    // bar's share of it.
+    const drawFill = (row: number, col: number, box: Rect) => {
+      context.fillStyle = fillOf(row, col);
+      context.fillRect(box.x, box.y, box.width, box.height);
+      const bar = bars.get(`${row},${col}`);
+      if (!bar) return;
+      const inset = BAR_INSET * zoom;
+      context.fillStyle = bar.color;
+      context.fillRect(
+        box.x + inset,
+        box.y + inset,
+        Math.max(0, box.width - 2 * inset) * bar.length,
+        box.height - 2 * inset,
+      );
+    };
     for (let row = range.top; row <= range.bottom; row++) {
       for (let col = range.left; col <= range.right; col++) {
         if (mergeAt(merges, { row, col })) continue;
-        const fill = fillOf(row, col);
-        if (fill === background) continue;
-        const box = rect({ row, col });
-        context.fillStyle = fill;
-        context.fillRect(box.x, box.y, box.width, box.height);
+        if (fillOf(row, col) === background && !bars.has(`${row},${col}`)) {
+          continue;
+        }
+        drawFill(row, col, rect({ row, col }));
       }
     }
 
@@ -859,9 +883,7 @@ function draw(
       selected && (ranges.length > 1 || !sameRange(ranges[0]!, activeArea));
     if (shadesActive) {
       // The active cell is not shaded, as in Excel.
-      const box = rangeRect(activeArea);
-      context.fillStyle = fillOf(active.row, active.col);
-      context.fillRect(box.x, box.y, box.width, box.height);
+      drawFill(active.row, active.col, rangeRect(activeArea));
     }
 
     context.strokeStyle = color('--border');

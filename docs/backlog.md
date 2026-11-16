@@ -891,7 +891,7 @@ Notes:
 
 ## S21: Conditional formatting: color scales and data bars
 
-Status: Todo
+Status: In progress
 
 Acceptance criteria:
 - The user can apply a two-color or three-color scale to a range, and each

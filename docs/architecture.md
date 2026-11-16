@@ -60,7 +60,7 @@ because a requirement needs it.
 
 | Module | Interface | Hides |
 |---|---|---|
-| `engine/workbook` | `execute(command)`, `undo()`, `redo()` (each giving the cells it changed), `canUndo`, `canRedo`, `cell(sheet, row, col)` (value, formula, display text, the color its format gives it, text to edit, style, what conditional formats change of it, note, link), the sheet size, queries (`find`, `aggregate`, `extent`, `circularReference`, `fillsSeries`, sheet and name lists, `layout`: the sizes of rows and columns, those hidden and those frozen, `merges`: the merged cells, `rules`: the conditional formats), `withMerges(range, merges)` (a range grown over the merged cells it overlaps), `calculations` (a count, to measure recalculation), `subscribe(listener)`, `toSnapshot()`, `fromSnapshot(snapshot, changes, measure)` (`measure` the `TextWidth` that fits rows); for drawing cells, `FONTS`, `FONT_SIZES`, `fontPixels`, `lineHeight`, `wrapText` and the standard sizes | Column-oriented cell storage; the dependency graph and on-demand recalculation; circular-reference detection; rewriting references when cells, rows, columns and sheets move; pasting cells copied or cut, all or only their values, formulas or formats; inverse patches for undo; fitting rows to wrapped text and large fonts; fill series; sort; filters; merges; data validation; conditional format evaluation; named ranges (R1, R5, R6, R8–R10, R14, R15, R17, R19–R27). |
+| `engine/workbook` | `execute(command)`, `undo()`, `redo()` (each giving the cells it changed), `canUndo`, `canRedo`, `cell(sheet, row, col)` (value, formula, display text, the color its format gives it, text to edit, style, what conditional formats change of it and the data bar they draw, note, link), the sheet size, queries (`find`, `aggregate`, `extent`, `circularReference`, `fillsSeries`, sheet and name lists, `layout`: the sizes of rows and columns, those hidden and those frozen, `merges`: the merged cells, `rules`: the conditional formats), `withMerges(range, merges)` (a range grown over the merged cells it overlaps), `calculations` (a count, to measure recalculation), `subscribe(listener)`, `toSnapshot()`, `fromSnapshot(snapshot, changes, measure)` (`measure` the `TextWidth` that fits rows); for drawing cells, `FONTS`, `FONT_SIZES`, `fontPixels`, `lineHeight`, `wrapText` and the standard sizes | Column-oriented cell storage; the dependency graph and on-demand recalculation; circular-reference detection; rewriting references when cells, rows, columns and sheets move; pasting cells copied or cut, all or only their values, formulas or formats; inverse patches for undo; fitting rows to wrapped text and large fonts; fill series; sort; filters; merges; data validation; conditional format evaluation; named ranges (R1, R5, R6, R8–R10, R14, R15, R17, R19–R27). |
 | `engine/formula` | `parse(text)`, `print(ast, { file })` (with the `_xlfn.` prefix of newer functions for a file), `evaluate(ast, context)`, `references(ast)`, `shift(ast, move)` (a sheet renamed, the formula moved by rows and columns, or cells cut and pasted), `calculable(ast)`, `functions` (the names of the library), `tokenize(text)` (the tokens of a formula still being typed, with their places), `argumentHint(name, index)`, `quoteSheetName(name)` | Tokenizer and parser; operators and coercion rules; the error values; the library of at least 150 functions and the names of their arguments (R11–R13, R16). Used by `engine/workbook`, by `engine/io` to check and fill in the formulas of files, and `functions`, `tokenize` and `argumentHint` by the help while typing a formula, `parse` and `references` by the app to read the cells a conditional format applies to; the workbook re-exports `quoteSheetName` for the app. |
 | `engine/format` | `formatValue(value, code)`, `formatColor(value, code)`, `validFormat(code)`, `changedFormat(code, value, change)` (one decimal more or fewer, or the thousands separator turned over), `parseInput(text)`, `parseDate(text)`, `editText(value, code)`, `builtinFormat(id)`, `isDateFormat(code)`, `isTextFormat(code)`, `isGroupedFormat(code)`, `dateSerial(year, month, day)`, `dateParts(serial)` | Excel format codes and their sections, colors and literal text; date serial numbers; and recognition of typed numbers, dates, times, percentages and booleans, on top of `numfmt` (R4, R18). |
 | `engine/io` | `readXlsx(bytes, name)` (a snapshot and what was dropped), `writeXlsx(snapshot)`, `readCsv(text)`, `writeCsv(snapshot, sheet)` | Reading the parts of an `.xlsx` file; shared formulas; the mapping from a workbook snapshot to ExcelJS; the list of dropped features reported on import; CSV quoting (R30–R32). |
@@ -283,21 +283,32 @@ Decisions that are cheap to reverse, with their reasons:
   less than, between or equal to a value typed as in a cell, text that
   contains a string in any case, duplicate values, or the top or bottom N
   numbers, ties included) and a format of text and fill colors and bold,
-  italic, underline and strikethrough. Values compare as Excel sorts them:
+  italic, underline and strikethrough. A color scale and a data bar are
+  conditions too, with an empty format: a scale of two or three colors
+  fills each number with the color between those of the lowest number,
+  the median (Excel's 50th percentile) for three, and the highest, mixed
+  in RGB; a data bar's length is the number's share of the way from zero,
+  or the lowest number below it, to the highest, as Excel's automatic
+  bounds. Text, empty cells and errors get no color and no bar, and
+  Excel's other bounds (numbers, percents, formulas) are not offered. Values compare as Excel sorts them:
   numbers before text before booleans, text in any case; empty cells and
   errors match nothing, where Excel takes an empty cell as 0. Rules are
   evaluated when a cell is read, so they follow every change of a value or
-  formula result; `cell` gives what they change as `conditional`, apart
-  from the style, so the ribbon still shows a cell's own format. What a
-  duplicate or top/bottom rule needs of all its values is worked out once
-  and forgotten after every change. Where rules differ on a property, the
-  first wins, and a new rule goes first, as in Excel. The grid draws
-  `conditional` over the style and over the number format's color.
+  formula result; `cell` gives what they change as `conditional` (a
+  scale's color as its fill) and the first data bar as `bar`, apart from
+  the style, so the ribbon still shows a cell's own format. What a
+  duplicate, top/bottom, scale or bar rule needs of all its values is
+  worked out once and forgotten after every change. Where rules differ on
+  a property, the first wins, and a new rule goes first, as in Excel. The
+  grid draws `conditional` over the style and over the number format's
+  color, and a bar in a solid color over the fill, inside the cell's lines
+  and under its text; merged cells show no bar.
   Inserting and deleting lines moves, grows and shrinks a rule's ranges
   and drops a rule whose cells are all deleted; pasting and cutting cells
   neither copy nor move rules, unlike Excel. The Home tab's Conditional
   formatting menu opens a dialog for a new rule of each kind on the
-  selection, and Manage rules a dialog that lists the sheet's rules.
+  selection, with Excel's default colors (red, yellow and green scales,
+  blue bars), and Manage rules a dialog that lists the sheet's rules.
 - **The format painter is a paste of formats.** Its button keeps the
   range selected in the view; the next range a click or drag selects, on
   the cells or the headers, gets its formats and merges through `paste`
