@@ -197,16 +197,6 @@ describe('readXlsx', () => {
       readXlsx(await word.generateAsync({ type: 'uint8array' }), 'letter'),
     ).rejects.toThrow();
   });
-
-  it('opens a 10 MB file within 5 seconds (R47)', async () => {
-    const bytes = await largeFile();
-    expect(bytes.byteLength).toBeGreaterThan(10_000_000);
-    const start = performance.now();
-    const { workbook, snapshot } = await open(bytes);
-    const id = snapshot.sheets[0]!.id;
-    expect(cellOf(workbook, id, 'K2').value).toBe('text 2-02.5');
-    expect(performance.now() - start).toBeLessThan(5000);
-  }, 30_000);
 });
 
 describe('writeXlsx', () => {
@@ -287,32 +277,3 @@ describe('writeXlsx', () => {
     });
   });
 });
-
-/**
- * A file of more than 10 MB, as Excel would write a large table: 150,000
- * rows of ten numbers and texts and a formula.
- */
-async function largeFile(): Promise<Uint8Array> {
-  const strings: string[] = [];
-  const rows: string[] = [];
-  for (let r = 1; r <= 150_000; r++) {
-    const cells: string[] = [];
-    for (let c = 0; c < 10; c++) {
-      const ref = String.fromCharCode(65 + c) + r;
-      if (c % 3 === 0) {
-        cells.push(`<c r="${ref}" t="s"><v>${strings.length}</v></c>`);
-        strings.push(`<t>text ${r}-${c}</t>`);
-      } else {
-        cells.push(`<c r="${ref}"><v>${r * c + 0.5}</v></c>`);
-      }
-    }
-    cells.push(
-      `<c r="K${r}" t="str"><f>A${r}&amp;B${r}</f><v>text ${r}-0${r + 0.5}</v></c>`,
-    );
-    rows.push(`<row r="${r}">${cells.join('')}</row>`);
-  }
-  return xlsxFile({
-    strings,
-    sheets: [{ name: 'Data', rows: rows.join('') }],
-  });
-}

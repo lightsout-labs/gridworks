@@ -37,6 +37,10 @@ async function copyElsewhere(page: Page, text: string) {
 
 /** The text on the system clipboard, as another application pastes it. */
 async function pasteElsewhere(page: Page): Promise<string> {
+  // A menu gives the keyboard back to the grid just after it closes, which
+  // would take it from the text box.
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve)));
   const box = await page.evaluateHandle(() => {
     const box = document.createElement('textarea');
     document.body.append(box);

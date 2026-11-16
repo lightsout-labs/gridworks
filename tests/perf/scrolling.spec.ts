@@ -1,18 +1,15 @@
 import { expect, test } from '@playwright/test';
-import { openApp } from './grid';
+import { openApp } from '../e2e/grid';
 
 // The longest a frame may take to draw. A 60 frames per second frame lasts
-// 16.7 ms, and drawing must leave the browser time for the rest of it; CI
-// machines are slower than the laptop of R45, which the human checks.
+// 16.7 ms, and drawing must leave the browser time for the rest of it.
 const FRAME_BUDGET_MS = 16;
 const ROWS = 100_000;
 const COLUMNS = 100;
 
 test('a sheet of 100,000 by 100 populated cells scrolls within the frame budget', async ({
   page,
-  browserName,
 }) => {
-  test.skip(browserName !== 'chromium', 'Measured on Chromium only.');
   test.setTimeout(120_000);
   await openApp(page);
 

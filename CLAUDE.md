@@ -14,6 +14,9 @@ progress is in `docs/backlog.md`.
 - `make e2e`: builds the production bundle, serves it under `/gridworks/`, and
   runs the Playwright tests on Chromium, Firefox and WebKit. Run it before a
   pull request. It needs `npx playwright install` once.
+- `make perf`: the time limits of R45–R47, the engine's with Vitest and the
+  app's with Playwright on Chromium. CI runs it without blocking a merge;
+  run it on a laptop to confirm a failure.
 - `npm run dev`: runs the app locally at `http://localhost:5173/gridworks/`.
 - `npx prettier --write .`: formats everything.
 
