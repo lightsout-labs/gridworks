@@ -207,8 +207,11 @@ Decisions that are cheap to reverse, with their reasons:
   the default) or the text it shows (Values), in any case unless Match
   case, and the whole text for Match entire cell contents. Excel's
   wildcards (`*`, `?`, `~`) are not built: the search is plain text.
+  `only` searches one cell, which the view uses to check the active cell
+  without reading the sheet. `find` reads only the text it needs of each
+  cell, as a whole sheet of R45's size is ten million cells.
   `replace` replaces every match in the editing text of each cell found,
-  or of the one cell `only`, and sets the cell to the new text as if it
+  and sets the cell to the new text as if it
   were typed, so `1,000` becomes a number and a formula is parsed again;
   like a paste, listeners and undo get a `group` of a `restore` for each
   sheet, so replacing across the workbook is one undo. Replacing always
@@ -225,7 +228,10 @@ Decisions that are cheap to reverse, with their reasons:
   Find what, Replace with, Within (sheet or workbook), Look in, Match case
   and Match entire cell contents; it keeps them until the page reloads.
   The shortcuts replace the browser's own find, even in a text box, but
-  not while an entry is typed. Excel's Find all list and its search by
+  not while an entry is typed. macOS hides the browser on Cmd+H, so Ctrl+H
+  replaces there too, as in Excel for Mac, and the tooltip names it. The
+  panel has no Radix trigger, so on closing it gives the keyboard back to
+  the element that had it when it opened, usually the grid. Excel's Find all list and its search by
   columns are not built.
 - **Inserting or deleting rows or columns rebuilds the sheets it
   changes.** `insertLines` and `deleteLines` name spans of rows or columns;

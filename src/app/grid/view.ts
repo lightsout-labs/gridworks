@@ -114,7 +114,7 @@ export interface ViewState {
 }
 
 /** What find looks for, on the shown sheet or in the whole workbook. */
-export interface Finding extends Omit<Search, 'sheets'> {
+export interface Finding extends Omit<Search, 'sheets' | 'only'> {
   readonly workbook?: boolean;
 }
 
@@ -997,13 +997,12 @@ export class View {
     this.commit();
     const inFormulas = { ...finding, lookIn: 'formulas' } as const;
     const { sheet, selection } = this.current;
-    const only = { sheet, ...selection.active };
-    const search = this.search(inFormulas);
-    const holds = this.workbook
-      .find({ ...search, sheets: [sheet] })
-      .some((place) => place.row === only.row && place.col === only.col);
-    if (holds) {
-      this.workbook.execute({ type: 'replace', search, replacement, only });
+    const search = {
+      ...this.search(inFormulas),
+      only: { sheet, ...selection.active },
+    };
+    if (this.workbook.find(search).length > 0) {
+      this.workbook.execute({ type: 'replace', search, replacement });
     }
     return this.findNext(inFormulas);
   }

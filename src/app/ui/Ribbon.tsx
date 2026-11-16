@@ -171,7 +171,7 @@ export function Ribbon({
           <Command
             icon={Replace}
             label={t('replace')}
-            tooltip={`${t('replace.tooltip')} (${key}H)`}
+            tooltip={`${t('replace.tooltip')} (${MAC ? '⌃' : 'Ctrl+'}H)`}
             disabled={false}
             onRun={() => onFind('replace')}
             labeled

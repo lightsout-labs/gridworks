@@ -22,6 +22,11 @@ export type Shortcut =
  */
 export function shortcut(press: KeyPress, mac: boolean): Shortcut | null {
   const { key, shift, ctrl, meta, alt } = press;
+  // macOS hides the browser on Cmd+H, so Replace is Ctrl+H there, as in
+  // Excel for Mac.
+  if (mac && ctrl && !meta && !shift && !alt && key.toLowerCase() === 'h') {
+    return 'replace';
+  }
   const command = mac ? meta && !ctrl : ctrl && !meta;
   if (!command || shift || alt) return null;
   switch (key.toLowerCase()) {

@@ -377,7 +377,7 @@ test.describe('the controls', () => {
         [
           'button',
           'Replace',
-          /^Replace text in the sheet or the workbook \((Ctrl\+|⌘)H\)$/,
+          /^Replace text in the sheet or the workbook \((Ctrl\+|⌃)H\)$/,
         ],
         ...statusBar,
       ],

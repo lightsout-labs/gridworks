@@ -28,6 +28,9 @@ export function FindPanel({
   const [replacement, setReplacement] = useState('');
   const [message, setMessage] = useState('');
   const input = useRef<HTMLInputElement>(null);
+  // Where the keyboard was when the panel opened, usually the grid, to give
+  // it back on closing: the panel has no trigger for Radix to return to.
+  const opener = useRef<Element | null>(null);
   const replacing = mode === 'replace';
 
   // Switching between find and replace starts from the search again.
@@ -61,6 +64,16 @@ export function FindPanel({
         <Dialog.Content
           className={styles.findPanel}
           aria-describedby={undefined}
+          onOpenAutoFocus={() => {
+            opener.current = document.activeElement;
+          }}
+          onCloseAutoFocus={(event) => {
+            const element = opener.current;
+            if (element instanceof HTMLElement && element.isConnected) {
+              event.preventDefault();
+              element.focus();
+            }
+          }}
           // The grid stays usable while the panel is open.
           onInteractOutside={(event) => event.preventDefault()}
         >

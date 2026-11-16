@@ -997,6 +997,21 @@ Acceptance criteria:
   languages, look right in both themes, and have hover, focus and disabled
   states and tooltips. (R37, R41, R42, R43, R44)
 
+Notes:
+- `workbook.find(search)` lists matching cells; the `replace` command is
+  recorded as a `group` of restores, so storage replay and undo need
+  nothing of their own. S25 (validation): a replace types each new text
+  as `setCell` does, so S25 decides whether replace goes through the same
+  check as typed input.
+- `find` scans every cell of the sheets searched: about 0.7 s for ten
+  million integers and up to 3 s when they are fractions (numfmt). Replace
+  all scans twice (count, then replace). A faster General format for
+  fractions would speed it, and the grid too.
+- Cmd+H is hidden by macOS, so Ctrl+H also replaces on a Mac; it was not
+  checked in a real Mac browser, only through Playwright.
+- `ViewState.reveal` asks the grid to scroll a cell into view without
+  taking focus; S26 (named ranges) can reuse it to go to a name.
+
 ## S25: Data validation
 
 Status: Todo

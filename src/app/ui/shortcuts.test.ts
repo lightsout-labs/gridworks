@@ -34,7 +34,9 @@ describe('shortcut', () => {
   it('finds with Ctrl+F and replaces with Ctrl+H', () => {
     expect(shortcut(press('f', { ctrl: true }), false)).toBe('find');
     expect(shortcut(press('h', { ctrl: true }), false)).toBe('replace');
-    expect(shortcut(press('h', { meta: true }), true)).toBe('replace');
+    expect(shortcut(press('f', { meta: true }), true)).toBe('find');
+    // macOS hides the browser on Cmd+H.
+    expect(shortcut(press('h', { ctrl: true }), true)).toBe('replace');
   });
 
   it('leaves Ctrl+C, X and V to the clipboard events', () => {

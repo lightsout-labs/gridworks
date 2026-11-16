@@ -2884,17 +2884,23 @@ describe('find and replace', () => {
     const { workbook, sheet, show } = searching();
     workbook.execute({
       type: 'replace',
-      search: { text: 'apple', sheets: [sheet] },
+      search: {
+        text: 'apple',
+        sheets: [sheet],
+        only: { sheet, row: 0, col: 2 },
+      },
       replacement: 'plum',
-      only: { sheet, row: 0, col: 2 },
     });
     expect([show(0, 0), show(0, 2)]).toEqual(['Apple pie', 'plum']);
     expect(() =>
       workbook.execute({
         type: 'replace',
-        search: { text: 'apple', sheets: [sheet] },
+        search: {
+          text: 'apple',
+          sheets: [sheet],
+          only: { sheet, row: 5, col: 5 },
+        },
         replacement: 'plum',
-        only: { sheet, row: 5, col: 5 },
       }),
     ).toThrow();
   });

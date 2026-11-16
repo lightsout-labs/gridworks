@@ -40,6 +40,9 @@ test('Ctrl+F moves through the matches and counts them', async ({ page }) => {
 
   await page.keyboard.press('Escape');
   await expect(panel(page)).toHaveCount(0);
+  // The keyboard is back on the grid.
+  await page.keyboard.press('ArrowDown');
+  await expect(announced(page)).toHaveText('A2 pear');
 });
 
 test('searches the whole workbook, in values or in formulas', async ({

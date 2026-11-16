@@ -227,14 +227,12 @@ export type Command =
       /**
        * Replaces the search in the text that edits each cell it finds,
        * every match in the cell, or the whole text for `entireCell`, and
-       * sets the cell to the new text as if it were typed; or only the
-       * cell `only`, which must be one it finds. Listeners get it as a
-       * `group`.
+       * sets the cell to the new text as if it were typed. It must find
+       * one. Listeners get it as a `group`.
        */
       readonly type: 'replace';
       readonly search: Omit<Search, 'lookIn'>;
       readonly replacement: string;
-      readonly only?: Place;
     }
   | {
       /**
@@ -420,6 +418,8 @@ export interface Search {
    * (`formulas`, the default), or in the text it shows (`values`).
    */
   readonly lookIn?: 'formulas' | 'values';
+  /** Searches this cell alone, which must be on one of the sheets. */
+  readonly only?: Place;
 }
 
 /** What a set of cells adds up to, as the status bar shows it. */
@@ -867,24 +867,45 @@ export class Workbook {
   find(search: Search): Place[] {
     if (search.text === '') return [];
     const pattern = matcher(search);
+    const values = search.lookIn === 'values';
     const found: Place[] = [];
     for (const id of search.sheets) {
       const sheet = this.sheet(id);
-      const places: { row: number; col: number }[] = [];
-      sheet.columns.forEach((column, col) => {
-        column.forEach((value, row) => {
-          if (value != null) places.push({ row, col });
+      const matches: { row: number; col: number }[] = [];
+      // The text of a cell, read without the rest of what `cell` gives:
+      // formula cells hold `null` among the values.
+      const test = (row: number, col: number, value: Value) => {
+        const formula =
+          value === null ? sheet.formulas.get(key(row, col)) : undefined;
+        const code =
+          this.styles[sheet.styleIds[col]?.[row] ?? 0]!.numberFormat ?? GENERAL;
+        const text = !formula
+          ? values
+            ? formatValue(value, code)
+            : editText(value, code)
+          : values
+            ? formatValue(this.calc.cell(sheet, row, col), code)
+            : formula.text;
+        if (pattern.test(text)) matches.push({ row, col });
+      };
+      const { only } = search;
+      if (only) {
+        if (only.sheet === id) {
+          const value = sheet.columns[only.col]?.[only.row] ?? null;
+          test(only.row, only.col, value);
+        }
+      } else {
+        sheet.columns.forEach((column, col) => {
+          column.forEach((value, row) => {
+            if (value != null) test(row, col, value);
+          });
         });
-      });
-      for (const { row, col } of sheet.formulas.values()) {
-        places.push({ row, col });
+        for (const { row, col } of sheet.formulas.values()) {
+          test(row, col, null);
+        }
       }
-      places.sort((a, b) => a.row - b.row || a.col - b.col);
-      for (const { row, col } of places) {
-        const cell = this.cell(id, row, col);
-        const text = search.lookIn === 'values' ? cell.display : cell.input;
-        if (pattern.test(text)) found.push({ sheet: id, row, col });
-      }
+      matches.sort((a, b) => a.row - b.row || a.col - b.col);
+      for (const { row, col } of matches) found.push({ sheet: id, row, col });
     }
     return found;
   }
@@ -1244,14 +1265,8 @@ export class Workbook {
    * and gives the cells before and after as restores, a sheet each.
    */
   private replace(command: Extract<Command, { type: 'replace' }>): Applied {
-    const { search, replacement, only } = command;
-    const found = this.find(search).filter(
-      (place) =>
-        !only ||
-        (place.sheet === only.sheet &&
-          place.row === only.row &&
-          place.col === only.col),
-    );
+    const { search, replacement } = command;
+    const found = this.find(search);
     if (found.length === 0) throw new Error('Nothing to replace');
     const pattern = new RegExp(
       matcher(search).source,
@@ -2232,7 +2247,6 @@ export class Workbook {
   }
 }
 
-/** A command, as its listeners get it, and the command that reverses it. */
 /**
  * A pattern that finds the text of a search in a cell's text: anywhere in
  * it, or as the whole of it for `entireCell`, in any case unless
@@ -2246,6 +2260,7 @@ function matcher(search: Omit<Search, 'sheets' | 'lookIn'>): RegExp {
   );
 }
 
+/** A command, as its listeners get it, and the command that reverses it. */
 interface Applied {
   readonly executed: Command;
   readonly reverse: Command;
