@@ -43,10 +43,10 @@ export const ZOOM_MAX = 2;
 
 const START = { row: 0, col: 0 };
 
-/** A change to the sheets of a workbook. */
+/** A change to the sheets of a workbook, or to a sheet's rules. */
 export type SheetCommand = Extract<
   Command,
-  { type: 'addSheet' | 'deleteSheet' | 'setSheet' }
+  { type: 'addSheet' | 'deleteSheet' | 'setSheet' | 'setRules' }
 >;
 
 /** An entry being typed into the active cell. */
@@ -372,8 +372,8 @@ export class View {
   }
 
   /**
-   * Makes a change to the sheets, after committing a waiting entry, and
-   * shows a sheet it adds.
+   * Makes a change to the sheets or their conditional formats, after
+   * committing a waiting entry, and shows a sheet it adds.
    */
   execute(command: SheetCommand): void {
     this.commit();

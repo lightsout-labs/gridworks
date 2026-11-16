@@ -3,6 +3,7 @@ import {
   SHEET_COLUMNS,
   TEXT_PADDING,
   wrapText,
+  type RuleFormat,
   type Style,
   type TextWidth,
   type Value,
@@ -63,6 +64,24 @@ export interface ShownCell {
   readonly display: string;
   readonly style: Style;
   readonly color?: string;
+}
+
+/**
+ * A cell as it is drawn: with the format its conditional formats give it
+ * over its style, and their text color over that of its number format.
+ */
+export function shownCell<T extends ShownCell>(
+  cell: T & { readonly conditional?: RuleFormat },
+): ShownCell {
+  const { conditional } = cell;
+  if (!conditional) return cell;
+  const color = conditional.color ?? cell.color;
+  return {
+    value: cell.value,
+    display: cell.display,
+    style: { ...cell.style, ...conditional },
+    ...(color !== undefined && { color }),
+  };
 }
 
 /**

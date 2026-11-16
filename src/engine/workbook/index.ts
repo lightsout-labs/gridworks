@@ -29,6 +29,7 @@ import {
   type Sheet,
   type SheetLayout,
 } from './calc';
+import { Rules, type Rule, type RuleFormat } from './rules';
 import { series } from './series';
 import {
   cellHeight,
@@ -46,6 +47,7 @@ import {
 
 export type { Value } from '../value';
 export type { Frozen, Lines, SheetLayout } from './calc';
+export type { Condition, Rule, RuleFormat } from './rules';
 export {
   BORDER_LINES,
   DEFAULT_FONT_SIZE,
@@ -200,6 +202,15 @@ export type Command =
       readonly sheet: string;
       readonly rows: number;
       readonly cols: number;
+    }
+  | {
+      /**
+       * Gives a sheet these conditional formats in place of its own, the
+       * first taking priority where they differ (R20).
+       */
+      readonly type: 'setRules';
+      readonly sheet: string;
+      readonly rules: readonly Rule[];
     }
   | {
       /**
@@ -367,6 +378,11 @@ export interface Cell {
   /** The text that edits the cell, as the formula bar shows it. */
   readonly input: string;
   readonly style: Style;
+  /**
+   * What the conditional formats change of the style, drawn over it and
+   * over the format's color; absent when none applies (R20).
+   */
+  readonly conditional?: RuleFormat;
 }
 
 export interface SheetInfo {
@@ -397,6 +413,8 @@ export interface SheetSnapshot extends SheetInfo {
   readonly merges?: Range[];
   /** The rows and columns frozen; absent for none. */
   readonly frozen?: Frozen;
+  /** The conditional formats, the first first; absent for none. */
+  readonly conditionalFormats?: Rule[];
 }
 
 /**
@@ -536,6 +554,8 @@ export class Workbook {
   private readonly undoList: Command[] = [];
   /** The commands that redo the changes undone, the latest undone last. */
   private readonly redoList: Command[] = [];
+  /** The formats that conditional formats give cells. */
+  private readonly conditions = new Rules();
 
   private constructor(
     private readonly name: string,
@@ -657,12 +677,19 @@ export class Workbook {
     const style = this.styles[sheet.styleIds[col]?.[row] ?? 0]!;
     const code = style.numberFormat ?? GENERAL;
     const color = code === GENERAL ? undefined : formatColor(value, code);
+    const conditional =
+      sheet.rules.length === 0
+        ? undefined
+        : this.conditions.format(sheet.rules, row, col, value, (area, visit) =>
+            this.calc.cells(sheet, area, visit),
+          );
     return {
       value,
       formula,
       style,
       display: formatValue(value, code),
       ...(color !== undefined && { color }),
+      ...(conditional !== undefined && { conditional }),
       // Only the formula bar and the editor need it, not every drawn cell.
       get input() {
         return formula ?? editText(value, code);
@@ -721,6 +748,11 @@ export class Workbook {
    */
   layout(sheetId: string): SheetLayout {
     return this.sheet(sheetId).layout;
+  }
+
+  /** The conditional formats of a sheet, the first first. */
+  rules(sheetId: string): readonly Rule[] {
+    return this.sheet(sheetId).rules;
   }
 
   /** The ranges merged into one cell: the same array until they change. */
@@ -827,6 +859,8 @@ export class Workbook {
       this.fitNewSheets();
     } else if (command.type === 'freeze') {
       applied = this.freeze(command);
+    } else if (command.type === 'setRules') {
+      applied = this.setRules(command);
     } else if (command.type === 'setLines') {
       applied = this.setLines(command);
       // Wrapped text takes more or fewer lines in another width.
@@ -841,6 +875,8 @@ export class Workbook {
         this.calc.rebuild();
       }
     }
+    // Values, formulas or rules may have changed what the rules find.
+    this.conditions.forget();
     const { executed, reverse, change } = applied;
     if (history) {
       history.push(reverse);
@@ -1098,6 +1134,21 @@ export class Workbook {
       executed: command,
       reverse: { ...command, ...old },
       change: { sheet: sheet.id, ranges: [] },
+    };
+  }
+
+  /** Replaces the conditional formats of a sheet. */
+  private setRules(command: Extract<Command, { type: 'setRules' }>): Applied {
+    const sheet = this.sheet(command.sheet);
+    const old = sheet.rules;
+    sheet.rules = command.rules;
+    return {
+      executed: command,
+      reverse: { ...command, rules: old },
+      change: {
+        sheet: sheet.id,
+        ranges: [...old, ...command.rules].flatMap((rule) => rule.ranges),
+      },
     };
   }
 
@@ -1981,9 +2032,26 @@ function movedLines(
       ? []
       : [result];
   });
+  // A rule keeps the lines of its ranges that stay, and is dropped with them.
+  const conditionalFormats = snapshot.conditionalFormats?.flatMap((rule) => {
+    const ranges = rule.ranges.flatMap((range) => {
+      const lines = rows
+        ? span(range.top, range.bottom)
+        : span(range.left, range.right);
+      if (!lines) return [];
+      const [start, end] = lines;
+      return [
+        rows
+          ? { ...range, top: start, bottom: end }
+          : { ...range, left: start, right: end },
+      ];
+    });
+    return ranges.length === 0 ? [] : [{ ...rule, ranges }];
+  });
   return {
     ...snapshot,
     ...(merges && { merges }),
+    ...(conditionalFormats && { conditionalFormats }),
     columns: cells(snapshot.columns, null),
     ...(snapshot.styleIds && { styleIds: cells(snapshot.styleIds, 0) }),
     ...(rows
@@ -2021,6 +2089,8 @@ function sheetOf(snapshot: SheetSnapshot): Sheet {
   };
   if (snapshot.merges)
     sheet.merges = snapshot.merges.map((each) => ({ ...each }));
+  if (snapshot.conditionalFormats)
+    sheet.rules = [...snapshot.conditionalFormats];
   for (const [row, col, text] of snapshot.formulas) {
     const ast = parse(text.slice(1));
     if (!ast) throw new Error(`Invalid formula in snapshot: ${text}`);
@@ -2051,5 +2121,6 @@ function snapshotOf(sheet: Sheet): SheetSnapshot {
     ...(columns.hidden.size > 0 && { hiddenColumns: [...columns.hidden] }),
     ...(sheet.merges.length > 0 && { merges: [...sheet.merges] }),
     ...(frozen && { frozen: { ...frozen } }),
+    ...(sheet.rules.length > 0 && { conditionalFormats: [...sheet.rules] }),
   };
 }

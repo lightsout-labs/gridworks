@@ -1,5 +1,6 @@
 import { evaluate, references, type Area, type Ast } from '../formula';
 import type { ErrorValue, Value } from '../value';
+import type { Rule } from './rules';
 
 /** A stored value: formulas keep their text, not their result. */
 export type Constant = number | string | boolean | null;
@@ -70,6 +71,8 @@ export interface Sheet {
   layout: SheetLayout;
   /** The ranges merged into one cell; replaced, never changed. */
   merges: readonly Area[];
+  /** The conditional formats, the first first; replaced, never changed. */
+  rules: readonly Rule[];
   /** The formulas that read one cell, by the cell's key. */
   readonly cellReaders: Map<string, Set<Dependency>>;
   /** The formulas that read an area of several cells, by each column of it. */
@@ -96,6 +99,7 @@ export function emptySheet(
     styleIds,
     layout: { rows: NO_LINES, columns: NO_LINES },
     merges: [],
+    rules: [],
     cellReaders: new Map(),
     areaReaders: new Map(),
   };
@@ -291,7 +295,7 @@ export class Calculation {
   }
 
   /** Visits the cells of an area that are not empty. */
-  private cells(
+  cells(
     sheet: Sheet,
     area: Area,
     visit: (value: Value, row: number, col: number) => void,

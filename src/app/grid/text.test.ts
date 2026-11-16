@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { Style, Value } from '../../engine/workbook';
 import { COLUMN_WIDTH } from './geometry';
-import { cssFont, DEFAULT_FAMILY, rowTexts, textColorOn } from './text';
+import {
+  cssFont,
+  DEFAULT_FAMILY,
+  rowTexts,
+  shownCell,
+  textColorOn,
+} from './text';
 
 /** A row of cells from values, each shown as its text, and their styles. */
 function row(
@@ -240,5 +246,28 @@ describe('textColorOn', () => {
     expect(textColorOn('#ffffff')).toBe('#000000');
     expect(textColorOn('#002060')).toBe('#ffffff');
     expect(textColorOn('#c00000')).toBe('#ffffff');
+  });
+});
+
+describe('shownCell', () => {
+  it('draws a conditional format over the style and the color of the number format', () => {
+    const cell = {
+      value: -1,
+      display: '(1)',
+      style: { bold: true, fill: '#ffffff', color: '#000000' } as const,
+      color: '#ff0000',
+    };
+    expect(shownCell(cell)).toBe(cell);
+    expect(
+      shownCell({ ...cell, conditional: { fill: '#ffc7ce', italic: true } }),
+    ).toEqual({
+      value: -1,
+      display: '(1)',
+      style: { bold: true, italic: true, fill: '#ffc7ce', color: '#000000' },
+      color: '#ff0000',
+    });
+    expect(
+      shownCell({ ...cell, conditional: { color: '#9c0006' } }),
+    ).toMatchObject({ style: { color: '#9c0006' }, color: '#9c0006' });
   });
 });

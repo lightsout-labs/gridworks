@@ -846,7 +846,7 @@ Notes:
 
 ## S20: Conditional formatting: value rules
 
-Status: Todo
+Status: In progress
 
 Acceptance criteria:
 - The user can add a rule to a range that formats cells greater than, less

@@ -53,6 +53,7 @@ import {
   cssFont,
   rowTexts,
   TEXT_PADDING,
+  shownCell,
   textColorOn,
   type RowText,
 } from './text';
@@ -786,7 +787,7 @@ function draw(
     const key = `${row},${col}`;
     let look = looks.get(key);
     if (!look) {
-      look = workbook.cell(sheet, row, col).style;
+      look = shownCell(workbook.cell(sheet, row, col)).style;
       looks.set(key, look);
     }
     return look;
@@ -820,7 +821,7 @@ function draw(
     for (let row = range.top; row <= range.bottom; row++) {
       const texts = rowTexts(
         (col) => {
-          const cell = workbook.cell(sheet, row, col);
+          const cell = shownCell(workbook.cell(sheet, row, col));
           looks.set(`${row},${col}`, cell.style);
           return cell;
         },
@@ -906,7 +907,7 @@ function draw(
         context.fillStyle = color('--selection');
         context.fillRect(box.x, box.y, box.width, box.height);
       }
-      const cell = workbook.cell(sheet, row, col);
+      const cell = shownCell(workbook.cell(sheet, row, col));
       if (cell.display !== '') {
         const { lines, align } = cellText(cell, box.width / zoom, measure);
         drawText(context, lines, cell.style, align, box, {
