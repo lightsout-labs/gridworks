@@ -31,6 +31,12 @@ describe('shortcut', () => {
     expect(shortcut(press('u', { meta: true }), true)).toBe('underline');
   });
 
+  it('finds with Ctrl+F and replaces with Ctrl+H', () => {
+    expect(shortcut(press('f', { ctrl: true }), false)).toBe('find');
+    expect(shortcut(press('h', { ctrl: true }), false)).toBe('replace');
+    expect(shortcut(press('h', { meta: true }), true)).toBe('replace');
+  });
+
   it('leaves Ctrl+C, X and V to the clipboard events', () => {
     expect(shortcut(press('c', { ctrl: true }), false)).toBeNull();
     expect(shortcut(press('x', { ctrl: true }), false)).toBeNull();

@@ -918,3 +918,43 @@
 .filterPanel .textInput {
   font-family: inherit;
 }
+
+/* The find panel stays at the top right, beside the grid it searches. */
+.findPanel {
+  position: fixed;
+  top: 140px;
+  right: 16px;
+  box-sizing: border-box;
+  width: min(340px, calc(100vw - 32px));
+  max-height: calc(100vh - 156px);
+  padding: 16px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 2);
+  background: var(--background);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  animation: appear var(--transition);
+}
+
+.findPanel .textInput {
+  width: 100%;
+  font-family: inherit;
+}
+
+.findOptions {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 12px 0;
+}
+
+.findOptions .field {
+  margin: 0;
+}
+
+.findPanel .dialogText {
+  min-height: 1.5em;
+  margin-bottom: 8px;
+}

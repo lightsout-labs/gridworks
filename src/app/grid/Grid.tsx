@@ -217,14 +217,22 @@ export function Grid({
   }, [zoom]);
 
   // Another sheet opens at its top left, ready for the keyboard unless a
-  // formula is being typed in the formula bar.
+  // formula is being typed in the formula bar. A cell that find goes to is
+  // scrolled into view, and the keyboard stays in the find panel.
   const shownSheet = useRef(sheet);
+  const shownReveal = useRef(state.reveal);
   useLayoutEffect(() => {
-    if (shownSheet.current === sheet) return;
-    shownSheet.current = sheet;
-    scroller.current!.scrollTo(0, 0);
-    if (!view.state.entry) scroller.current!.focus();
-  }, [sheet, view]);
+    const { reveal } = state;
+    const revealing = shownReveal.current !== reveal ? reveal : null;
+    shownReveal.current = reveal;
+    if (shownSheet.current !== sheet) {
+      shownSheet.current = sheet;
+      scroller.current!.scrollTo(0, 0);
+      if (!view.state.entry && !revealing) scroller.current!.focus();
+    }
+    if (revealing) show(revealing);
+    // `show` reads the elements and the view when called.
+  }, [sheet, state.reveal, view]);
 
   // When an entry in the formula bar ends, the keyboard comes back to the
   // grid, which shows the cell it moved to.

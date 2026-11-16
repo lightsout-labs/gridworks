@@ -10,7 +10,9 @@ import {
   Moon,
   Paintbrush,
   Redo2,
+  Replace,
   Scissors,
+  Search,
   Snowflake,
   Sun,
   Table2,
@@ -36,6 +38,7 @@ import {
   MergeControls,
   NumberControls,
 } from './Format';
+import type { FindMode } from './Find';
 import type { Language } from './i18n';
 import { RuleControls } from './Rules';
 import { FilterControls } from './Filter';
@@ -61,6 +64,7 @@ export function Ribbon({
   onOpen,
   onSave,
   onCopy,
+  onFind,
 }: {
   workbook: Workbook;
   view: View;
@@ -74,8 +78,11 @@ export function Ribbon({
   onSave: () => void;
   /** Puts the cells copied or cut on the system clipboard. */
   onCopy: (contents: ClipboardContents) => void;
+  /** Opens the find panel, alone or with replace. */
+  onFind: (mode: FindMode) => void;
 }) {
   const t = useTranslation();
+  const key = MAC ? '⌘' : 'Ctrl+';
   return (
     <Tabs.Root className={styles.ribbon} defaultValue="home">
       <div className={styles.ribbonTabs}>
@@ -151,6 +158,24 @@ export function Ribbon({
         </Group>
         <Group label={t('styles')}>
           <RuleControls workbook={workbook} view={view} />
+        </Group>
+        <Group label={t('editing')}>
+          <Command
+            icon={Search}
+            label={t('find')}
+            tooltip={`${t('find.tooltip')} (${key}F)`}
+            disabled={false}
+            onRun={() => onFind('find')}
+            labeled
+          />
+          <Command
+            icon={Replace}
+            label={t('replace')}
+            tooltip={`${t('replace.tooltip')} (${key}H)`}
+            disabled={false}
+            onRun={() => onFind('replace')}
+            labeled
+          />
         </Group>
       </Tabs.Content>
       <Tabs.Content className={styles.ribbonPanel} value="formulas">

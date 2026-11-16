@@ -225,6 +225,19 @@ export type Command =
     }
   | {
       /**
+       * Replaces the search in the text that edits each cell it finds,
+       * every match in the cell, or the whole text for `entireCell`, and
+       * sets the cell to the new text as if it were typed; or only the
+       * cell `only`, which must be one it finds. Listeners get it as a
+       * `group`.
+       */
+      readonly type: 'replace';
+      readonly search: Omit<Search, 'lookIn'>;
+      readonly replacement: string;
+      readonly only?: Place;
+    }
+  | {
+      /**
        * Gives a sheet these conditional formats in place of its own, the
        * first taking priority where they differ (R20).
        */
@@ -385,6 +398,28 @@ export interface Range {
   readonly left: number;
   readonly bottom: number;
   readonly right: number;
+}
+
+/** A cell of a sheet. */
+export interface Place {
+  readonly sheet: string;
+  readonly row: number;
+  readonly col: number;
+}
+
+/** What `find` looks for, and where (R25). */
+export interface Search {
+  readonly text: string;
+  /** The sheets searched, in the order searched. */
+  readonly sheets: readonly string[];
+  readonly matchCase?: boolean;
+  /** Whether the text must be the whole of the cell's, not a part. */
+  readonly entireCell?: boolean;
+  /**
+   * Looks in the text that edits each cell, a formula or a value
+   * (`formulas`, the default), or in the text it shows (`values`).
+   */
+  readonly lookIn?: 'formulas' | 'values';
 }
 
 /** What a set of cells adds up to, as the status bar shows it. */
@@ -825,6 +860,35 @@ export class Workbook {
       .map(([display]) => display);
   }
 
+  /**
+   * The cells that hold the search, sheet by sheet in the order given, and
+   * row by row in each; none for an empty search.
+   */
+  find(search: Search): Place[] {
+    if (search.text === '') return [];
+    const pattern = matcher(search);
+    const found: Place[] = [];
+    for (const id of search.sheets) {
+      const sheet = this.sheet(id);
+      const places: { row: number; col: number }[] = [];
+      sheet.columns.forEach((column, col) => {
+        column.forEach((value, row) => {
+          if (value != null) places.push({ row, col });
+        });
+      });
+      for (const { row, col } of sheet.formulas.values()) {
+        places.push({ row, col });
+      }
+      places.sort((a, b) => a.row - b.row || a.col - b.col);
+      for (const { row, col } of places) {
+        const cell = this.cell(id, row, col);
+        const text = search.lookIn === 'values' ? cell.display : cell.input;
+        if (pattern.test(text)) found.push({ sheet: id, row, col });
+      }
+    }
+    return found;
+  }
+
   /** The ranges merged into one cell: the same array until they change. */
   merges(sheetId: string): readonly Range[] {
     return this.sheet(sheetId).merges;
@@ -930,6 +994,8 @@ export class Workbook {
       // Formulas have moved, so what each reads is found again.
       this.calc.rebuild();
       this.fitNewSheets();
+    } else if (command.type === 'replace') {
+      applied = this.replace(command);
     } else if (command.type === 'freeze') {
       applied = this.freeze(command);
     } else if (command.type === 'setRules') {
@@ -1170,6 +1236,62 @@ export class Workbook {
         sheets: before,
       },
       change: { sheet: sheet.id, ranges },
+    };
+  }
+
+  /**
+   * Sets the cells a search finds to their text with the search replaced,
+   * and gives the cells before and after as restores, a sheet each.
+   */
+  private replace(command: Extract<Command, { type: 'replace' }>): Applied {
+    const { search, replacement, only } = command;
+    const found = this.find(search).filter(
+      (place) =>
+        !only ||
+        (place.sheet === only.sheet &&
+          place.row === only.row &&
+          place.col === only.col),
+    );
+    if (found.length === 0) throw new Error('Nothing to replace');
+    const pattern = new RegExp(
+      matcher(search).source,
+      search.matchCase ? 'g' : 'gi',
+    );
+    const before: Restore[] = [];
+    const after: Restore[] = [];
+    for (const id of new Set(found.map((place) => place.sheet))) {
+      const sheet = this.sheet(id);
+      const cells = found.filter((place) => place.sheet === id);
+      // Read before any is set, as a formula's text may name another.
+      const inputs = cells.map(({ row, col }) =>
+        this.cell(id, row, col).input.replace(pattern, () => replacement),
+      );
+      const ranges = cells.map(({ row, col }) => cellArea(row, col));
+      before.push({
+        type: 'restore',
+        sheet: id,
+        ranges,
+        cells: this.contents(sheet, ranges),
+      });
+      cells.forEach(({ row, col }, index) => {
+        const input = inputs[index]!;
+        this.setCell(sheet, { type: 'setCell', sheet: id, row, col, input });
+      });
+      after.push({
+        type: 'restore',
+        sheet: id,
+        ranges,
+        cells: this.contents(sheet, ranges),
+      });
+      this.calc.changed(sheet, ranges);
+    }
+    this.calc.settle();
+    for (const { sheet, ranges } of after)
+      this.fitRows(this.sheet(sheet), ranges);
+    return {
+      executed: { type: 'group', restores: after },
+      reverse: { type: 'group', restores: before },
+      change: { sheet: after[0]!.sheet, ranges: after[0]!.ranges },
     };
   }
 
@@ -2111,6 +2233,19 @@ export class Workbook {
 }
 
 /** A command, as its listeners get it, and the command that reverses it. */
+/**
+ * A pattern that finds the text of a search in a cell's text: anywhere in
+ * it, or as the whole of it for `entireCell`, in any case unless
+ * `matchCase`.
+ */
+function matcher(search: Omit<Search, 'sheets' | 'lookIn'>): RegExp {
+  const escaped = search.text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(
+    search.entireCell ? `^${escaped}$` : escaped,
+    search.matchCase ? '' : 'i',
+  );
+}
+
 interface Applied {
   readonly executed: Command;
   readonly reverse: Command;

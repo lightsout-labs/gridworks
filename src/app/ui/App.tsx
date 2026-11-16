@@ -9,6 +9,7 @@ import { restoreWorkbook, startAutosave } from './autosave';
 import { CellMenu } from './CellMenu';
 import { FillOptions } from './FillOptions';
 import { FilterButton } from './Filter';
+import { FindPanel, type FindMode } from './Find';
 import { Translation } from './controls';
 import { droppedMessage, workbookName } from './files';
 import { startingLanguage, translator, type Language } from './i18n';
@@ -56,6 +57,7 @@ export function App({ platform }: { platform: Platform }) {
   const [open, setOpen] = useState<Open>();
   const [message, setMessage] = useState<Message | null>(null);
   const [busy, setBusy] = useState(false);
+  const [finding, setFinding] = useState<FindMode | null>(null);
 
   // On the root element, so that the tooltips and menus drawn outside the
   // app's own element are themed too, and before the grid first paints.
@@ -123,8 +125,7 @@ export function App({ platform }: { platform: Platform }) {
     if (!open) return;
     const { view } = open;
     const onKeyDown = (event: KeyboardEvent) => {
-      // A text box, such as a sheet name being typed, undoes its own typing.
-      if (view.state.entry || isTextBox(event.target)) return;
+      if (view.state.entry) return;
       const command = shortcut(
         {
           key: event.key,
@@ -136,6 +137,15 @@ export function App({ platform }: { platform: Platform }) {
         MAC,
       );
       if (!command) return;
+      // Find and replace open from anywhere, a text box too, in place of
+      // the browser's own find.
+      if (command === 'find' || command === 'replace') {
+        event.preventDefault();
+        setFinding(command);
+        return;
+      }
+      // A text box, such as a sheet name being typed, undoes its own typing.
+      if (isTextBox(event.target)) return;
       event.preventDefault();
       if (
         command === 'bold' ||
@@ -223,6 +233,7 @@ export function App({ platform }: { platform: Platform }) {
             onOpen={() => void openFile()}
             onSave={() => void saveFile(open.workbook)}
             onCopy={copyToClipboard}
+            onFind={setFinding}
           />
           {message && (
             <MessageBar
@@ -262,6 +273,7 @@ export function App({ platform }: { platform: Platform }) {
           </main>
           <SheetTabs {...open} />
           <StatusBar {...open} />
+          <FindPanel view={open.view} mode={finding} onMode={setFinding} />
         </div>
       </TooltipProvider>
     </Translation>

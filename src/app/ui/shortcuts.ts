@@ -6,7 +6,15 @@ import type { KeyPress } from '../grid/navigation';
  * clipboard.
  */
 export type Shortcut =
-  'undo' | 'redo' | 'fillDown' | 'fillRight' | 'bold' | 'italic' | 'underline';
+  | 'undo'
+  | 'redo'
+  | 'fillDown'
+  | 'fillRight'
+  | 'bold'
+  | 'italic'
+  | 'underline'
+  | 'find'
+  | 'replace';
 
 /**
  * The shortcut a key runs, as in Excel, with Cmd in place of Ctrl on a
@@ -31,6 +39,10 @@ export function shortcut(press: KeyPress, mac: boolean): Shortcut | null {
       return 'italic';
     case 'u':
       return 'underline';
+    case 'f':
+      return 'find';
+    case 'h':
+      return 'replace';
     default:
       return null;
   }
