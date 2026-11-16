@@ -918,6 +918,33 @@ describe('View', () => {
         wrap: true,
       });
     });
+    it('adds and removes decimals and the thousands separator by the active cell', () => {
+      const { workbook, view, sheet } = setup();
+      workbook.execute({
+        type: 'setCell',
+        sheet,
+        row: 0,
+        col: 0,
+        input: '1234.5',
+      });
+      workbook.execute({ type: 'setCell', sheet, row: 1, col: 0, input: '2' });
+      view.select(
+        pick(view.state.selection, { kind: 'cell', row: 1, col: 0 }, 'extend', {
+          row: 0,
+          col: 0,
+        }),
+      );
+      view.adjustFormat('moreDecimals');
+      expect(workbook.cell(sheet, 0, 0).display).toBe('1234.50');
+      expect(workbook.cell(sheet, 1, 0).display).toBe('2.00');
+      view.adjustFormat('thousands');
+      view.adjustFormat('fewerDecimals');
+      expect(workbook.cell(sheet, 0, 0).display).toBe('1,234.5');
+      view.adjustFormat('thousands');
+      expect(workbook.cell(sheet, 0, 0).style.numberFormat).toBe('0.0');
+      workbook.undo();
+      expect(workbook.cell(sheet, 0, 0).style.numberFormat).toBe('#,##0.0');
+    });
   });
 
   describe('borders, merges and the format painter', () => {

@@ -96,6 +96,38 @@ describe('rowTexts', () => {
     expect(texts[0]).toMatchObject({ from: 0, to: 0 });
   });
 
+  it('shows a number too wide for its column as #### across it, as Excel does', () => {
+    // A column holds 9 characters inside its padding.
+    const texts = rowTexts(
+      row(
+        { 0: 1234567890, 1: 123456789, 2: 'x'.repeat(10) },
+        { 0: { wrap: true } },
+      ),
+      0,
+      9,
+      measure,
+      standard,
+    );
+    expect(texts.map(({ lines }) => lines)).toEqual([
+      ['#########'],
+      ['123456789'],
+      ['XXXXXXXXXX'],
+    ]);
+  });
+
+  it('gives text the color its number format gives it', () => {
+    const cell = (col: number) => ({
+      value: col === 0 ? -1 : null,
+      display: col === 0 ? '(1)' : '',
+      style: {},
+      color: '#ff0000',
+    });
+    expect(rowTexts(cell, 0, 3, measure, standard)[0]).toMatchObject({
+      lines: ['(1)'],
+      color: '#ff0000',
+    });
+  });
+
   it('includes long text from the left of the visible columns that reaches them', () => {
     const long = 'x'.repeat(35); // Three and a half columns.
     expect(rowTexts(row({ 1: long }), 3, 9, measure, standard)).toEqual([

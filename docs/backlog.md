@@ -710,7 +710,7 @@ Notes:
 
 ## S18: Number formats
 
-Status: Todo
+Status: In progress
 
 Acceptance criteria:
 - The ribbon applies the general, number, currency, accounting, percentage,

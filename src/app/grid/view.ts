@@ -22,6 +22,7 @@ import {
   pickable,
   type Edit,
 } from './formula';
+import { changedFormat, GENERAL, type FormatChange } from '../../engine/format';
 import type { ClipboardContents } from '../platform';
 import { fromClipboard, toClipboard } from './clipboard';
 import type { EntryMode } from './keys';
@@ -330,6 +331,21 @@ export class View {
       sheet,
       ranges: selection.ranges,
       style,
+    });
+  }
+
+  /**
+   * Gives the selected cells the format of the active cell with one more or
+   * one fewer decimal place, or the thousands separator turned on or off,
+   * as Excel does.
+   */
+  adjustFormat(change: FormatChange): void {
+    this.commit();
+    const { sheet, selection } = this.current;
+    const { row, col } = selection.active;
+    const { value, style } = this.workbook.cell(sheet, row, col);
+    this.format({
+      numberFormat: changedFormat(style.numberFormat ?? GENERAL, value, change),
     });
   }
 

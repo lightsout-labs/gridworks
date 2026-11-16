@@ -351,9 +351,21 @@ test.describe('the controls', () => {
           'Unmerge cells',
           'Split the merged cells of the selection into cells again',
         ],
+        [
+          'button',
+          'Number format',
+          'Choose how numbers, dates and times are shown',
+        ],
+        ['button', 'Increase decimal', 'Show one more decimal place'],
+        ['button', 'Decrease decimal', 'Show one fewer decimal place'],
+        [
+          'button',
+          'Thousands separator',
+          'Separate thousands with commas, as in 1,234',
+        ],
         ...statusBar,
       ],
-      28,
+      32,
     );
     await page.getByRole('tab', { name: 'View' }).click();
     await clickCell(page, 5, 5); // Away from the tab and its tooltip.

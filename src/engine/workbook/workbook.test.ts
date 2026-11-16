@@ -1527,6 +1527,42 @@ describe('cell formats', () => {
     expect(style(0, 0).size).toBe(14);
   });
 
+  it('shows values in number formats, with the color a format gives them', () => {
+    const { workbook, sheet, set, format } = formats();
+    set(0, 0, '-1234.5');
+    format(A1B2, { numberFormat: '#,##0.00;[Red](#,##0.00)' });
+    expect(workbook.cell(sheet, 0, 0)).toMatchObject({
+      display: '(1,234.50)',
+      color: '#ff0000',
+      input: '-1234.5',
+    });
+    workbook.undo();
+    expect(workbook.cell(sheet, 0, 0)).toMatchObject({ display: '-1234.5' });
+    expect(workbook.cell(sheet, 0, 0).color).toBeUndefined();
+  });
+
+  it('keeps what is typed into a cell with the text format as text', () => {
+    const { workbook, sheet, set, format, style } = formats();
+    format(A1B2, { numberFormat: '@' });
+    set(0, 0, '007');
+    set(0, 1, '12%');
+    set(1, 0, '=1+1');
+    expect(workbook.cell(sheet, 0, 0)).toMatchObject({
+      value: '007',
+      display: '007',
+      input: '007',
+    });
+    expect(workbook.cell(sheet, 0, 1).value).toBe('12%');
+    expect(style(0, 1).numberFormat).toBe('@');
+    expect(workbook.cell(sheet, 1, 0)).toMatchObject({
+      value: '=1+1',
+      formula: null,
+    });
+    // Elsewhere the same entry is a number.
+    set(2, 0, '007');
+    expect(workbook.cell(sheet, 2, 0).value).toBe(7);
+  });
+
   it('keeps one style for the cells that look the same, however it was set', () => {
     const { workbook, format } = formats();
     format({ top: 0, left: 0, bottom: 0, right: 0 }, { bold: true });

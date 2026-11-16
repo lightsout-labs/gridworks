@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { editText, formatValue, parseInput } from './index';
+import {
+  changedFormat,
+  editText,
+  formatColor,
+  formatValue,
+  parseInput,
+  validFormat,
+} from './index';
 
 describe('parseInput', () => {
   it.each([
@@ -105,4 +112,58 @@ describe('editText', () => {
       expect(parseInput(editText(value, format)).value).toBe(value);
     },
   );
+});
+
+describe('formatValue with custom codes', () => {
+  const code = '[Red]0.0;[Blue](0.0);"zero";"Text: "@';
+  it.each([
+    [2, '2.0', '#ff0000'],
+    [-3, '(3.0)', '#0000ff'],
+    [0, 'zero', undefined],
+    ['ab', 'Text: ab', undefined],
+  ])('shows %j by its section, with its color', (value, shown, color) => {
+    expect(formatValue(value, code)).toBe(shown);
+    expect(formatColor(value, code)).toBe(color);
+  });
+
+  it('gives no color to a format without one', () => {
+    expect(formatColor(5, '0.00')).toBeUndefined();
+    expect(formatColor(null, '[Red]0')).toBeUndefined();
+  });
+
+  it('tells a valid code from one that is not', () => {
+    expect(validFormat('#,##0.00;[Red]-#,##0.00')).toBe(true);
+    expect(validFormat('0.0"')).toBe(false);
+    expect(validFormat('')).toBe(false);
+  });
+});
+
+describe('changedFormat', () => {
+  it.each([
+    ['0', 'moreDecimals', '0.0'],
+    ['0.00', 'fewerDecimals', '0.0'],
+    ['0.0', 'fewerDecimals', '0'],
+    ['0', 'fewerDecimals', '0'],
+    ['0%', 'moreDecimals', '0.0%'],
+    ['0.00E+00', 'moreDecimals', '0.000E+00'],
+    [
+      '[Red]#,##0.00_);[Blue](#,##0.00);"zero"',
+      'moreDecimals',
+      '[Red]#,##0.000_);[Blue](#,##0.000);"zero"',
+    ],
+    ['"$"#,##0.00', 'thousands', '"$"0.00'],
+    ['0.00', 'thousands', '#,##0.00'],
+    ['0.00;(0.00)', 'thousands', '#,##0.00;(#,##0.00)'],
+    ['m/d/yyyy', 'moreDecimals', 'm/d/yyyy'],
+    ['@', 'thousands', '@'],
+  ] as const)('changes %j by %s into %j', (code, change, changed) => {
+    expect(changedFormat(code, 1, change)).toBe(changed);
+  });
+
+  it('starts a General cell from the decimals its value shows, as Excel does', () => {
+    expect(changedFormat('General', 1.5, 'moreDecimals')).toBe('0.00');
+    expect(changedFormat('General', 1.5, 'fewerDecimals')).toBe('0');
+    expect(changedFormat('General', 1234.5, 'thousands')).toBe('#,##0.0');
+    expect(changedFormat('General', 'text', 'moreDecimals')).toBe('0.0');
+  });
 });
