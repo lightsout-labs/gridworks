@@ -5,6 +5,8 @@ import {
   type Command,
   type Direction,
   type LineSpan,
+  type Border,
+  type BorderSides,
   type Range,
   type Span,
   type StyleChange,
@@ -25,7 +27,7 @@ import { fromClipboard, toClipboard } from './clipboard';
 import type { EntryMode } from './keys';
 import { navigate, type Navigation, type SheetContents } from './navigation';
 import type { CellPosition } from './geometry';
-import { covering, single, type Selection } from './selection';
+import { covering, overMerges, single, type Selection } from './selection';
 import { TEXT_PADDING } from './text';
 
 export const ZOOM_MIN = 0.5;
@@ -78,6 +80,11 @@ export interface ViewState {
   readonly filling: Range | null;
   /** The size a row or column is dragged to by its border, or `null`. */
   readonly resizing: Resizing | null;
+  /**
+   * The range whose formats the format painter gives the next range
+   * selected, or `null` when it is put away.
+   */
+  readonly painter: { readonly sheet: string; readonly range: Range } | null;
 }
 
 /** A row or column dragged by its border to a size, in CSS pixels at 100%. */
@@ -127,6 +134,7 @@ export class View {
       copied: null,
       filling: null,
       resizing: null,
+      painter: null,
     };
   }
 
@@ -147,7 +155,11 @@ export class View {
     // selection is that of the sheet shown.
     const { sheet } = this.current;
     this.commit();
-    this.change({ sheet, selection, endMode: false });
+    this.change({
+      sheet,
+      selection: overMerges(selection, this.workbook.merges(sheet)),
+      endMode: false,
+    });
   }
 
   /** Moves the selection by the keyboard, after committing a waiting entry. */
@@ -162,6 +174,7 @@ export class View {
     const contents: SheetContents = {
       isEmpty: (row, col) => workbook.cell(sheet, row, col).value === null,
       extent: () => workbook.extent(sheet),
+      merges: workbook.merges(sheet),
     };
     this.select(navigate(selection, navigation, contents));
   }
@@ -330,6 +343,96 @@ export class View {
     const { row, col } = selection.active;
     const on = this.workbook.cell(sheet, row, col).style[property] === true;
     this.format({ [property]: on ? null : true });
+  }
+
+  /** Puts a border on sides of the selected ranges, or takes it off. */
+  setBorders(sides: BorderSides, border: Border | null): void {
+    this.commit();
+    const { sheet, selection } = this.current;
+    this.workbook.execute({
+      type: 'setBorders',
+      sheet,
+      ranges: selection.ranges,
+      sides,
+      border,
+    });
+  }
+
+  /**
+   * Whether a selected range spans more than one cell and is not already
+   * merged into one, to merge.
+   */
+  get canMerge(): boolean {
+    const { sheet, selection } = this.current;
+    const merges = this.workbook.merges(sheet);
+    return selection.ranges.some(
+      (range) =>
+        (range.top !== range.bottom || range.left !== range.right) &&
+        !merges.some(
+          (merge) =>
+            merge.top === range.top &&
+            merge.left === range.left &&
+            merge.bottom === range.bottom &&
+            merge.right === range.right,
+        ),
+    );
+  }
+
+  /** Whether the selection holds a merged cell, to unmerge. */
+  get canUnmerge(): boolean {
+    const { sheet, selection } = this.current;
+    return this.workbook
+      .merges(sheet)
+      .some((merge) =>
+        selection.ranges.some(
+          (range) =>
+            range.top <= merge.bottom &&
+            merge.top <= range.bottom &&
+            range.left <= merge.right &&
+            merge.left <= range.right,
+        ),
+      );
+  }
+
+  /** Merges each selected range into one cell, after committing. */
+  merge(): void {
+    this.mergeCommand('merge');
+  }
+
+  /** Unmerges the merged cells of the selection, after committing. */
+  unmerge(): void {
+    this.mergeCommand('unmerge');
+  }
+
+  /**
+   * Takes up the format painter for the selected range, the last one, or
+   * puts it away when it is taken up.
+   */
+  startPainter(): void {
+    this.commit();
+    const { sheet, painter } = this.current;
+    this.change({
+      painter: painter ? null : { sheet, range: this.lastRange() },
+    });
+  }
+
+  /**
+   * Gives the selected range, the last one, the formats of the painter's
+   * range, as a paste of formats does, and puts the painter away. Does
+   * nothing without the painter.
+   */
+  paint(): void {
+    const { painter, sheet } = this.current;
+    if (!painter) return;
+    this.change({ painter: null });
+    const change = this.workbook.execute({
+      type: 'paste',
+      sheet,
+      target: this.lastRange(),
+      source: painter,
+      only: 'formats',
+    });
+    this.change({ selection: covering([change.ranges[0]!]), endMode: false });
   }
 
   /** Empties the selected cells. */
@@ -585,14 +688,14 @@ export class View {
 
   /**
    * Abandons the entry, and shows its cell's sheet again; without an entry,
-   * forgets what was copied.
+   * forgets what was copied and puts the format painter away.
    */
   cancel(): void {
     const { entry, sheet } = this.current;
     this.change(
       entry
         ? { entry: null, sheet: entry.sheet }
-        : { entry: null, sheet, copied: null },
+        : { entry: null, sheet, copied: null, painter: null },
     );
   }
 
@@ -659,6 +762,12 @@ export class View {
     return spans.some((span) => index >= span.start && index <= span.end)
       ? spans
       : [{ start: index, end: index }];
+  }
+
+  private mergeCommand(type: 'merge' | 'unmerge'): void {
+    this.commit();
+    const { sheet, selection } = this.current;
+    this.workbook.execute({ type, sheet, ranges: selection.ranges });
   }
 
   private lastRange(): Range {

@@ -25,6 +25,23 @@ const measure = (text: string) => (text.length * COLUMN_WIDTH) / 10;
 const standard = () => COLUMN_WIDTH;
 
 describe('rowTexts', () => {
+  it('leaves out the cells of merged cells, and runs no text over them', () => {
+    const long = 'x'.repeat(25);
+    const merged = (col: number) => col === 3 || col === 4;
+    expect(
+      rowTexts(row({ 1: long, 3: 'a' }), 2, 9, measure, standard, merged),
+    ).toEqual([
+      {
+        col: 1,
+        lines: [long.toUpperCase()],
+        style: {},
+        align: 'left',
+        from: 1,
+        to: 2,
+      },
+    ]);
+  });
+
   it('aligns numbers right, text left, and booleans and errors in the middle', () => {
     const texts = rowTexts(
       row({ 0: 1, 1: 'a', 2: true, 3: { error: '#VALUE!' } }),

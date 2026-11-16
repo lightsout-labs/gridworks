@@ -55,61 +55,78 @@ export interface RowText {
   readonly to: number;
 }
 
+/** What a cell holds, as the grid draws it. */
+export interface ShownCell {
+  readonly value: Value;
+  readonly display: string;
+  readonly style: Style;
+}
+
+/**
+ * The lines of a cell's text in a width, and how they align: as its style
+ * says, or else numbers right, text left, and booleans and errors in the
+ * middle. Text that does not wrap is one line, which may be too long.
+ */
+export function cellText(
+  { value, display, style }: ShownCell,
+  width: number,
+  measure: TextWidth,
+): Pick<RowText, 'lines' | 'align'> {
+  const align =
+    style.horizontal ??
+    (typeof value === 'number'
+      ? 'right'
+      : typeof value === 'string'
+        ? 'left'
+        : 'center');
+  const lines = style.wrap
+    ? wrapText(display, width - 2 * TEXT_PADDING, (text) =>
+        measure(text, style),
+      )
+    : [display];
+  return { lines, align };
+}
+
 /**
  * The texts that the columns `left` to `right` of a row show, as in Excel:
- * aligned as their style says, or else numbers right, text left, and
- * booleans and errors in the middle; text aligned left that is too long
- * for its cell runs over the empty cells to its right, unless it wraps.
+ * aligned as `cellText` says; text aligned left that is too long for its
+ * cell runs over the empty cells to its right, unless it wraps.
  * It includes text from a cell to the left of `left` that runs into them,
  * and leaves out that of hidden columns. `measure` gives the width of a
- * text at 100%, and `width` that of a column.
+ * text at 100%, and `width` that of a column. The cells of merged cells,
+ * which `merged` names, are drawn apart: they show nothing here, and no
+ * text runs over them.
  */
 export function rowTexts(
-  cell: (col: number) => { value: Value; display: string; style: Style },
+  cell: (col: number) => ShownCell,
   left: number,
   right: number,
   measure: TextWidth,
   width: (col: number) => number,
+  merged: (col: number) => boolean = () => false,
 ): RowText[] {
   const texts: RowText[] = [];
+  const empty = (col: number) => !merged(col) && cell(col).display === '';
   const add = (col: number) => {
-    const { value, display, style } = cell(col);
+    if (merged(col)) return;
+    const shown = cell(col);
+    const { display, style } = shown;
     if (display === '' || width(col) === 0) return;
-    const align =
-      style.horizontal ??
-      (typeof value === 'number'
-        ? 'right'
-        : typeof value === 'string'
-          ? 'left'
-          : 'center');
-    if (style.wrap) {
-      const lines = wrapText(display, width(col) - 2 * TEXT_PADDING, (text) =>
-        measure(text, style),
-      );
-      if (col >= left)
-        texts.push({ col, lines, style, align, from: col, to: col });
-      return;
-    }
+    const { lines, align } = cellText(shown, width(col), measure);
     let to = col;
-    if (align === 'left') {
+    if (align === 'left' && !style.wrap) {
       const needed = measure(display, style) + 2 * TEXT_PADDING;
       let covered = width(col);
-      while (
-        covered < needed &&
-        to + 1 < SHEET_COLUMNS &&
-        cell(to + 1).display === ''
-      ) {
+      while (covered < needed && to + 1 < SHEET_COLUMNS && empty(to + 1)) {
         to++;
         covered += width(to);
       }
     }
-    if (to >= left) {
-      texts.push({ col, lines: [display], style, align, from: col, to });
-    }
+    if (to >= left) texts.push({ col, lines, style, align, from: col, to });
   };
   // The nearest text to the left may run into the columns.
   let before = left - 1;
-  while (before >= 0 && cell(before).display === '') before--;
+  while (before >= 0 && empty(before)) before--;
   if (before >= 0) add(before);
   for (let col = left; col <= right; col++) add(col);
   return texts;

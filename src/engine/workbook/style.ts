@@ -20,7 +20,36 @@ export interface Style {
   readonly vertical?: 'top' | 'middle';
   /** Whether long text wraps onto more lines instead of running over. */
   readonly wrap?: true;
+  /** The lines on the sides of the cell; none when absent. */
+  readonly borderTop?: Border;
+  readonly borderRight?: Border;
+  readonly borderBottom?: Border;
+  readonly borderLeft?: Border;
 }
+
+/** The lines a border can be drawn with, as Excel names them. */
+export const BORDER_LINES = [
+  'thin',
+  'medium',
+  'thick',
+  'dashed',
+  'dotted',
+  'double',
+] as const;
+
+/** A line on a side of a cell. */
+export interface Border {
+  readonly line: (typeof BORDER_LINES)[number];
+  /** As `#rrggbb`; the theme's text color when absent, as Excel's Automatic. */
+  readonly color?: string;
+}
+
+/**
+ * The sides of each range that a border goes on: every side of every
+ * cell, the edges of the range, or one of them.
+ */
+export type BorderSides =
+  'all' | 'outside' | 'top' | 'right' | 'bottom' | 'left';
 
 /** Properties to give cells, `null` taking one back to the default. */
 export type StyleChange = {
@@ -41,6 +70,10 @@ const ORDER: readonly (keyof Style)[] = [
   'horizontal',
   'vertical',
   'wrap',
+  'borderTop',
+  'borderRight',
+  'borderBottom',
+  'borderLeft',
 ];
 
 /** A style with a change made to it. */

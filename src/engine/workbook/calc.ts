@@ -60,6 +60,8 @@ export interface Sheet {
   readonly styleIds: number[][];
   /** Replaced, never changed, as its lines are. */
   layout: SheetLayout;
+  /** The ranges merged into one cell; replaced, never changed. */
+  merges: readonly Area[];
   /** The formulas that read one cell, by the cell's key. */
   readonly cellReaders: Map<string, Set<Dependency>>;
   /** The formulas that read an area of several cells, by each column of it. */
@@ -85,6 +87,7 @@ export function emptySheet(
     formulaColumns: new Map(),
     styleIds,
     layout: { rows: NO_LINES, columns: NO_LINES },
+    merges: [],
     cellReaders: new Map(),
     areaReaders: new Map(),
   };

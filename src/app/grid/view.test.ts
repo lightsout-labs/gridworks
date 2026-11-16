@@ -24,6 +24,7 @@ describe('View', () => {
       copied: null,
       filling: null,
       resizing: null,
+      painter: null,
     });
   });
 
@@ -916,6 +917,135 @@ describe('View', () => {
         bold: true,
         wrap: true,
       });
+    });
+  });
+
+  describe('borders, merges and the format painter', () => {
+    const at = (row: number, col: number) => ({ row, col });
+    const range = (
+      top: number,
+      left: number,
+      bottom: number,
+      right: number,
+    ) => ({
+      top,
+      left,
+      bottom,
+      right,
+    });
+    const step = (rows: number, cols: number, extend = false) =>
+      ({ type: 'step', rows, cols, extend }) as const;
+
+    function merged() {
+      const { workbook, view, sheet } = setup();
+      view.select(single(at(1, 1)));
+      view.select(
+        pick(
+          view.state.selection,
+          { kind: 'cell', ...at(2, 2) },
+          'extend',
+          at(0, 0),
+        ),
+      );
+      view.merge();
+      return { workbook, view, sheet };
+    }
+
+    it('sets borders on the selected cells', () => {
+      const { workbook, view, sheet } = setup();
+      view.select(
+        pick(
+          single(at(0, 0)),
+          { kind: 'cell', ...at(1, 1) },
+          'extend',
+          at(0, 0),
+        ),
+      );
+      view.setBorders('outside', { line: 'medium', color: '#0070c0' });
+      expect(workbook.cell(sheet, 1, 1).style).toEqual({
+        borderRight: { line: 'medium', color: '#0070c0' },
+        borderBottom: { line: 'medium', color: '#0070c0' },
+      });
+    });
+
+    it('merges the selected cells, and selects a merged cell as one', () => {
+      const { workbook, view, sheet } = merged();
+      expect(workbook.merges(sheet)).toEqual([range(1, 1, 2, 2)]);
+
+      // A click inside it selects all of it, its top-left cell active.
+      view.select(single(at(2, 2)));
+      expect(view.state.selection.ranges).toEqual([range(1, 1, 2, 2)]);
+      expect(view.state.selection.active).toEqual(at(1, 1));
+
+      // A range that reaches into it grows to take it in.
+      view.select(
+        pick(
+          single(at(0, 0)),
+          { kind: 'cell', ...at(1, 1) },
+          'extend',
+          at(0, 0),
+        ),
+      );
+      expect(view.state.selection.ranges).toEqual([range(0, 0, 2, 2)]);
+
+      expect(view.canMerge).toBe(true);
+      expect(view.canUnmerge).toBe(true);
+      view.select(single(at(1, 1)));
+      expect(view.canMerge).toBe(false);
+      view.unmerge();
+      expect(workbook.merges(sheet)).toEqual([]);
+      expect(view.canUnmerge).toBe(false);
+    });
+
+    it('moves the keyboard over a merged cell as over one cell', () => {
+      const { view } = merged();
+      view.select(single(at(1, 0)));
+      view.navigate(step(0, 1));
+      expect(view.state.selection.ranges).toEqual([range(1, 1, 2, 2)]);
+      view.navigate(step(0, 1));
+      expect(view.state.selection.active).toEqual(at(1, 3));
+      view.navigate(step(0, -1));
+      view.navigate(step(1, 0));
+      expect(view.state.selection.active).toEqual(at(3, 1));
+
+      // Shift with an arrow grows the selection beyond the merged cell.
+      view.select(single(at(1, 1)));
+      view.navigate(step(1, 0, true));
+      expect(view.state.selection.ranges).toEqual([range(1, 1, 3, 2)]);
+    });
+
+    it('paints the formats of a range onto the next range selected, once', () => {
+      const { workbook, view, sheet } = setup();
+      workbook.execute({ type: 'setCell', sheet, row: 0, col: 0, input: '5%' });
+      workbook.execute({ type: 'setCell', sheet, row: 4, col: 4, input: 'x' });
+      view.format({ bold: true, fill: '#ffff00' });
+      view.setBorders('all', { line: 'thin' });
+      const look = workbook.cell(sheet, 0, 0).style;
+
+      view.startPainter();
+      expect(view.state.painter).toEqual({ sheet, range: range(0, 0, 0, 0) });
+      view.select(single(at(4, 4)));
+      view.paint();
+      expect(workbook.cell(sheet, 4, 4)).toMatchObject({
+        display: 'x',
+        style: look,
+      });
+      expect(view.state.painter).toBeNull();
+
+      // Without the painter, selecting paints nothing; Escape puts it away.
+      view.select(single(at(6, 6)));
+      view.paint();
+      expect(workbook.cell(sheet, 6, 6).style).toEqual({});
+      view.startPainter();
+      view.cancel();
+      expect(view.state.painter).toBeNull();
+      // Clicked again, the button puts it away too.
+      view.startPainter();
+      view.startPainter();
+      expect(view.state.painter).toBeNull();
+
+      workbook.undo();
+      expect(workbook.cell(sheet, 4, 4).style).toEqual({});
     });
   });
 });

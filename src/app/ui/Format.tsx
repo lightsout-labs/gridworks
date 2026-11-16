@@ -5,10 +5,20 @@ import {
   AlignVerticalJustifyStart,
   Baseline,
   Bold,
+  Check,
   ChevronDown,
+  Grid2x2,
   Italic,
   PaintBucket,
+  PanelBottom,
+  PanelLeft,
+  PanelRight,
+  PanelTop,
+  Square,
+  SquareDashed,
   Strikethrough,
+  TableCellsMerge,
+  TableCellsSplit,
   TextAlignCenter,
   TextAlignEnd,
   TextAlignStart,
@@ -20,11 +30,15 @@ import {
   useCallback,
   useEffect,
   useRef,
+  useState,
   useSyncExternalStore,
   type ReactNode,
 } from 'react';
 import {
+  BORDER_LINES,
   DEFAULT_FONT_SIZE,
+  type Border,
+  type BorderSides,
   FONT_SIZES,
   FONTS,
   type Style,
@@ -57,8 +71,11 @@ const PALETTE: readonly [string, Key][] = [
   ['#7030a0', 'color.purple'],
 ];
 
-/** The style of the active cell, which the controls show. */
-function useActiveStyle(workbook: Workbook, view: View): Style {
+/**
+ * A value read from the workbook and the view, which renders again when
+ * either changes.
+ */
+function useWorkbookView<T>(workbook: Workbook, view: View, read: () => T): T {
   const subscribe = useCallback(
     (listener: () => void) => {
       const unsubscribeWorkbook = workbook.subscribe(listener);
@@ -70,11 +87,197 @@ function useActiveStyle(workbook: Workbook, view: View): Style {
     },
     [workbook, view],
   );
-  return useSyncExternalStore(subscribe, () => {
+  return useSyncExternalStore(subscribe, read);
+}
+
+/** The style of the active cell, which the controls show. */
+function useActiveStyle(workbook: Workbook, view: View): Style {
+  return useWorkbookView(workbook, view, () => {
     const { sheet, selection } = view.state;
     const { row, col } = selection.active;
     return workbook.cell(sheet, row, col).style;
   });
+}
+
+/** The sides of the Borders menu, as Excel orders them, with their icons. */
+const SIDES: readonly [BorderSides | 'none', Key, LucideIcon][] = [
+  ['bottom', 'borders.bottom', PanelBottom],
+  ['top', 'borders.top', PanelTop],
+  ['left', 'borders.left', PanelLeft],
+  ['right', 'borders.right', PanelRight],
+  ['none', 'borders.none', SquareDashed],
+  ['all', 'borders.all', Grid2x2],
+  ['outside', 'borders.outside', Square],
+];
+
+/** How each line looks in the menu, as a CSS border. */
+const LINE_PREVIEWS: Record<Border['line'], string> = {
+  thin: '1px solid',
+  medium: '2px solid',
+  thick: '3px solid',
+  dashed: '1px dashed',
+  dotted: '1px dotted',
+  double: '3px double',
+};
+
+/**
+ * The Borders menu: the sides to draw on the selected cells, or none, and
+ * the line and color to draw them with, which it keeps for the next time.
+ */
+export function BorderControls({ view }: { view: View }) {
+  const t = useTranslation();
+  const [line, setLine] = useState<Border['line']>('thin');
+  const [color, setColor] = useState<string | undefined>();
+  const keepOpen = (event: Event) => event.preventDefault();
+  return (
+    <DropdownMenu.Root>
+      <Tooltip text={t('borders.tooltip')}>
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            className={styles.button}
+            aria-label={t('borders')}
+          >
+            <span className={styles.colorIcon}>
+              <Grid2x2 size={ICON_SIZE} aria-hidden />
+              <span
+                className={styles.colorBar}
+                style={{ background: color ?? 'var(--text)' }}
+              />
+            </span>
+            <ChevronDown size={12} aria-hidden />
+          </button>
+        </DropdownMenu.Trigger>
+      </Tooltip>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          className={`${styles.menu} ${styles.scrollingMenu}`}
+          align="start"
+          sideOffset={4}
+        >
+          {SIDES.map(([sides, name, Icon]) => (
+            <DropdownMenu.Item
+              key={sides}
+              className={styles.menuItem}
+              onSelect={() =>
+                sides === 'none'
+                  ? view.setBorders('all', null)
+                  : view.setBorders(sides, {
+                      line,
+                      ...(color !== undefined && { color }),
+                    })
+              }
+            >
+              <Icon size={ICON_SIZE} aria-hidden />
+              {t(name)}
+            </DropdownMenu.Item>
+          ))}
+          <DropdownMenu.Separator className={styles.menuSeparator} />
+          <DropdownMenu.Label className={styles.menuLabel}>
+            {t('borders.lineStyle')}
+          </DropdownMenu.Label>
+          <DropdownMenu.RadioGroup
+            value={line}
+            onValueChange={(value) => setLine(value as Border['line'])}
+          >
+            {BORDER_LINES.map((each) => (
+              <DropdownMenu.RadioItem
+                key={each}
+                value={each}
+                className={styles.menuItem}
+                aria-label={t(`line.${each}`)}
+                onSelect={keepOpen}
+              >
+                <span
+                  className={styles.linePreview}
+                  style={{ borderTop: LINE_PREVIEWS[each] }}
+                  aria-hidden
+                />
+                <DropdownMenu.ItemIndicator className={styles.menuCheck}>
+                  <Check size={ICON_SIZE} aria-hidden />
+                </DropdownMenu.ItemIndicator>
+              </DropdownMenu.RadioItem>
+            ))}
+          </DropdownMenu.RadioGroup>
+          <DropdownMenu.Separator className={styles.menuSeparator} />
+          <DropdownMenu.Label className={styles.menuLabel}>
+            {t('borders.lineColor')}
+          </DropdownMenu.Label>
+          <DropdownMenu.Item
+            className={styles.menuItem}
+            onSelect={(event) => {
+              keepOpen(event);
+              setColor(undefined);
+            }}
+          >
+            {t('color.automatic')}
+            {color === undefined && (
+              <Check
+                size={ICON_SIZE}
+                className={styles.menuCheck}
+                aria-hidden
+              />
+            )}
+          </DropdownMenu.Item>
+          <div className={styles.palette}>
+            {PALETTE.map(([value, name]) => (
+              <Tooltip key={value} text={t(name)}>
+                <DropdownMenu.Item
+                  className={styles.swatch}
+                  style={{ background: value }}
+                  aria-label={t(name)}
+                  data-chosen={color === value || undefined}
+                  onSelect={(event) => {
+                    keepOpen(event);
+                    setColor(value);
+                  }}
+                />
+              </Tooltip>
+            ))}
+          </div>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+}
+
+/** Merge cells and Unmerge cells, each enabled when it can do something. */
+export function MergeControls({
+  workbook,
+  view,
+}: {
+  workbook: Workbook;
+  view: View;
+}) {
+  const t = useTranslation();
+  const canMerge = useWorkbookView(workbook, view, () => view.canMerge);
+  const canUnmerge = useWorkbookView(workbook, view, () => view.canUnmerge);
+  return (
+    <>
+      <Tooltip text={t('merge.tooltip')}>
+        <button
+          type="button"
+          className={styles.button}
+          aria-label={t('merge')}
+          disabled={!canMerge}
+          onClick={() => view.merge()}
+        >
+          <TableCellsMerge size={ICON_SIZE} aria-hidden />
+        </button>
+      </Tooltip>
+      <Tooltip text={t('unmerge.tooltip')}>
+        <button
+          type="button"
+          className={styles.button}
+          aria-label={t('unmerge')}
+          disabled={!canUnmerge}
+          onClick={() => view.unmerge()}
+        >
+          <TableCellsSplit size={ICON_SIZE} aria-hidden />
+        </button>
+      </Tooltip>
+    </>
+  );
 }
 
 /** The font, its size and look, and the colors of the selected cells. */
