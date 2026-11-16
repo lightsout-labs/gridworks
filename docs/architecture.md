@@ -147,6 +147,25 @@ Decisions that are cheap to reverse, with their reasons:
   target. Choosing an option calls `refill(how)`, which undoes the fill
   and runs it again with that `how`, so one undo still restores the cells
   as they were before the fill, and the button stays.
+- **A sort is one command, recorded as what it did.** `sort` names a
+  range, the columns to sort by, each ascending or descending, and whether
+  its first row holds headers, which stay in place. The workbook orders
+  the rows by the values of those columns, formula results included, as
+  Excel does: numbers, then text in any case, then `FALSE` and `TRUE`,
+  then errors, and empty cells last in either direction; rows equal on
+  every column keep their order. Whole rows of the range move with their
+  formats, and the relative references of their formulas move with them,
+  as a copy moves them; references from elsewhere keep their cells, and
+  conditional formats stay where they are, as in Excel. Like a paste,
+  listeners and undo get a `group` of one `restore`. Ranges of whole rows
+  or columns sort the cells in use only. A range with merged cells is
+  refused, where Excel refuses only merges of different sizes. The view
+  sorts the one range selected, cut down to the cells in use (`sortRange`),
+  and none when that is one cell, so a single cell is not grown to the
+  table around it as Excel does. The Data tab holds Sort A to Z and Sort Z
+  to A by the active cell's column, and Custom sort, a dialog of levels,
+  each a column and an order, whose columns the header row names when the
+  first row holds headers.
 - **Inserting or deleting rows or columns rebuilds the sheets it
   changes.** `insertLines` and `deleteLines` name spans of rows or columns;
   an insertion puts as many empty lines before each span as it has, as

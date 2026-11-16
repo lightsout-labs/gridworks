@@ -1,6 +1,7 @@
 import { formatValue, GENERAL, parseInput } from '../format';
 import type { Area } from '../formula';
 import { isError, type Value } from '../value';
+import { compare } from './sort';
 import type { Style } from './style';
 
 /** What a cell's value must be for a rule to format it (R20). */
@@ -277,18 +278,6 @@ type Constant = number | string | boolean;
 /** A value typed in a rule, read as it would be in a cell. */
 function typed(text: string): Constant {
   return parseInput(text).value ?? '';
-}
-
-/** Numbers before text before booleans, text in any case, as Excel sorts. */
-function compare(a: Constant, b: Constant): number {
-  const rank = (value: Constant) =>
-    typeof value === 'number' ? 0 : typeof value === 'string' ? 1 : 2;
-  if (rank(a) !== rank(b)) return rank(a) - rank(b);
-  if (typeof a === 'string') {
-    const [x, y] = [a.toLowerCase(), (b as string).toLowerCase()];
-    return x < y ? -1 : x > y ? 1 : 0;
-  }
-  return Number(a) - Number(b);
 }
 
 /** The text of a value, as a formula's `SEARCH` reads it. */

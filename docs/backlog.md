@@ -921,7 +921,7 @@ Notes:
 
 ## S22: Sorting
 
-Status: Todo
+Status: In progress
 
 Acceptance criteria:
 - The user can sort the selected range ascending or descending by the column

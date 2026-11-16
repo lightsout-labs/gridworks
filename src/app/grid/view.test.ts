@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createWorkbook, SHEET_ROWS } from '../../engine/workbook';
-import { pick, single } from './selection';
+import { covering, extendTo, pick, single } from './selection';
 import { View } from './view';
 
 function setup() {
@@ -1235,5 +1235,68 @@ describe('View', () => {
     expect(frozen()).toEqual({ rows: 0, cols: 1 });
     // Undo keeps the selection, as the change has no cells.
     expect(view.state.selection.active).toEqual({ row: 3, col: 2 });
+  });
+
+  describe('sort', () => {
+    const range = (top: number, left: number, bottom = top, right = left) => ({
+      top,
+      left,
+      bottom,
+      right,
+    });
+
+    function sorting() {
+      const { workbook, view, sheet } = setup();
+      const rows = [
+        ['b', '2'],
+        ['c', '1'],
+        ['a', '3'],
+      ];
+      rows.forEach((cells, row) =>
+        cells.forEach((input, col) =>
+          workbook.execute({ type: 'setCell', sheet, row, col, input }),
+        ),
+      );
+      const column = (col: number) =>
+        [0, 1, 2].map((row) => workbook.cell(sheet, row, col).display);
+      return { workbook, view, sheet, column };
+    }
+
+    it('sorts the selected range by the column of the active cell', () => {
+      const { view, column } = sorting();
+      // B1 active, A1:B3 selected.
+      view.select(extendTo(single({ row: 0, col: 1 }), { row: 2, col: 0 }));
+      view.sortByActive(false);
+      expect(column(1)).toEqual(['1', '2', '3']);
+      expect(column(0)).toEqual(['c', 'b', 'a']);
+      view.sortByActive(true);
+      expect(column(1)).toEqual(['3', '2', '1']);
+      expect(view.state.selection.ranges).toEqual([range(0, 0, 2, 1)]);
+    });
+
+    it('sorts by several columns, with a header row, after committing an entry', () => {
+      const { view, column } = sorting();
+      view.select(covering([range(0, 0, 2, 1)]));
+      view.type('z');
+      view.sort([{ col: 0, descending: true }], true);
+      // The entry went to A1, which then stayed as the header.
+      expect(column(0)).toEqual(['z', 'c', 'a']);
+      expect(column(1)).toEqual(['2', '1', '3']);
+    });
+
+    it('sorts whole columns over the cells in use, and nothing that cannot be sorted', () => {
+      const { workbook, view, sheet } = sorting();
+      view.select(covering([range(0, 0, SHEET_ROWS - 1, 1)]));
+      expect(view.sortRange).toEqual(range(0, 0, 2, 1));
+      view.select(single({ row: 0, col: 0 }));
+      expect(view.sortRange).toBeNull();
+      view.select(covering([range(0, 0, 1, 0), range(0, 1, 1, 1)]));
+      expect(view.sortRange).toBeNull();
+      view.select(covering([range(5, 5, 9, 9)]));
+      expect(view.sortRange).toBeNull();
+      workbook.execute({ type: 'merge', sheet, ranges: [range(2, 0, 2, 1)] });
+      view.select(covering([range(0, 0, 2, 1)]));
+      expect(view.sortRange).toBeNull();
+    });
   });
 });
