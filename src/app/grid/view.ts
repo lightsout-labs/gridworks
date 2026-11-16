@@ -7,6 +7,7 @@ import {
   type LineSpan,
   type Border,
   type BorderSides,
+  type ColumnFilter,
   type Range,
   type SortKey,
   type Span,
@@ -561,6 +562,67 @@ export class View {
     this.sort([{ col, ...(descending && { descending }) }]);
   }
 
+  /** Whether the Filter button can turn the sheet's filter on or off. */
+  get canFilter(): boolean {
+    const { sheet } = this.current;
+    return this.workbook.filter(sheet) !== null || this.filterRange() !== null;
+  }
+
+  /**
+   * Turns the sheet's filter off, or on over `filterRange` with nothing
+   * filtered yet, after committing an entry.
+   */
+  toggleFilter(): void {
+    this.commit();
+    const { sheet } = this.current;
+    const range = this.filterRange();
+    if (this.workbook.filter(sheet)) {
+      this.workbook.execute({ type: 'filter', sheet, filter: null });
+    } else if (range) {
+      this.workbook.execute({
+        type: 'filter',
+        sheet,
+        filter: { range, columns: [] },
+      });
+    }
+  }
+
+  /**
+   * Filters the column `col` of the sheet's filter by `column`, in place of
+   * what it filtered by, or by nothing.
+   */
+  filterBy(col: number, column: ColumnFilter | null): void {
+    this.commit();
+    const { sheet } = this.current;
+    const filter = this.workbook.filter(sheet);
+    if (!filter) return;
+    const columns = filter.columns.filter((each) => each.col !== col);
+    this.workbook.execute({
+      type: 'filter',
+      sheet,
+      filter: { ...filter, columns: column ? [...columns, column] : columns },
+    });
+  }
+
+  /** Whether the sheet's filter filters any column. */
+  get canClearFilter(): boolean {
+    const { sheet } = this.current;
+    return (this.workbook.filter(sheet)?.columns.length ?? 0) > 0;
+  }
+
+  /** Shows every row of the sheet's filter again, keeping the filter. */
+  clearFilter(): void {
+    this.commit();
+    const { sheet } = this.current;
+    const filter = this.workbook.filter(sheet);
+    if (!filter || filter.columns.length === 0) return;
+    this.workbook.execute({
+      type: 'filter',
+      sheet,
+      filter: { ...filter, columns: [] },
+    });
+  }
+
   /** Merges each selected range into one cell, after committing. */
   merge(): void {
     this.mergeCommand('merge');
@@ -1054,6 +1116,30 @@ export class View {
   }
 
   /** What navigation needs to know of the shown sheet. */
+  /**
+   * The range a filter is turned on over: the one range selected, or the
+   * data around the active cell when one cell is selected, cut down to the
+   * cells in use; `null` when there is none.
+   */
+  private filterRange(): Range | null {
+    const { sheet, selection } = this.current;
+    if (selection.ranges.length !== 1) return null;
+    let selected = selection.ranges[0]!;
+    if (selected.top === selected.bottom && selected.left === selected.right) {
+      const { row, col } = selection.active;
+      if (this.workbook.cell(sheet, row, col).value === null) return null;
+      selected = navigate(selection, { type: 'all' }, this.sheetContents())
+        .ranges[0]!;
+    }
+    const { rows, cols } = this.workbook.extent(sheet);
+    const range = {
+      ...selected,
+      bottom: Math.min(selected.bottom, rows - 1),
+      right: Math.min(selected.right, cols - 1),
+    };
+    return range.bottom < range.top || range.right < range.left ? null : range;
+  }
+
   private sheetContents(): SheetContents {
     const { workbook } = this;
     const { sheet } = this.current;
@@ -1061,6 +1147,10 @@ export class View {
       isEmpty: (row, col) => workbook.cell(sheet, row, col).value === null,
       extent: () => workbook.extent(sheet),
       merges: workbook.merges(sheet),
+      hidden: {
+        rows: workbook.layout(sheet).rows.hidden,
+        cols: workbook.layout(sheet).columns.hidden,
+      },
     };
   }
 

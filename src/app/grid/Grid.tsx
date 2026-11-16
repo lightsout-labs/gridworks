@@ -84,18 +84,21 @@ const MARCH = 100;
  * or double-clicking a header border resizes its row or column.
  * Right-clicking a cell, or a row or column header, opens `menu` for it,
  * the content of a context menu. `fillOptions` is shown at the corner of
- * the last fill.
+ * the last fill, and `filterButton` in each header cell of the sheet's
+ * filter.
  */
 export function Grid({
   workbook,
   view,
   menu,
   fillOptions,
+  filterButton,
 }: {
   workbook: Workbook;
   view: View;
   menu: (lines?: Direction) => ReactNode;
   fillOptions: (filled: Filled) => ReactNode;
+  filterButton: (col: number) => ReactNode;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -119,6 +122,9 @@ export function Grid({
     useSyncExternalStore(workbook.subscribe.bind(workbook), () =>
       workbook.layout(sheet),
     ),
+  );
+  const filter = useSyncExternalStore(workbook.subscribe.bind(workbook), () =>
+    workbook.filter(sheet),
   );
   const activeDisplay = useSyncExternalStore(
     workbook.subscribe.bind(workbook),
@@ -184,18 +190,22 @@ export function Grid({
     // `size` and `viewport` read the elements and the view when called.
   }, [workbook, view]);
 
-  // The editor of a frozen cell moves with the scroll, to stay on it.
+  // The editor of a frozen cell, and the filter buttons of frozen cells,
+  // move with the scroll, to stay on them.
   const [, setScroll] = useState(0);
-  const editsFrozen =
-    entry !== null &&
-    (active.row < layout.frozen.rows || active.col < layout.frozen.cols);
+  const followsScroll =
+    (entry !== null &&
+      (active.row < layout.frozen.rows || active.col < layout.frozen.cols)) ||
+    (filter !== null &&
+      (filter.range.top < layout.frozen.rows ||
+        filter.range.left < layout.frozen.cols));
   useEffect(() => {
-    if (!editsFrozen) return;
+    if (!followsScroll) return;
     const element = scroller.current!;
     const onScroll = () => setScroll((count) => count + 1);
     element.addEventListener('scroll', onScroll);
     return () => element.removeEventListener('scroll', onScroll);
-  }, [editsFrozen]);
+  }, [followsScroll]);
 
   // A new zoom keeps the same cell at the top left.
   const shownZoom = useRef(zoom);
@@ -588,6 +598,32 @@ export function Grid({
               {fillOptions(filled)}
             </div>
           )}
+          {filter &&
+            layout.rows.size(filter.range.top) > 0 &&
+            Array.from(
+              { length: filter.range.right - filter.range.left + 1 },
+              (_, index) => filter.range.left + index,
+            )
+              .filter((col) => layout.cols.size(col) > 0)
+              .map((col) => {
+                const header = { row: filter.range.top, col };
+                const box = areaRect(cellRange(header), onSheet(header));
+                return (
+                  // The button's keys and clicks are not the grid's.
+                  <div
+                    key={col}
+                    className={styles.filterButton}
+                    style={{
+                      left: box.x + box.width - 20,
+                      top: box.y + Math.max(0, (box.height - 18) / 2),
+                    }}
+                    onKeyDown={(event) => event.stopPropagation()}
+                    onContextMenu={(event) => event.stopPropagation()}
+                  >
+                    {filterButton(col)}
+                  </div>
+                );
+              })}
           <div role="status" className={styles.announcement}>
             {`${cellName(active.row, active.col)} ${activeDisplay}`.trim()}
           </div>

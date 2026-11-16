@@ -289,7 +289,7 @@ test.describe('the controls', () => {
         ['tab', 'File', 'Open and save workbooks'],
         ['tab', 'Home', 'The most used commands'],
         ['tab', 'Formulas', 'Functions to use in formulas'],
-        ['tab', 'Data', 'Sort data'],
+        ['tab', 'Data', 'Sort and filter data'],
         ['tab', 'View', 'Appearance, language and frozen panes'],
         ['button', 'Undo', /^Undo the last change \((Ctrl\+|⌘)Z\)$/],
         ['button', 'Redo', /^Redo the last change undone \((Ctrl\+|⌘)Y\)$/],
@@ -413,10 +413,34 @@ test.describe('the controls', () => {
           'Custom sort',
           'Sort the selected rows by one or more columns',
         ],
+        [
+          'button',
+          'Filter',
+          /^Put a filter button in each header of the selected cells/,
+        ],
         ...statusBar,
       ],
-      6,
+      // Clear, disabled until a column is filtered, is checked below.
+      8,
     );
+    // A filtered column enables Clear.
+    await page.getByRole('button', { name: 'Filter', exact: true }).click();
+    await page
+      .getByRole('button', { name: 'Filter column A', exact: true })
+      .click();
+    await page.getByLabel('Show rows where').selectOption('Greater than');
+    await page.getByLabel('Value', { exact: true }).fill('5');
+    await page.getByRole('button', { name: 'OK', exact: true }).click();
+    await check(
+      [
+        ['button', 'Clear', 'Show every row that the filter hides'],
+        ['button', 'Filter column A (filtered)', 'Filter column A (filtered)'],
+        ['button', 'Filter column B', 'Filter column B'],
+        ...statusBar,
+      ],
+      10,
+    );
+    await page.getByRole('button', { name: 'Filter', exact: true }).click();
     await page.getByRole('tab', { name: 'Formulas' }).click();
     await clickCell(page, 5, 5);
     await check(

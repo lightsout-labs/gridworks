@@ -1,6 +1,7 @@
 import { evaluate, references, type Area, type Ast } from '../formula';
 import type { ErrorValue, Value } from '../value';
 import type { Rule } from './rules';
+import type { Filter } from './filter';
 
 /** A stored value: formulas keep their text, not their result. */
 export type Constant = number | string | boolean | null;
@@ -73,6 +74,8 @@ export interface Sheet {
   merges: readonly Area[];
   /** The conditional formats, the first first; replaced, never changed. */
   rules: readonly Rule[];
+  /** The filter of the sheet, or `null`; replaced, never changed. */
+  filter: Filter | null;
   /** The formulas that read one cell, by the cell's key. */
   readonly cellReaders: Map<string, Set<Dependency>>;
   /** The formulas that read an area of several cells, by each column of it. */
@@ -100,6 +103,7 @@ export function emptySheet(
     layout: { rows: NO_LINES, columns: NO_LINES },
     merges: [],
     rules: [],
+    filter: null,
     cellReaders: new Map(),
     areaReaders: new Map(),
   };

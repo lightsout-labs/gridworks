@@ -949,7 +949,7 @@ Notes:
 
 ## S23: Filtering
 
-Status: Todo
+Status: In progress
 
 Acceptance criteria:
 - The user can turn on a filter for a range, which puts a dropdown button in

@@ -845,3 +845,76 @@
   color: var(--muted);
   font-size: 12px;
 }
+
+/* The dropdown button in each header cell of a filter. */
+.filterButton {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--background);
+  color: var(--text);
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.filterButton:hover {
+  background: var(--hover);
+}
+
+.filterButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.filterButton[data-filtered='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* The panel a filter button opens, under the button. */
+.filterPanel {
+  position: fixed;
+  box-sizing: border-box;
+  max-height: calc(100vh - 16px);
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 2);
+  background: var(--background);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  animation: appear var(--transition);
+}
+
+.filterSearch {
+  margin-top: 12px;
+}
+
+.filterList {
+  max-height: 200px;
+  margin: 8px 0 0;
+  padding: 4px 8px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  list-style: none;
+}
+
+.filterList .checkField {
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+
+.fieldError {
+  margin: 4px 0 0;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.filterPanel .textInput {
+  font-family: inherit;
+}

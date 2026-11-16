@@ -5,6 +5,7 @@ import {
   SHEET_COLUMNS,
   SHEET_ROWS,
   Workbook,
+  type ColumnFilter,
   type Command,
   type Rule,
   type StyleChange,
@@ -2538,5 +2539,202 @@ describe('sort', () => {
     workbook.execute({ type: 'merge', sheet, ranges: [range(2, 0, 2, 1)] });
     expect(() => sort(range(0, 0, 2, 1), [{ col: 0 }])).toThrow();
     expect(column(0, 0, 2)).toEqual(['2', '1', '3']);
+  });
+});
+
+describe('filter', () => {
+  const range = (top: number, left: number, bottom = top, right = left) => ({
+    top,
+    left,
+    bottom,
+    right,
+  });
+
+  /** A table of a header row and five rows, A1:B6. */
+  function filtering() {
+    const { workbook, sheet, set, show } = setup();
+    const rows = [
+      ['Fruit', 'Price'],
+      ['apple', '3'],
+      ['banana', '12'],
+      ['', '7'],
+      ['Apricot', '5'],
+      ['cherry', 'n/a'],
+    ];
+    rows.forEach((cells, row) =>
+      cells.forEach((input, col) => input && set(row, col, input)),
+    );
+    const table = range(0, 0, 5, 1);
+    const filter = (columns: ColumnFilter[] | null, area = table) =>
+      workbook.execute({
+        type: 'filter',
+        sheet,
+        filter: columns && { range: area, columns },
+      });
+    const hidden = () => [...workbook.layout(sheet).rows.hidden].sort();
+    return { workbook, sheet, set, show, filter, hidden, table };
+  }
+
+  it('hides the rows whose values are not checked, blanks as empty text', () => {
+    const { workbook, sheet, filter, hidden, table } = filtering();
+    const change = filter([{ col: 0, type: 'values', values: ['apple', ''] }]);
+    expect(change.ranges).toEqual([table]);
+    expect(hidden()).toEqual([2, 4, 5]);
+    expect(workbook.filter(sheet)).toEqual({
+      range: table,
+      columns: [{ col: 0, type: 'values', values: ['apple', ''] }],
+    });
+  });
+
+  it('hides rows by text conditions in any case', () => {
+    const { filter, hidden } = filtering();
+    filter([{ col: 0, type: 'text', test: 'equals', text: 'APPLE' }]);
+    expect(hidden()).toEqual([2, 3, 4, 5]);
+    filter([{ col: 0, type: 'text', test: 'contains', text: 'an' }]);
+    expect(hidden()).toEqual([1, 3, 4, 5]);
+    filter([{ col: 0, type: 'text', test: 'begins', text: 'ap' }]);
+    expect(hidden()).toEqual([2, 3, 5]);
+    filter([{ col: 0, type: 'text', test: 'ends', text: 'Y' }]);
+    expect(hidden()).toEqual([1, 2, 3, 4]);
+  });
+
+  it('hides rows by number conditions, which text never meets', () => {
+    const { filter, hidden } = filtering();
+    filter([{ col: 1, type: 'number', test: 'equals', value: 7 }]);
+    expect(hidden()).toEqual([1, 2, 4, 5]);
+    filter([{ col: 1, type: 'number', test: 'greater', value: 5 }]);
+    expect(hidden()).toEqual([1, 4, 5]);
+    filter([{ col: 1, type: 'number', test: 'less', value: 5 }]);
+    expect(hidden()).toEqual([2, 3, 4, 5]);
+    filter([{ col: 1, type: 'number', test: 'between', value: 5, to: 7 }]);
+    expect(hidden()).toEqual([1, 2, 5]);
+  });
+
+  it('combines the filters of several columns', () => {
+    const { filter, hidden } = filtering();
+    filter([
+      { col: 0, type: 'text', test: 'begins', text: 'a' },
+      { col: 1, type: 'number', test: 'greater', value: 4 },
+    ]);
+    expect(hidden()).toEqual([1, 2, 3, 5]);
+  });
+
+  it('shows the rows again unchanged when the filter is cleared or turned off', () => {
+    const { workbook, sheet, show, filter, hidden, table } = filtering();
+    filter([{ col: 0, type: 'values', values: ['apple'] }]);
+    filter([]);
+    expect(hidden()).toEqual([]);
+    expect(workbook.filter(sheet)).toEqual({ range: table, columns: [] });
+    filter([{ col: 0, type: 'values', values: ['apple'] }]);
+    filter(null);
+    expect(hidden()).toEqual([]);
+    expect(workbook.filter(sheet)).toBeNull();
+    expect(show(3, 1)).toBe('7');
+  });
+
+  it('keeps rows hidden by hand outside the filter', () => {
+    const { workbook, sheet, filter, hidden } = filtering();
+    workbook.execute({
+      type: 'setLines',
+      sheet,
+      direction: 'rows',
+      spans: [{ start: 8, end: 8, hidden: true }],
+    });
+    filter([{ col: 0, type: 'values', values: ['apple'] }]);
+    filter(null);
+    expect(hidden()).toEqual([8]);
+  });
+
+  it('undoes and redoes a filter, with the rows it hid', () => {
+    const { workbook, sheet, set, filter, hidden } = filtering();
+    filter([{ col: 1, type: 'number', test: 'greater', value: 5 }]);
+    // Rows stay as they are filtered until the filter changes.
+    set(1, 1, '30');
+    expect(hidden()).toEqual([1, 4, 5]);
+    filter([]);
+    workbook.undo();
+    expect(hidden()).toEqual([1, 4, 5]);
+    expect(workbook.filter(sheet)?.columns).toHaveLength(1);
+    workbook.undo();
+    workbook.undo();
+    expect(hidden()).toEqual([]);
+    expect(workbook.filter(sheet)).toBeNull();
+    workbook.redo();
+    expect(hidden()).toEqual([1, 4, 5]);
+  });
+
+  it('lists the values of a column that the other columns let through, as they sort', () => {
+    const { workbook, sheet, filter } = filtering();
+    expect(workbook.filterValues(sheet, 1)).toEqual([]);
+    filter([]);
+    expect(workbook.filterValues(sheet, 1)).toEqual([
+      '3',
+      '5',
+      '7',
+      '12',
+      'n/a',
+    ]);
+    filter([{ col: 1, type: 'number', test: 'less', value: 10 }]);
+    expect(workbook.filterValues(sheet, 0)).toEqual(['apple', 'Apricot', '']);
+    expect(workbook.filterValues(sheet, 1)).toEqual([
+      '3',
+      '5',
+      '7',
+      '12',
+      'n/a',
+    ]);
+  });
+
+  it('keeps the filter and its hidden rows in a snapshot', () => {
+    const { workbook, sheet, filter, table } = filtering();
+    filter([{ col: 0, type: 'values', values: ['apple'] }]);
+    const copy = Workbook.fromSnapshot(workbook.toSnapshot());
+    expect(copy.filter(sheet)).toEqual(workbook.filter(sheet));
+    expect([...copy.layout(sheet).rows.hidden].sort()).toEqual([2, 3, 4, 5]);
+    expect(copy.filter(sheet)?.range).toEqual(table);
+  });
+
+  it('moves the filter with rows and columns inserted and deleted', () => {
+    const { workbook, sheet, filter } = filtering();
+    filter([{ col: 1, type: 'number', test: 'greater', value: 5 }]);
+    workbook.execute({
+      type: 'insertLines',
+      sheet,
+      direction: 'columns',
+      spans: [{ start: 0, end: 0 }],
+    });
+    expect(workbook.filter(sheet)).toEqual({
+      range: range(0, 1, 5, 2),
+      columns: [{ col: 2, type: 'number', test: 'greater', value: 5 }],
+    });
+    workbook.execute({
+      type: 'deleteLines',
+      sheet,
+      direction: 'columns',
+      spans: [{ start: 2, end: 2 }],
+    });
+    expect(workbook.filter(sheet)).toEqual({
+      range: range(0, 1, 5, 1),
+      columns: [],
+    });
+  });
+
+  it('sorts only the rows a filter shows', () => {
+    const { workbook, sheet, show, filter } = filtering();
+    filter([{ col: 1, type: 'number', test: 'less', value: 10 }]);
+    workbook.execute({
+      type: 'sort',
+      sheet,
+      range: range(0, 0, 5, 1),
+      keys: [{ col: 1, descending: true }],
+      headers: true,
+    });
+    const fruits = [1, 2, 3, 4, 5].map((row) => show(row, 0));
+    expect(fruits).toEqual(['', 'banana', 'Apricot', 'apple', 'cherry']);
+  });
+
+  it('refuses a column outside the range', () => {
+    const { filter } = filtering();
+    expect(() => filter([{ col: 4, type: 'values', values: [] }])).toThrow();
   });
 });
