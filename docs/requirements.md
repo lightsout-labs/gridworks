@@ -69,7 +69,23 @@ applications.
     autocomplete with an argument hint, lets the user insert references by
     clicking or dragging on the grid, and highlights each referenced range
     in a distinct color. F4 cycles a reference through absolute and
-    relative forms.
+    relative forms. Picking references works as in Excel's Point mode:
+    - Shift+click on the grid turns the reference just before the caret
+      into the range from that reference's first cell (the cell clicked, or
+      where its drag started) to the clicked cell; `=SUM(` then a click on
+      A1 and a Shift+click on C3 gives `=SUM(A1:C3`. With no reference
+      before the caret, Shift+click works as a plain click.
+    - Ctrl/Cmd+click or Ctrl/Cmd+drag after a reference adds a comma and the
+      new reference, so `=SUM(A1` becomes `=SUM(A1,C3`; elsewhere it works
+      as a plain click or drag.
+    - When a formula entry was started by typing in a cell, and the caret is
+      where a reference can go (after `=`, an operator, `(` or `,`), an
+      arrow key inserts a reference to the cell next to the cell being
+      edited instead of committing; further arrows move that reference,
+      and Shift+arrows extend it into a range from its first cell. Typing
+      any other character ends the pointing, and the next arrow commits as
+      before. In an entry started with F2, a double-click or the formula
+      bar, the arrows move the caret, as before.
 
 ### Formatting
 
