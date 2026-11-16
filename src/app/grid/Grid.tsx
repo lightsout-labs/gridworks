@@ -25,6 +25,7 @@ import {
   SHEET_ROWS,
 } from '../../engine/workbook';
 import {
+  barRect,
   borderAt,
   cellAt,
   cellRect,
@@ -72,9 +73,6 @@ export const measureText: TextWidth = (text: string, style: Style) => {
   measuring.font = cssFont(style, 1);
   return measuring.measureText(text).width;
 };
-
-/** The space between a data bar and the lines of its cell, at 100%. */
-const BAR_INSET = 2;
 
 /** How often the border of the cells copied moves, in milliseconds. */
 const MARCH = 100;
@@ -848,21 +846,16 @@ function draw(
     context.rect(clip.x, clip.y, clip.width, clip.height);
     context.clip();
 
-    // A cell's fill, and its data bar inside its lines, as long as the
-    // bar's share of it.
+    // A cell's fill, and its data bar: none for a merged cell, as bars
+    // are kept only for the cells of `rowTexts`, which skips merges.
     const drawFill = (row: number, col: number, box: Rect) => {
       context.fillStyle = fillOf(row, col);
       context.fillRect(box.x, box.y, box.width, box.height);
       const bar = bars.get(`${row},${col}`);
-      if (!bar) return;
-      const inset = BAR_INSET * zoom;
-      context.fillStyle = bar.color;
-      context.fillRect(
-        box.x + inset,
-        box.y + inset,
-        Math.max(0, box.width - 2 * inset) * bar.length,
-        box.height - 2 * inset,
-      );
+      const at = bar && barRect(box, bar.length, zoom);
+      if (!at) return;
+      context.fillStyle = bar!.color;
+      context.fillRect(at.x, at.y, at.width, at.height);
     };
     for (let row = range.top; row <= range.bottom; row++) {
       for (let col = range.left; col <= range.right; col++) {
@@ -882,8 +875,15 @@ function draw(
     const shadesActive =
       selected && (ranges.length > 1 || !sameRange(ranges[0]!, activeArea));
     if (shadesActive) {
-      // The active cell is not shaded, as in Excel.
-      drawFill(active.row, active.col, rangeRect(activeArea));
+      // The active cell is not shaded, as in Excel. A merged one shows no
+      // bar, wherever it is.
+      const box = rangeRect(activeArea);
+      if (sameRange(activeArea, cellRange(active))) {
+        drawFill(active.row, active.col, box);
+      } else {
+        context.fillStyle = fillOf(active.row, active.col);
+        context.fillRect(box.x, box.y, box.width, box.height);
+      }
     }
 
     context.strokeStyle = color('--border');

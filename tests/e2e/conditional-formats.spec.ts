@@ -318,4 +318,13 @@ test('offers the rules in Chinese, and stays usable in the dark theme', async ({
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByLabel('应用于')).toHaveValue('A1');
   await expect(dialog).toHaveCSS('background-color', 'rgb(27, 26, 25)');
+  await dialog.getByLabel('规则').selectOption('三色刻度');
+  for (const stop of ['最小值', '中值', '最大值']) {
+    await expect(dialog.getByRole('group', { name: stop })).toBeVisible();
+  }
+  await dialog.getByRole('button', { name: '中值: 浅黄色' }).hover();
+  await expect(page.getByRole('tooltip')).toHaveText('浅黄色');
+  await dialog.getByLabel('规则').selectOption('数据条');
+  await dialog.getByRole('button', { name: '条形颜色: 钢蓝色' }).hover();
+  await expect(page.getByRole('tooltip')).toHaveText('钢蓝色');
 });

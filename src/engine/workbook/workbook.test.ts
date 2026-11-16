@@ -2261,6 +2261,15 @@ describe('conditional formats', () => {
     ]);
     set(1, 0, '20');
     expect(workbook.cell(sheet, 0, 0).bar?.length).toBe(0.25);
+    const scale = rules({ type: 'scale', colors: ['#000000', '#ffffff'] }, [
+      '0',
+      '10',
+      '5',
+    ]);
+    scale.set(1, 0, '20');
+    expect(scale.workbook.cell(scale.sheet, 2, 0).conditional).toEqual({
+      fill: '#404040',
+    });
   });
 
   it('follows changed values and formula results', () => {

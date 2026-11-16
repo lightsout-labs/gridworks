@@ -289,7 +289,12 @@ function ManageRules({ workbook, view }: { workbook: Workbook; view: View }) {
             <ul className={styles.ruleList}>
               {rules.map((rule, index) => (
                 <li key={index} className={styles.ruleRow}>
-                  <Sample rule={rule} />
+                  {rule.condition.type === 'scale' ||
+                  rule.condition.type === 'bar' ? (
+                    <Preview condition={rule.condition} />
+                  ) : (
+                    <Sample format={rule.format} />
+                  )}
                   <span className={styles.ruleText}>
                     <span>{conditionText(rule.condition, t)}</span>
                     <span className={styles.ruleRanges}>
@@ -361,21 +366,23 @@ function conditionText(condition: Condition, t: (key: Key) => string): string {
   );
 }
 
-/**
- * Sample text in a rule's format, over the cell's background; or the
- * colors of a scale, or a data bar.
- */
-function Sample({ rule }: { rule: Rule }) {
-  const { condition, format } = rule;
-  if (condition.type === 'scale' || condition.type === 'bar') {
-    const background =
-      condition.type === 'scale'
-        ? `linear-gradient(to right, ${condition.colors.join(', ')})`
-        : `linear-gradient(to right, ${condition.color} 60%, transparent 60%)`;
-    return (
-      <span className={styles.ruleSample} aria-hidden style={{ background }} />
-    );
-  }
+/** The colors of a scale from lowest to highest, or a data bar. */
+function Preview({
+  condition,
+}: {
+  condition: Extract<Condition, { type: 'scale' | 'bar' }>;
+}) {
+  const background =
+    condition.type === 'scale'
+      ? `linear-gradient(to right, ${condition.colors.join(', ')})`
+      : `linear-gradient(to right, ${condition.color} 60%, transparent 60%)`;
+  return (
+    <span className={styles.ruleSample} aria-hidden style={{ background }} />
+  );
+}
+
+/** Sample text in a rule's format, over the cell's background. */
+function Sample({ format }: { format: RuleFormat }) {
   const decoration = [
     format.underline && 'underline',
     format.strike && 'line-through',
@@ -454,7 +461,10 @@ function RuleForm({
     'count' in start ? String(start.count) : '10',
   );
   const [applies, setApplies] = useState(rangesText(initial.ranges));
-  const [format, setFormat] = useState<RuleFormat>(initial.format);
+  // A scale or bar turned into another kind starts from Excel's format.
+  const [format, setFormat] = useState<RuleFormat>(
+    drawsItself(typeOf(start)) ? DEFAULT_FORMAT : initial.format,
+  );
   // The colors of each kind of scale and bar, kept while the kind changes.
   const [scales, setScales] = useState<Record<number, readonly string[]>>(
     () => {
@@ -625,9 +635,7 @@ function FormatFields({
             onClick={() => change(property, format[property] ? null : true)}
           />
         ))}
-        <Sample
-          rule={{ ranges: [], condition: { type: 'duplicate' }, format }}
-        />
+        <Sample format={format} />
       </div>
       <Swatches
         label={t('color.text')}

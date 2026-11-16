@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { SHEET_COLUMNS, SHEET_ROWS } from '../../engine/workbook';
 import {
+  barRect,
   borderAt,
   cellAt,
   cellRect,
@@ -399,5 +400,25 @@ describe('grid geometry', () => {
         },
       },
     ]);
+  });
+});
+
+describe('barRect', () => {
+  const box = { x: 10, y: 20, width: 100, height: 24 };
+
+  it('puts a bar inside the lines of its cell, as long as its share of it', () => {
+    expect(barRect(box, 0.5, 1)).toEqual({
+      x: 12,
+      y: 22,
+      width: 48,
+      height: 20,
+    });
+    expect(barRect(box, 1, 2)).toEqual({ x: 14, y: 24, width: 92, height: 16 });
+  });
+
+  it('draws nothing in a hidden row or column, or for a bar of no length', () => {
+    expect(barRect({ ...box, height: 0 }, 1, 1)).toBeNull();
+    expect(barRect({ ...box, width: 0 }, 1, 1)).toBeNull();
+    expect(barRect(box, 0, 1)).toBeNull();
   });
 });
