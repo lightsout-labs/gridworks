@@ -1192,6 +1192,107 @@ describe('fill', () => {
     expect(show(7, 0)).toBe('Mon');
   });
 
+  it('counts on the number at the end of a text, keeping its digits, in each direction', () => {
+    const { show, set, fill } = filling();
+    set(0, 0, 'Item 1');
+    fill(range(0, 0), range(0, 0, 2, 0));
+    expect([1, 2].map((row) => show(row, 0))).toEqual(['Item 2', 'Item 3']);
+    set(0, 1, 'Item 1');
+    set(1, 1, 'Item 3');
+    fill(range(0, 1, 1, 1), range(0, 1, 3, 1));
+    expect([2, 3].map((row) => show(row, 1))).toEqual(['Item 5', 'Item 7']);
+    set(5, 0, 'A001');
+    fill(range(5, 0), range(5, 0, 5, 1));
+    expect(show(5, 1)).toBe('A002');
+    set(6, 0, 'Item 9');
+    fill(range(6, 0), range(6, 0, 6, 1));
+    expect(show(6, 1)).toBe('Item 10');
+    set(10, 3, 'Item 3');
+    fill(range(10, 3), range(8, 3, 10, 3));
+    expect([8, 9].map((row) => show(row, 3))).toEqual(['Item 1', 'Item 2']);
+    fill(range(10, 3), range(10, 1, 10, 3));
+    expect(show(10, 1)).toBe('Item 1');
+    // Different texts before the numbers, or uneven or no steps, are copied.
+    set(16, 0, 'Item 1');
+    set(17, 0, 'Item 1');
+    fill(range(16, 0, 17, 0), range(16, 0, 18, 0));
+    expect(show(18, 0)).toBe('Item 1');
+    set(12, 0, 'Item 1');
+    set(13, 0, 'Part 2');
+    set(12, 1, 'Item 1');
+    set(13, 1, 'Item 2');
+    set(14, 1, 'Item 4');
+    fill(range(12, 0, 13, 0), range(12, 0, 14, 0));
+    fill(range(12, 1, 14, 1), range(12, 1, 15, 1));
+    expect(show(14, 0)).toBe('Item 1');
+    expect(show(15, 1)).toBe('Item 1');
+  });
+
+  it('copies, extends, or fills only the formats or only the contents, as asked', () => {
+    const { workbook, sheet, show, set } = filling();
+    const fillAs = (
+      how: 'copy' | 'series' | 'formats' | 'values',
+      source: ReturnType<typeof range>,
+      target: ReturnType<typeof range>,
+    ) => workbook.execute({ type: 'fill', sheet, source, target, how });
+    set(0, 0, '1');
+    set(1, 0, '2');
+    fillAs('copy', range(0, 0, 1, 0), range(0, 0, 3, 0));
+    expect([2, 3].map((row) => show(row, 0))).toEqual(['1', '2']);
+    // One number counts on by one as a series.
+    set(0, 1, '5');
+    fillAs('series', range(0, 1), range(0, 1, 2, 1));
+    expect(show(2, 1)).toBe('7');
+    // A text that makes no series is still copied.
+    set(0, 2, 'x');
+    fillAs('series', range(0, 2), range(0, 2, 1, 2));
+    expect(show(1, 2)).toBe('x');
+
+    set(5, 0, '10%');
+    set(6, 0, '0.5');
+    set(7, 0, 'kept');
+    fillAs('formats', range(5, 0), range(5, 0, 7, 0));
+    expect([6, 7].map((row) => show(row, 0))).toEqual(['50%', 'kept']);
+    set(9, 0, '1');
+    set(9, 1, '=A10*2');
+    set(10, 0, '25%');
+    set(10, 1, '25%');
+    workbook.execute({
+      type: 'setStyle',
+      sheet,
+      ranges: [range(9, 0, 9, 1)],
+      style: { bold: true },
+    });
+    fillAs('values', range(9, 0, 9, 1), range(9, 0, 10, 1));
+    expect([show(10, 0), show(10, 1)]).toEqual(['100%', '200%']);
+    expect(workbook.cell(sheet, 10, 1).formula).toBe('=A11*2');
+    expect(workbook.cell(sheet, 10, 0).style.bold).toBeUndefined();
+  });
+
+  it('tells whether a fill extends a series', () => {
+    const { workbook, sheet, set } = filling();
+    const extends_ = (
+      source: ReturnType<typeof range>,
+      target: ReturnType<typeof range>,
+      how?: 'series',
+    ) =>
+      workbook.fillsSeries({
+        type: 'fill',
+        sheet,
+        source,
+        target,
+        ...(how && { how }),
+      });
+    set(0, 0, '1');
+    set(0, 1, 'Item 1');
+    set(0, 2, 'x');
+    expect(extends_(range(0, 0), range(0, 0, 3, 0))).toBe(false);
+    expect(extends_(range(0, 0), range(0, 0, 3, 0), 'series')).toBe(true);
+    expect(extends_(range(0, 1), range(0, 1, 3, 1))).toBe(true);
+    expect(extends_(range(0, 2), range(0, 2, 3, 2), 'series')).toBe(false);
+    expect(extends_(range(0, 0, 0, 2), range(0, 0, 3, 2))).toBe(true);
+  });
+
   it('is undone and redone as one change, and tells listeners a command that replays it', () => {
     const { workbook, set, show, fill } = filling();
     const replay = createWorkbook();

@@ -49,3 +49,7 @@
 .editorMenu {
   display: contents;
 }
+
+.fillOptions {
+  position: absolute;
+}

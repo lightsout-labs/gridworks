@@ -23,6 +23,7 @@ describe('View', () => {
       endMode: false,
       copied: null,
       filling: null,
+      filled: null,
       resizing: null,
       painter: null,
     });
@@ -723,6 +724,54 @@ describe('View', () => {
       expect(workbook.cell(sheet, 5, 2).value).toBe(4);
       expect(view.state.selection.ranges).toEqual([range(2, 2, 5, 2)]);
       expect(view.state.selection.active).toEqual({ row: 2, col: 2 });
+    });
+
+    it('fills with the other of copying and extending when asked, as a drag with Ctrl does', () => {
+      const { workbook, view, sheet } = setup();
+      set(workbook, sheet, { '0,0': '1', '0,1': '1', '1,1': '2', '0,2': 'x' });
+      selecting(view, 0, 0);
+      view.previewFill({ row: 2, col: 0 });
+      view.fill(true);
+      expect(workbook.cell(sheet, 2, 0).value).toBe(3);
+      selecting(view, 0, 1, 1, 1);
+      view.previewFill({ row: 3, col: 1 });
+      view.fill(true);
+      expect(workbook.cell(sheet, 3, 1).value).toBe(2);
+      selecting(view, 0, 2);
+      view.previewFill({ row: 1, col: 2 });
+      view.fill(true);
+      expect(workbook.cell(sheet, 1, 2).value).toBe('x');
+    });
+
+    it('keeps the last fill to redo another way until the workbook changes otherwise', () => {
+      const { workbook, view, sheet } = setup();
+      set(workbook, sheet, { '0,0': '1', '1,0': '2', '3,0': 'under' });
+      selecting(view, 0, 0, 1, 0);
+      view.previewFill({ row: 4, col: 0 });
+      view.fill();
+      expect(view.state.filled).toEqual({
+        sheet,
+        source: range(0, 0, 1, 0),
+        target: range(0, 0, 4, 0),
+        series: true,
+      });
+      view.refill('copy');
+      expect(workbook.cell(sheet, 4, 0).value).toBe(1);
+      expect(view.state.filled?.target).toEqual(range(0, 0, 4, 0));
+      view.refill('series');
+      expect(workbook.cell(sheet, 4, 0).value).toBe(5);
+      // One undo takes back the fill, however often it was redone.
+      workbook.undo();
+      expect(workbook.cell(sheet, 3, 0).value).toBe('under');
+      expect(workbook.cell(sheet, 4, 0).value).toBeNull();
+      expect(view.state.filled).toBeNull();
+
+      selecting(view, 3, 0);
+      view.previewFill({ row: 3, col: 1 });
+      view.fill();
+      expect(view.state.filled?.series).toBe(false);
+      set(workbook, sheet, { '9,9': 'other' });
+      expect(view.state.filled).toBeNull();
     });
 
     it('fills down as far as the column beside has data, on the left or else the right', () => {

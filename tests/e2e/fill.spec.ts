@@ -96,3 +96,104 @@ test('Ctrl/Cmd+D and Ctrl/Cmd+R fill down and right', async ({ page }) => {
   await page.keyboard.press('ControlOrMeta+z');
   await expect(page.getByRole('status')).toHaveText('B3');
 });
+
+/** Holds the key that makes a fill drag copy or count on: Option on macOS, Ctrl elsewhere. */
+async function holdingSwap(page: Page, action: () => Promise<void>) {
+  const mac = await page.evaluate(() =>
+    /Mac|iPhone|iPad/.test(navigator.platform),
+  );
+  const key = mac ? 'Alt' : 'Control';
+  await page.keyboard.down(key);
+  await action();
+  await page.keyboard.up(key);
+}
+
+test('numbered text counts on, and a drag with Ctrl swaps copying and counting', async ({
+  page,
+}) => {
+  await openApp(page);
+  await clickCell(page, 0, 0);
+  await enter(page, 'Item 9');
+  await clickCell(page, 0, 0);
+  await dragFill(page, [0, 0], [2, 0]);
+  await expectCell(page, 2, 0, 'A3 Item 11');
+
+  await clickCell(page, 0, 1);
+  await enter(page, '1');
+  await clickCell(page, 0, 1);
+  await holdingSwap(page, () => dragFill(page, [0, 1], [2, 1]));
+  await expectCell(page, 2, 1, 'B3 3');
+
+  await clickCell(page, 0, 2);
+  await enter(page, 'Item 1');
+  await clickCell(page, 0, 2);
+  await holdingSwap(page, () => dragFill(page, [0, 2], [2, 2]));
+  await expectCell(page, 2, 2, 'C3 Item 1');
+});
+
+test('the Auto Fill Options button redoes a fill another way until the next change', async ({
+  page,
+}) => {
+  await openApp(page);
+  const options = page.getByRole('button', { name: 'Auto Fill Options' });
+  await clickCell(page, 0, 0);
+  await enter(page, '1');
+  await enter(page, '2');
+  await clickCell(page, 0, 0);
+  await page.keyboard.press('Shift+ArrowDown');
+  await dragFill(page, [1, 0], [3, 0]);
+  await expectCell(page, 3, 0, 'A4 4');
+
+  // At the bottom-right corner of the cells filled.
+  const corner = await handle(page, 3, 0);
+  const box = (await options.boundingBox())!;
+  expect(Math.abs(box.x - corner.x)).toBeLessThan(6);
+  expect(Math.abs(box.y - corner.y)).toBeLessThan(6);
+  await options.click();
+  await expect(page.getByRole('menuitem')).toHaveText([
+    'Copy Cells',
+    'Fill Series',
+    'Fill Formatting Only',
+    'Fill Without Formatting',
+  ]);
+  await page.getByRole('menuitem', { name: 'Copy Cells' }).click();
+  await expectCell(page, 3, 0, 'A4 2');
+  await page.keyboard.press('ControlOrMeta+z');
+  await expectCell(page, 2, 0, 'A3');
+  await expect(options).toBeHidden();
+
+  // Text that makes no series has no Fill Series.
+  await clickCell(page, 5, 0);
+  await enter(page, 'x');
+  await clickCell(page, 5, 0);
+  await dragFill(page, [5, 0], [6, 0]);
+  await options.click();
+  await expect(page.getByRole('menuitem')).toHaveText([
+    'Copy Cells',
+    'Fill Formatting Only',
+    'Fill Without Formatting',
+  ]);
+  await page.keyboard.press('Escape');
+  await clickCell(page, 9, 3);
+  await enter(page, 'y');
+  await expect(options).toBeHidden();
+});
+
+test('the Auto Fill Options menu is in Simplified Chinese', async ({
+  page,
+}) => {
+  await openApp(page);
+  await page.getByRole('tab', { name: 'View' }).click();
+  await page.getByRole('button', { name: '中文' }).click();
+  await clickCell(page, 0, 0);
+  await enter(page, '1');
+  await clickCell(page, 0, 0);
+  await dragFill(page, [0, 0], [1, 0]);
+  await page.getByRole('button', { name: '自动填充选项' }).click();
+  await expect(page.getByRole('menuitem')).toHaveText([
+    '复制单元格',
+    '填充序列',
+    '仅填充格式',
+    '不带格式填充',
+  ]);
+});

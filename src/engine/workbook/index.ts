@@ -170,13 +170,17 @@ export type Command =
        * fill handle does: each row or column of the source that starts a
        * series is extended as one, and any other is repeated, its formulas'
        * relative references moved, with the formats of its cells. The
-       * target spans the source and extends it on one side. It gives the
+       * target spans the source and extends it on one side. `how` repeats
+       * every one (`copy`); extends one number too, counting by one
+       * (`series`); or fills only the formats (`formats`) or only the
+       * contents (`values`), keeping the rest of the target. It gives the
        * cells filled, and listeners get it as a `group`.
        */
       readonly type: 'fill';
       readonly sheet: string;
       readonly source: Range;
       readonly target: Range;
+      readonly how?: 'copy' | 'series' | 'formats' | 'values';
     }
   | MoveLines
   | ({
@@ -1257,8 +1261,64 @@ export class Workbook {
     ];
   }
 
+  /** Whether a fill extends a series in any row or column of its source. */
+  fillsSeries(fill: Fill): boolean {
+    return this.fillLines(fill).lines.some((line) => line.extended);
+  }
+
   /** The restore that makes a fill, read before it runs. */
-  private filled({ sheet: id, source, target }: Fill): Restore {
+  private filled(fill: Fill): Restore {
+    const { sheet, area, places, lines } = this.fillLines(fill);
+    const { how } = fill;
+    // What the target keeps: its contents when formats are filled, and its
+    // formats when contents are.
+    const kept = new Map<string, CellContents>();
+    if (how === 'formats' || how === 'values') {
+      for (const cell of this.contents(sheet, [area])) {
+        kept.set(key(cell.row, cell.col), cell);
+      }
+    }
+    const cells: CellContents[] = [];
+    for (const { seeds, extended, at } of lines) {
+      const length = seeds.length;
+      for (const place of places) {
+        const { row, col } = at(place);
+        const seed = seeds[((place % length) + length) % length];
+        const keep = kept.get(key(row, col));
+        let contents: Pick<CellContents, 'value' | 'formula'>;
+        if (how === 'formats') {
+          contents = {
+            value: keep?.value ?? null,
+            ...(keep?.formula !== undefined && { formula: keep.formula }),
+          };
+        } else if (extended) {
+          contents = { value: extended(place) };
+        } else if (seed?.formula !== undefined) {
+          const { ast } = sheet.formulas.get(key(seed.row, seed.col))!;
+          const move: Move = {
+            type: 'offset',
+            rows: row - seed.row,
+            cols: col - seed.col,
+          };
+          contents = { value: null, formula: `=${print(shift(ast, move))}` };
+        } else {
+          contents = { value: seed?.value ?? null };
+        }
+        const style = how === 'values' ? keep?.style : seed?.style;
+        if (contents.value === null && !contents.formula && !style) continue;
+        cells.push({ row, col, ...contents, ...(style && { style }) });
+      }
+    }
+    return { type: 'restore', sheet: sheet.id, ranges: [area], cells };
+  }
+
+  /**
+   * The area a fill changes, the places it fills along the way it goes,
+   * the source's cells being at 0, 1 and on, and each row or column of the
+   * source: its cells, the series they start, if any, and where each place
+   * of it is.
+   */
+  private fillLines({ sheet: id, source, target, how }: Fill) {
     const sheet = this.sheet(id);
     const contains =
       target.top <= source.top &&
@@ -1289,7 +1349,6 @@ export class Workbook {
         cell,
       ]),
     );
-    // Rows or columns of the source, along which the fill goes.
     const length = vertical
       ? source.bottom - source.top + 1
       : source.right - source.left + 1;
@@ -1299,52 +1358,31 @@ export class Workbook {
     const [from, to] = vertical
       ? [area.top - source.top, area.bottom - source.top]
       : [area.left - source.left, area.right - source.left];
-    const at = (line: number, place: number) =>
-      vertical
-        ? { row: source.top + place, col: line }
-        : { row: line, col: source.left + place };
-    const cells: CellContents[] = [];
+    const places = Array.from({ length: to - from + 1 }, (_, i) => from + i);
+    const lines = [];
     for (let line = first; line <= last; line++) {
+      const at = (place: number) =>
+        vertical
+          ? { row: source.top + place, col: line }
+          : { row: line, col: source.left + place };
       const lineSeeds = Array.from({ length }, (_, place) => {
-        const { row, col } = at(line, place);
+        const { row, col } = at(place);
         return seeds.get(key(row, col));
       });
-      const extended = series(
-        lineSeeds.map((cell) => ({
-          value: cell?.value ?? null,
-          formula: cell?.formula !== undefined,
-          format: cell?.style?.numberFormat ?? GENERAL,
-        })),
-      );
-      for (let place = from; place <= to; place++) {
-        const { row, col } = at(line, place);
-        const seed = lineSeeds[((place % length) + length) % length];
-        let contents: Pick<CellContents, 'value' | 'formula'>;
-        if (extended) {
-          contents = { value: extended(place) };
-        } else if (seed?.formula !== undefined) {
-          const { ast } = sheet.formulas.get(key(seed.row, seed.col))!;
-          const move: Move = {
-            type: 'offset',
-            rows: row - seed.row,
-            cols: col - seed.col,
-          };
-          contents = { value: null, formula: `=${print(shift(ast, move))}` };
-        } else {
-          contents = { value: seed?.value ?? null };
-        }
-        if (contents.value === null && !contents.formula && !seed?.style) {
-          continue;
-        }
-        cells.push({
-          row,
-          col,
-          ...contents,
-          ...(seed?.style && { style: seed.style }),
-        });
-      }
+      const extended =
+        how === 'copy' || how === 'formats'
+          ? null
+          : series(
+              lineSeeds.map((cell) => ({
+                value: cell?.value ?? null,
+                formula: cell?.formula !== undefined,
+                format: cell?.style?.numberFormat ?? GENERAL,
+              })),
+              how === 'series',
+            );
+      lines.push({ seeds: lineSeeds, extended, at });
     }
-    return { type: 'restore', sheet: sheet.id, ranges: [area], cells };
+    return { sheet, area, places, lines };
   }
 
   /**

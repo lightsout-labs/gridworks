@@ -56,7 +56,7 @@ import {
   textColorOn,
   type RowText,
 } from './text';
-import type { Entry, View, ViewState } from './view';
+import type { Entry, Filled, View, ViewState } from './view';
 
 const FONT_SIZE = 13;
 export const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
@@ -79,16 +79,19 @@ const MARCH = 100;
  * mouse and the keyboard select and edit cells as in Excel, and dragging
  * or double-clicking a header border resizes its row or column.
  * Right-clicking a cell, or a row or column header, opens `menu` for it,
- * the content of a context menu.
+ * the content of a context menu. `fillOptions` is shown at the corner of
+ * the last fill.
  */
 export function Grid({
   workbook,
   view,
   menu,
+  fillOptions,
 }: {
   workbook: Workbook;
   view: View;
   menu: (lines?: Direction) => ReactNode;
+  fillOptions: (filled: Filled) => ReactNode;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -106,7 +109,7 @@ export function Grid({
    */
   const drag = useRef<Target['kind'] | 'fill' | 'point' | null>(null);
   const state = useSyncExternalStore(view.subscribe, () => view.state);
-  const { sheet, selection, entry, zoom, copied } = state;
+  const { sheet, selection, entry, zoom, copied, filled } = state;
   const { active } = selection;
   const layout = layoutOf(
     useSyncExternalStore(workbook.subscribe.bind(workbook), () =>
@@ -282,8 +285,10 @@ export function Grid({
             : next.focus,
       );
     };
-    const onUp = () => {
-      if (drag.current === 'fill') view.fill();
+    const onUp = (event: globalThis.MouseEvent) => {
+      // Ctrl, or Option on macOS, swaps copying and counting on.
+      if (drag.current === 'fill')
+        view.fill(MAC ? event.altKey : event.ctrlKey);
       // The format painter paints the range a click or drag selects.
       else if (drag.current && drag.current !== 'point') view.paint();
       if (resizeDrag.current) view.resize();
@@ -489,20 +494,26 @@ export function Grid({
   };
 
   const sheetArea = sheetSize({ zoom, layout });
-  // A merged cell is edited in the whole of its box, placed on the sheet
-  // that scrolls, so a frozen one is placed where the scroll has got to.
+  // What is placed over cells is placed on the sheet that scrolls, so
+  // over frozen cells it is placed where the scroll has got to.
   const scrolled = scroller.current;
+  const onSheet = ({ row, col }: CellPosition): Viewport => ({
+    scrollX: col < layout.frozen.cols ? -(scrolled?.scrollLeft ?? 0) : 0,
+    scrollY: row < layout.frozen.rows ? -(scrolled?.scrollTop ?? 0) : 0,
+    zoom,
+    layout: { ...layout, frozen: { rows: 0, cols: 0 } },
+  });
+  // A merged cell is edited in the whole of its box.
   const editor = areaRect(
     mergeAt(workbook.merges(sheet), active) ?? cellRange(active),
-    {
-      scrollX:
-        active.col < layout.frozen.cols ? -(scrolled?.scrollLeft ?? 0) : 0,
-      scrollY:
-        active.row < layout.frozen.rows ? -(scrolled?.scrollTop ?? 0) : 0,
-      zoom,
-      layout: { ...layout, frozen: { rows: 0, cols: 0 } },
-    },
+    onSheet(active),
   );
+  const filledCorner = filled && {
+    row: filled.target.bottom,
+    col: filled.target.right,
+  };
+  const fillBox =
+    filledCorner && areaRect(cellRange(filledCorner), onSheet(filledCorner));
   const shownCopy =
     copied && copied.sheet === sheet ? rangeName(copied.range) : undefined;
   return (
@@ -557,6 +568,20 @@ export function Grid({
                   fontSize: FONT_SIZE * zoom,
                 }}
               />
+            </div>
+          )}
+          {filled && filled.sheet === sheet && fillBox && (
+            // The menu's keys and clicks are not the grid's.
+            <div
+              className={styles.fillOptions}
+              style={{
+                left: fillBox.x + fillBox.width + 2,
+                top: fillBox.y + fillBox.height + 2,
+              }}
+              onKeyDown={(event) => event.stopPropagation()}
+              onContextMenu={(event) => event.stopPropagation()}
+            >
+              {fillOptions(filled)}
             </div>
           )}
           <div role="status" className={styles.announcement}>
