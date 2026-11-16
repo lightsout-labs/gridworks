@@ -784,7 +784,7 @@ Notes:
 
 ## S33: Picking references with Shift, Ctrl and the arrow keys
 
-Status: Todo
+Status: Done
 
 Acceptance criteria:
 - While typing a formula, a click on A1 then a Shift+click on C3 gives the
@@ -804,6 +804,14 @@ Acceptance criteria:
   arrow after any other text still commits and moves. (R16, R40)
 - In an entry started with F2, a double-click or the formula bar, the arrows
   still move the caret. (R16, R40)
+
+Notes:
+- WebKit cannot start on the build laptop (missing system libraries, needs
+  `sudo npx playwright install-deps`); its e2e run is left to CI.
+- S24 onward: an entry carries `point`, the reference picked or pointed at;
+  any new way to change the entry's text must go through `View` so that
+  `point` is forgotten.
+
 
 ## S20: Conditional formatting: value rules
 

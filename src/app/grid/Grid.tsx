@@ -104,7 +104,7 @@ export function Grid({
    * What a drag selects, the fill handle it drags, or the corner of the
    * range it picks for a formula.
    */
-  const drag = useRef<Target['kind'] | 'fill' | CellPosition | null>(null);
+  const drag = useRef<Target['kind'] | 'fill' | 'point' | null>(null);
   const state = useSyncExternalStore(view.subscribe, () => view.state);
   const { sheet, selection, entry, zoom, copied } = state;
   const { active } = selection;
@@ -253,14 +253,8 @@ export function Grid({
         show({ row, col });
         return;
       }
-      if (typeof drag.current === 'object') {
-        const corner = drag.current;
-        view.pick({
-          top: Math.min(corner.row, row),
-          left: Math.min(corner.col, col),
-          bottom: Math.max(corner.row, row),
-          right: Math.max(corner.col, col),
-        });
+      if (drag.current === 'point') {
+        view.pick({ row, col }, 'extend');
         return;
       }
       const target: Target =
@@ -291,7 +285,7 @@ export function Grid({
     const onUp = () => {
       if (drag.current === 'fill') view.fill();
       // The format painter paints the range a click or drag selects.
-      else if (typeof drag.current === 'string') view.paint();
+      else if (drag.current && drag.current !== 'point') view.paint();
       if (resizeDrag.current) view.resize();
       drag.current = null;
       resizeDrag.current = null;
@@ -354,19 +348,18 @@ export function Grid({
       event.clientY - bounds.top,
       viewport(),
     );
-    if (target.kind === 'cell' && view.canPick) {
-      const { row, col } = target;
-      view.pick({ top: row, left: col, bottom: row, right: col });
-      drag.current = { row, col };
-      // The editor keeps the keyboard.
-      event.preventDefault();
-      return;
-    }
     const mode = event.shiftKey
       ? 'extend'
       : (MAC ? event.metaKey : event.ctrlKey)
         ? 'add'
         : 'replace';
+    if (target.kind === 'cell' && view.canPick) {
+      view.pick({ row: target.row, col: target.col }, mode);
+      drag.current = 'point';
+      // The editor keeps the keyboard.
+      event.preventDefault();
+      return;
+    }
     view.select(pick(view.state.selection, target, mode, topLeft()));
     drag.current = target.kind;
     // Keep the keyboard on the grid, which the browser would otherwise
@@ -450,7 +443,13 @@ export function Grid({
         meta: event.metaKey,
         alt: event.altKey,
       },
-      { mac: MAC, mode: entry?.mode ?? null, endMode: state.endMode, page },
+      {
+        mac: MAC,
+        mode: entry?.mode ?? null,
+        endMode: state.endMode,
+        page,
+        canPoint: view.canPoint,
+      },
     );
     if (!action) return;
     event.preventDefault();
@@ -466,6 +465,9 @@ export function Grid({
     } else if (action.type === 'cancel') {
       view.cancel();
       scroller.current!.focus();
+    } else if (action.type === 'point') {
+      view.point(action.navigation);
+      show(view.state.entry!.point!.focus);
     } else {
       const { navigation } = action;
       // The editor closes, and the keyboard stays on the grid.

@@ -11,6 +11,8 @@ export type EntryMode = 'enter' | 'edit';
 export type KeyAction =
   /** Moves the selection, committing the entry first. */
   | { type: 'navigate'; navigation: Navigation }
+  /** Moves or extends the reference pointed at for the formula typed. */
+  | { type: 'point'; navigation: Navigation }
   /** Abandons the entry, or without one forgets what was copied. */
   | { type: 'cancel' }
   /** Edits the contents of the active cell, or switches to Edit mode. */
@@ -34,6 +36,8 @@ export function keyAction(
     mode: EntryMode | null;
     endMode: boolean;
     page: { rows: number; cols: number };
+    /** Whether a reference can go at the caret, for the arrows to point. */
+    canPoint?: boolean;
   },
 ): KeyAction | null {
   const { key, shift, ctrl, meta, alt } = press;
@@ -49,7 +53,8 @@ export function keyAction(
   if (mode === 'enter') {
     if (!key.startsWith('Arrow')) return null;
     const navigation = navigationFor(press, context);
-    return navigation && { type: 'navigate', navigation };
+    const type = context.canPoint ? 'point' : 'navigate';
+    return navigation && { type, navigation };
   }
   // The key labeled delete on a Mac is Backspace.
   if (key === 'Delete' || (mac && key === 'Backspace'))

@@ -79,6 +79,21 @@ export function pickable(text: string, caret: number): boolean {
     return false; // The caret is inside a token.
   }
   if (before.kind === 'reference') return before.end === caret;
+  return startsOperand(text, caret);
+}
+
+/**
+ * Whether an operand starts at the caret of a formula: after `=`, an
+ * operator, `(` or `,`, where a new reference can go.
+ */
+export function startsOperand(text: string, caret: number): boolean {
+  const tokens = formulaTokens(text);
+  if (!tokens) return false;
+  const before = tokenBefore(tokens, caret);
+  if (!before) return caret > 0;
+  if (before.end < caret && text.slice(before.end, caret).trim() !== '') {
+    return false; // The caret is inside a token.
+  }
   return (
     before.kind === 'open' ||
     before.kind === 'comma' ||
@@ -88,17 +103,22 @@ export function pickable(text: string, caret: number): boolean {
 
 /**
  * Puts a reference at the caret, in place of a reference that ends there,
- * as a drag on the grid replaces the one it started.
+ * as a drag on the grid replaces the one it started; with `add`, after
+ * that reference and a comma, as Ctrl or Cmd with a click adds one.
  */
 export function insertReference(
   text: string,
   caret: number,
   reference: string,
+  add = false,
 ): Edit {
   const before = tokenBefore(formulaTokens(text) ?? [], caret);
-  const start =
-    before?.kind === 'reference' && before.end === caret ? before.start : caret;
-  return replace(text, start, caret, reference);
+  if (before?.kind !== 'reference' || before.end !== caret) {
+    return replace(text, caret, caret, reference);
+  }
+  return add
+    ? replace(text, caret, caret, `,${reference}`)
+    : replace(text, before.start, caret, reference);
 }
 
 /**

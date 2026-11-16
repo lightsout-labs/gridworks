@@ -40,6 +40,7 @@ describe('View', () => {
       sheet,
       caret: 2,
       allFunctions: false,
+      point: null,
     });
     expect(workbook.cell(sheet, 2, 1).display).toBe('');
 
@@ -100,6 +101,7 @@ describe('View', () => {
       sheet,
       caret: 3,
       allFunctions: false,
+      point: null,
     });
     view.type('15%');
     view.commit();
@@ -113,6 +115,7 @@ describe('View', () => {
       sheet,
       caret: 3,
       allFunctions: false,
+      point: null,
     });
   });
 
@@ -127,6 +130,7 @@ describe('View', () => {
       sheet,
       caret: 2,
       allFunctions: false,
+      point: null,
     });
     view.edit('formulaBar');
     expect(view.state.entry?.place).toBe('formulaBar');
@@ -138,6 +142,7 @@ describe('View', () => {
       sheet,
       caret: 3,
       allFunctions: false,
+      point: null,
     });
   });
 
@@ -157,15 +162,82 @@ describe('View', () => {
     expect(view.canPick).toBe(false);
     view.type('=SUM(');
     expect(view.canPick).toBe(true);
-    view.pick({ top: 0, left: 0, bottom: 0, right: 0 });
+    view.pick({ row: 0, col: 0 });
     // Dragging replaces the reference picked.
-    view.pick({ top: 0, left: 0, bottom: 2, right: 1 });
+    view.pick({ row: 2, col: 1 }, 'extend');
     expect(view.state.entry).toMatchObject({ text: '=SUM(A1:B3', caret: 10 });
     expect(view.state.selection).toEqual(single({ row: 4, col: 0 }));
     view.type('=SUM(A1:B3)');
     expect(view.canPick).toBe(false);
     view.commit();
     expect(workbook.cell(sheet, 4, 0).input).toBe('=SUM(A1:B3)');
+  });
+
+  it('extends the reference picked with Shift, from where it started', () => {
+    const { view } = setup();
+    view.select(single({ row: 5, col: 5 }));
+    view.type('=');
+    view.pick({ row: 0, col: 0 });
+    view.pick({ row: 2, col: 2 }, 'extend');
+    expect(view.state.entry?.text).toBe('=A1:C3');
+    view.pick({ row: 1, col: 1 }, 'extend');
+    expect(view.state.entry?.text).toBe('=A1:B2');
+
+    // A drag from C3 to A1 started at C3.
+    view.type('=');
+    view.pick({ row: 2, col: 2 });
+    view.pick({ row: 0, col: 0 }, 'extend');
+    expect(view.state.entry?.text).toBe('=A1:C3');
+    view.pick({ row: 3, col: 3 }, 'extend');
+    expect(view.state.entry?.text).toBe('=C3:D4');
+
+    // With no reference before the caret, just the cell.
+    view.type('=1+');
+    view.pick({ row: 1, col: 1 }, 'extend');
+    expect(view.state.entry?.text).toBe('=1+B2');
+  });
+
+  it('adds a reference after a comma with Ctrl, or picks one without a reference before', () => {
+    const { view } = setup();
+    view.select(single({ row: 5, col: 5 }));
+    view.type('=SUM(');
+    view.pick({ row: 2, col: 2 }, 'add');
+    expect(view.state.entry?.text).toBe('=SUM(C3');
+    view.type('=SUM(A1');
+    view.pick({ row: 2, col: 2 }, 'add');
+    view.pick({ row: 3, col: 3 }, 'extend');
+    expect(view.state.entry).toMatchObject({
+      text: '=SUM(A1,C3:D4',
+      caret: 13,
+    });
+  });
+
+  it('points with the arrows from the cell edited, extends with Shift, and starts again after an operator', () => {
+    const { workbook, view, sheet } = setup();
+    workbook.execute({ type: 'setCell', sheet, row: 9, col: 1, input: '1' });
+    view.select(single({ row: 1, col: 1 }));
+    view.type('=');
+    view.point({ type: 'step', rows: 0, cols: 1, extend: false });
+    expect(view.state.entry?.text).toBe('=C2');
+    view.point(down);
+    expect(view.state.entry?.text).toBe('=C3');
+    view.point({ type: 'step', rows: 0, cols: 1, extend: true });
+    expect(view.state.entry).toMatchObject({ text: '=C3:D3', caret: 6 });
+    expect(view.canPoint).toBe(true);
+    // After a reference typed, or other text, the arrows commit.
+    view.type('=C3:D3+A1');
+    expect(view.canPoint).toBe(false);
+    view.type('=C3:D3+1');
+    expect(view.canPoint).toBe(false);
+    view.type('=C3:D3+');
+    expect(view.canPoint).toBe(true);
+    view.point({ type: 'step', rows: -1, cols: 0, extend: false });
+    expect(view.state.entry?.text).toBe('=C3:D3+B1');
+    // Ctrl with an arrow goes to the edge of the data, as it selects.
+    view.type('=C3:D3+B1*');
+    view.point({ type: 'edge', rows: 1, cols: 0, extend: false });
+    expect(view.state.entry?.text).toBe('=C3:D3+B1*B10');
+    expect(view.state.selection).toEqual(single({ row: 1, col: 1 }));
   });
 
   it('goes on with a formula on another sheet, and commits it to its own cell', () => {
@@ -180,7 +252,7 @@ describe('View', () => {
     // The cell is not shown, so the entry goes on in the formula bar.
     expect(view.state.entry).toMatchObject({ place: 'formulaBar', sheet });
     expect(view.canPick).toBe(true);
-    view.pick({ top: 2, left: 2, bottom: 2, right: 2 });
+    view.pick({ row: 2, col: 2 });
     expect(view.state.entry?.text).toBe("=1+'My data'!C3");
     view.navigate(down);
     expect(view.state.sheet).toBe(sheet);
@@ -192,7 +264,7 @@ describe('View', () => {
     view.type('=');
     view.showSheet(second);
     view.showSheet(sheet);
-    view.pick({ top: 0, left: 0, bottom: 0, right: 0 });
+    view.pick({ row: 0, col: 0 });
     expect(view.state.entry?.text).toBe('=A1');
     view.showSheet(second);
     view.cancel();
@@ -203,7 +275,7 @@ describe('View', () => {
     view.select(single({ row: 1, col: 1 }));
     view.type('=SUM(');
     view.showSheet(second);
-    view.pick({ top: 0, left: 0, bottom: 0, right: 0 });
+    view.pick({ row: 0, col: 0 });
     view.type("=SUM('My data'!A1)");
     expect(view.canPick).toBe(false);
     view.select(single({ row: 3, col: 3 }));

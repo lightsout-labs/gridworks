@@ -145,6 +145,75 @@ test('clicking and dragging on the grid inserts references, on another sheet too
   await expectCell(page, 6, 0, 'A7 8');
 });
 
+test('Shift and Ctrl with a click extend and add references', async ({
+  page,
+}) => {
+  await openApp(page);
+  await clickCell(page, 5, 5);
+  await page.keyboard.type('=SUM(');
+  await clickCell(page, 0, 0);
+  await page.keyboard.down('Shift');
+  await clickCell(page, 2, 2);
+  await expect(formulaBar(page)).toHaveValue('=SUM(A1:C3');
+  await clickCell(page, 1, 1);
+  await page.keyboard.up('Shift');
+  await expect(formulaBar(page)).toHaveValue('=SUM(A1:B2');
+
+  // Ctrl or Cmd adds a comma and drags a new reference.
+  const from = await cellPoint(page, 2, 2);
+  const to = await cellPoint(page, 3, 3);
+  await page.mouse.move(from.x, from.y);
+  await page.keyboard.down('ControlOrMeta');
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 4 });
+  await page.mouse.up();
+  await page.keyboard.up('ControlOrMeta');
+  await expect(formulaBar(page)).toHaveValue('=SUM(A1:B2,C3:D4');
+  await expect(page.getByRole('textbox', { name: 'F6' })).toBeFocused();
+  await page.keyboard.press('Escape');
+});
+
+test('the arrows point at references in an entry typed in a cell', async ({
+  page,
+}) => {
+  await openApp(page);
+  await clickCell(page, 0, 0);
+  await enter(page, '1');
+  await enter(page, '2');
+  await enter(page, '3');
+
+  await clickCell(page, 3, 1);
+  await page.keyboard.type('=SUM(');
+  await page.keyboard.press('ArrowUp');
+  await page.keyboard.press('ArrowLeft');
+  await expect(formulaBar(page)).toHaveValue('=SUM(A3');
+  await page.keyboard.press('Shift+ArrowUp');
+  await page.keyboard.press('Shift+ArrowUp');
+  await expect(formulaBar(page)).toHaveValue('=SUM(A1:A3');
+  const reference = page.locator('[data-place="cell"] [data-reference]');
+  const color = await reference.evaluate(
+    (span) => getComputedStyle(span).color,
+  );
+  expect(await leftEdgeColor(page, 0, 0)).toBe(color);
+
+  // After an operator, the next arrow starts from the cell edited.
+  await page.keyboard.type(')*');
+  await page.keyboard.press('ArrowUp');
+  await expect(formulaBar(page)).toHaveValue('=SUM(A1:A3)*B3');
+  // After other text, an arrow commits and moves.
+  await page.keyboard.type('+5');
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByRole('status')).toHaveText('B5');
+  await expectCell(page, 3, 1, 'B4 5'); // B3 is empty.
+
+  // In Edit mode, the arrows move the caret.
+  await page.keyboard.press('F2');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.type('1');
+  await page.keyboard.press('Enter');
+  await expectCell(page, 3, 1, 'B4 15');
+});
+
 test('each reference has its own color, and its range is outlined in it', async ({
   page,
 }) => {
