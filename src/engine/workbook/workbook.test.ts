@@ -2237,6 +2237,37 @@ describe('conditional formats', () => {
     expect(workbook.rules(sheet)).toEqual([rule]);
   });
 
+  it('works out duplicates on a copy of a sheet from its own values', () => {
+    const { workbook, sheet, set, formatted } = rules({ type: 'duplicate' }, [
+      '1',
+      '1',
+    ]);
+    expect(formatted()).toEqual([0, 1]);
+    workbook.execute({ type: 'addSheet', index: 1, copyOf: sheet });
+    const copy = workbook.sheets[1]!.id;
+    workbook.execute({
+      type: 'setCell',
+      sheet: copy,
+      row: 1,
+      col: 0,
+      input: '2',
+    });
+    set(0, 0, '1');
+    expect(formatted()).toEqual([0, 1]);
+    expect(workbook.cell(copy, 0, 0).conditional).toBeUndefined();
+    expect(workbook.cell(sheet, 0, 0).conditional).toBeDefined();
+    // Read the copy first, then the original, with nothing run in between.
+    workbook.execute({
+      type: 'setCell',
+      sheet: copy,
+      row: 1,
+      col: 0,
+      input: '2',
+    });
+    expect(workbook.cell(copy, 0, 0).conditional).toBeUndefined();
+    expect(workbook.cell(sheet, 0, 0).conditional).toBeDefined();
+  });
+
   it('moves, grows and shrinks the ranges of rules with rows and columns, and drops those deleted', () => {
     const { workbook, sheet } = setup();
     const format = { bold: true } as const;
@@ -2267,6 +2298,15 @@ describe('conditional formats', () => {
     });
     expect(workbook.rules(sheet).map((rule) => rule.ranges)).toEqual([
       [range(0, 0, 4, 0), range(8, 0)],
+    ]);
+    workbook.execute({
+      type: 'insertLines',
+      sheet,
+      direction: 'columns',
+      spans: [{ start: 0, end: 0 }],
+    });
+    expect(workbook.rules(sheet).map((rule) => rule.ranges)).toEqual([
+      [range(0, 1, 4, 1), range(8, 1)],
     ]);
   });
 });

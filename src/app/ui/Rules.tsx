@@ -190,8 +190,9 @@ function ManageRules({ workbook, view }: { workbook: Workbook; view: View }) {
   );
   const { sheet } = view.state;
   const rules = useSyncExternalStore(subscribe, () => workbook.rules(sheet));
-  // The rule being edited, by its place, or a new one at `null`.
-  const [editing, setEditing] = useState<number | null | undefined>();
+  // The rule being edited, or a new one at `null`. It is kept rather than
+  // its place, which an undo while the form is open may change.
+  const [editing, setEditing] = useState<Rule | null | undefined>();
   const save = (next: readonly Rule[]) =>
     view.execute({ type: 'setRules', sheet, rules: next });
   const move = (index: number, by: number) => {
@@ -214,15 +215,15 @@ function ManageRules({ workbook, view }: { workbook: Workbook; view: View }) {
             initial={
               editing === null
                 ? newRule('greater', view.state.selection.ranges)
-                : rules[editing]!
+                : editing
             }
             onSave={(rule) => {
+              // A rule undone meanwhile comes back first, as a new one.
+              const at = editing === null ? -1 : rules.indexOf(editing);
               save(
-                editing === null
+                at < 0
                   ? [rule, ...rules]
-                  : rules.map((each, index) =>
-                      index === editing ? rule : each,
-                    ),
+                  : rules.map((each, index) => (index === at ? rule : each)),
               );
               setEditing(undefined);
             }}
@@ -251,7 +252,7 @@ function ManageRules({ workbook, view }: { workbook: Workbook; view: View }) {
                     icon={Pencil}
                     label={t('rules.edit')}
                     tooltip={t('rules.edit.tooltip')}
-                    onClick={() => setEditing(index)}
+                    onClick={() => setEditing(rule)}
                   />
                   <IconButton
                     icon={ArrowUp}

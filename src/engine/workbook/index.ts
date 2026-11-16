@@ -2089,8 +2089,11 @@ function sheetOf(snapshot: SheetSnapshot): Sheet {
   };
   if (snapshot.merges)
     sheet.merges = snapshot.merges.map((each) => ({ ...each }));
-  if (snapshot.conditionalFormats)
-    sheet.rules = [...snapshot.conditionalFormats];
+  // Rules of its own, as what is worked out of a rule's values is kept by
+  // the rule: a copy of a sheet works out its own.
+  if (snapshot.conditionalFormats) {
+    sheet.rules = snapshot.conditionalFormats.map((rule) => ({ ...rule }));
+  }
   for (const [row, col, text] of snapshot.formulas) {
     const ast = parse(text.slice(1));
     if (!ast) throw new Error(`Invalid formula in snapshot: ${text}`);

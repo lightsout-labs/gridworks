@@ -846,7 +846,7 @@ Notes:
 
 ## S20: Conditional formatting: value rules
 
-Status: In progress
+Status: Done
 
 Acceptance criteria:
 - The user can add a rule to a range that formats cells greater than, less
@@ -863,6 +863,31 @@ Acceptance criteria:
 - Its controls are in the ribbon or a context menu, are translated in both
   languages, look right in both themes, and have hover, focus and disabled
   states and tooltips. (R37, R41, R42, R43, R44)
+
+Notes:
+- Rules are a sheet's `rules`, in priority order, replaced whole by the
+  `setRules` command (so add, edit, reorder and delete each undo alone);
+  `Rule` is `{ ranges, condition, format }` in `engine/workbook/rules.ts`.
+  S21 (color scales, data bars) adds condition kinds there and gives
+  `Cell` what they draw beside `conditional`.
+- `Cell.conditional` is what rules change of the style; the grid draws it
+  through `shownCell` (`app/grid/text.ts`), so the ribbon still shows the
+  cell's own format.
+- Snapshots keep rules as `conditionalFormats`; S28 (XLSX) reads and
+  writes them as `conditionalFormatting` (`cellIs`, `containsText`,
+  `duplicateValues`, `top10`), with dxf formats.
+- Rule values are kept as typed and read like cell input; Excel's formula
+  values (`=$A$1`) and percent top/bottom are not built. Empty cells match
+  no rule, where Excel takes them as 0.
+- Pasting and cutting cells neither copy nor move rules (Excel does);
+  inserting and deleting lines moves them.
+- What a duplicate or top/bottom rule needs is cached by the rule object
+  and forgotten after each command; each sheet built from a snapshot gets
+  its own rule objects so a copied sheet does not share the cache.
+- Review minors left: `Calculation.cells` is now public; the e2e tests
+  check fills drawn by rules but not font styles or text colors (the
+  `shownCell` unit test covers those).
+
 
 ## S21: Conditional formatting: color scales and data bars
 
