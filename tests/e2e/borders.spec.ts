@@ -66,6 +66,8 @@ test('draws borders of a chosen line and color, and undoes them', async ({
   await clickCell(page, 8, 8);
   expect(await topEdge(page, 2, 2)).toEqual(plain);
   await page.keyboard.press('ControlOrMeta+z');
+  // Undo selects the cells it changed, which shades them.
+  await clickCell(page, 8, 8);
   expect(await topEdge(page, 2, 2)).toEqual([255, 0, 0]);
 });
 
@@ -133,6 +135,7 @@ test('paints the formats of a range onto the next one selected', async ({
   expect(await cellBackground(page, 3, 3)).toEqual(white);
 
   await page.keyboard.press('ControlOrMeta+z');
+  await clickCell(page, 5, 5);
   expect(await cellBackground(page, 2, 2)).toEqual(white);
 });
 

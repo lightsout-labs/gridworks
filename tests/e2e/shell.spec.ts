@@ -243,11 +243,19 @@ test.describe('the controls', () => {
 
   test('each have a tooltip', async ({ page }) => {
     await openApp(page);
-    // Two changes and an undo enable both Undo and Redo, and a copy Paste.
+    // A merged cell in a larger selection enables Merge and Unmerge, two
+    // changes and an undo both Undo and Redo, and a copy Paste.
+    await clickCell(page, 4, 0);
+    await page.keyboard.press('Shift+ArrowRight');
+    await page
+      .getByRole('button', { name: 'Merge cells', exact: true })
+      .click();
     await clickCell(page, 0, 0);
     await enter(page, '1');
     await enter(page, '2');
     await page.getByRole('button', { name: 'Undo' }).click();
+    await clickCell(page, 4, 0);
+    await page.keyboard.press('Shift+ArrowRight');
     await page.keyboard.press('ControlOrMeta+c');
     const check = async (
       tooltips: readonly (readonly [
@@ -304,6 +312,11 @@ test.describe('the controls', () => {
           'Copy',
           /^Copy the selection, to paste it elsewhere \((Ctrl\+|⌘)C\)$/,
         ],
+        [
+          'button',
+          'Format painter',
+          'Copy the formatting of the selection, then select the cells to give it to (Esc cancels)',
+        ],
         ['button', 'Font', 'Change the font'],
         ['button', 'Font size', 'Change the size of the text'],
         ['button', 'Bold', /^Make the text bold \((Ctrl\+|⌘)B\)$/],
@@ -312,6 +325,7 @@ test.describe('the controls', () => {
         ['button', 'Strikethrough', 'Draw a line through the text'],
         ['button', 'Font color', 'Change the color of the text'],
         ['button', 'Fill color', 'Color the background of the cells'],
+        ['button', 'Borders', 'Draw lines on the sides of the selected cells'],
         ['button', 'Align left', 'Align the text to the left'],
         ['button', 'Center', 'Center the text'],
         ['button', 'Align right', 'Align the text to the right'],
@@ -327,9 +341,19 @@ test.describe('the controls', () => {
           'Wrap text',
           'Show long text on more lines, and make the row taller',
         ],
+        [
+          'button',
+          'Merge cells',
+          'Join the selected cells into one larger cell, keeping the top-left value',
+        ],
+        [
+          'button',
+          'Unmerge cells',
+          'Split the merged cells of the selection into cells again',
+        ],
         ...statusBar,
       ],
-      24,
+      28,
     );
     await page.getByRole('tab', { name: 'View' }).click();
     await clickCell(page, 5, 5); // Away from the tab and its tooltip.
