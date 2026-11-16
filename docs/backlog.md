@@ -983,7 +983,7 @@ Notes:
 
 ## S24: Find and replace
 
-Status: In progress
+Status: Done
 
 Acceptance criteria:
 - Ctrl/Cmd+F opens a find panel that moves through the matching cells and
