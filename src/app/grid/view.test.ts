@@ -223,7 +223,14 @@ describe('View', () => {
     expect(view.state.entry?.text).toBe('=C3');
     view.point({ type: 'step', rows: 0, cols: 1, extend: true });
     expect(view.state.entry).toMatchObject({ text: '=C3:D3', caret: 6 });
+    expect(view.canPoint).toBe(true);
+    // After a reference typed, or other text, the arrows commit.
+    view.type('=C3:D3+A1');
+    expect(view.canPoint).toBe(false);
+    view.type('=C3:D3+1');
+    expect(view.canPoint).toBe(false);
     view.type('=C3:D3+');
+    expect(view.canPoint).toBe(true);
     view.point({ type: 'step', rows: -1, cols: 0, extend: false });
     expect(view.state.entry?.text).toBe('=C3:D3+B1');
     // Ctrl with an arrow goes to the edge of the data, as it selects.

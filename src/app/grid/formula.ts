@@ -79,6 +79,21 @@ export function pickable(text: string, caret: number): boolean {
     return false; // The caret is inside a token.
   }
   if (before.kind === 'reference') return before.end === caret;
+  return startsOperand(text, caret);
+}
+
+/**
+ * Whether an operand starts at the caret of a formula: after `=`, an
+ * operator, `(` or `,`, where a new reference can go.
+ */
+export function startsOperand(text: string, caret: number): boolean {
+  const tokens = formulaTokens(text);
+  if (!tokens) return false;
+  const before = tokenBefore(tokens, caret);
+  if (!before) return caret > 0;
+  if (before.end < caret && text.slice(before.end, caret).trim() !== '') {
+    return false; // The caret is inside a token.
+  }
   return (
     before.kind === 'open' ||
     before.kind === 'comma' ||

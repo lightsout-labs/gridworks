@@ -389,8 +389,10 @@ Decisions that are cheap to reverse, with their reasons:
   before. The entry keeps the cells of the reference just picked as a
   selection of its own, `point`, which Shift with a click and a drag
   stretch from where it started; Ctrl/Cmd with a click adds a comma and a
-  new reference after it. In Enter mode the arrows point too, wherever a
-  reference can go: `keyAction` gives `point` in place of `navigate`, and
+  new reference after it. In Enter mode the arrows point too, where an
+  operand starts or after the reference they or a click put there, but
+  not after one typed (`canPoint`): `keyAction` gives `point` in place of
+  `navigate`, and
   the view moves `point` as navigation moves the selection, starting from
   the cell edited. Any other change to the text or the caret forgets
   `point`, so the next arrow after an operator starts from that cell again.

@@ -448,7 +448,7 @@ export function Grid({
         mode: entry?.mode ?? null,
         endMode: state.endMode,
         page,
-        canPoint: view.canPick,
+        canPoint: view.canPoint,
       },
     );
     if (!action) return;

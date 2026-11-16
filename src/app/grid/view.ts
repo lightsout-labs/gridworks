@@ -20,6 +20,7 @@ import {
   cycleReference,
   insertReference,
   pickable,
+  startsOperand,
   type Edit,
 } from './formula';
 import { changedFormat, GENERAL, type FormatChange } from '../../engine/format';
@@ -224,6 +225,17 @@ export class View {
   get canPick(): boolean {
     const { entry } = this.current;
     return entry !== null && pickable(entry.text, entry.caret);
+  }
+
+  /**
+   * Whether the arrows point at a reference for the formula being typed
+   * rather than commit: where an operand starts, or after the reference
+   * they or a click put there, not after one typed.
+   */
+  get canPoint(): boolean {
+    const { entry } = this.current;
+    if (entry === null) return false;
+    return entry.point !== null || startsOperand(entry.text, entry.caret);
   }
 
   /**
