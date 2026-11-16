@@ -1365,12 +1365,12 @@ describe('View', () => {
       const { workbook, view, sheet, hidden } = filtering();
       view.select(single({ row: 1, col: 0 }));
       view.toggleFilter();
-      view.filterBy(1, { col: 1, type: 'number', test: 'greater', value: 5 });
+      view.filterBy({ col: 1, type: 'number', test: 'greater', value: 5 });
       expect(hidden()).toEqual([2]);
-      view.filterBy(0, { col: 0, type: 'values', values: ['amy'] });
+      view.filterBy({ col: 0, type: 'values', values: ['amy'] });
       expect(hidden().sort()).toEqual([2, 3]);
       expect(workbook.filter(sheet)?.columns).toHaveLength(2);
-      view.filterBy(1, null);
+      view.unfilter(1);
       expect(hidden()).toEqual([3]);
       expect(view.canClearFilter).toBe(true);
       view.clearFilter();

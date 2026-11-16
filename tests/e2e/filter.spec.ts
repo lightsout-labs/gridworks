@@ -56,6 +56,8 @@ test('filters rows by values and conditions, undoes it, and clears it', async ({
   await button(page, 'OK').click();
   await expect(panel).toBeHidden();
   expect(await belowHeader(page)).toBe('A3 banana');
+  // Row 2 is gone from the grid: the second row shown is row 3.
+  await expectCell(page, 1, 0, 'A3 banana');
   await expect(button(page, 'Filter column A (filtered)')).toBeVisible();
 
   // A number condition on another column combines with it.

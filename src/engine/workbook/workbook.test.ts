@@ -2719,6 +2719,23 @@ describe('filter', () => {
     });
   });
 
+  it('moves the filter with rows inserted, and drops it with its header row', () => {
+    const { workbook, sheet, filter } = filtering();
+    filter([{ col: 1, type: 'number', test: 'greater', value: 5 }]);
+    const lines = (type: 'insertLines' | 'deleteLines', start: number) =>
+      workbook.execute({
+        type,
+        sheet,
+        direction: 'rows',
+        spans: [{ start, end: start }],
+      });
+    lines('insertLines', 2);
+    expect(workbook.filter(sheet)?.range).toEqual(range(0, 0, 6, 1));
+    expect([...workbook.layout(sheet).rows.hidden].sort()).toEqual([1, 5, 6]);
+    lines('deleteLines', 0);
+    expect(workbook.filter(sheet)).toBeNull();
+  });
+
   it('sorts only the rows a filter shows', () => {
     const { workbook, sheet, show, filter } = filtering();
     filter([{ col: 1, type: 'number', test: 'less', value: 10 }]);
@@ -2731,6 +2748,26 @@ describe('filter', () => {
     });
     const fruits = [1, 2, 3, 4, 5].map((row) => show(row, 0));
     expect(fruits).toEqual(['', 'banana', 'Apricot', 'apple', 'cherry']);
+  });
+
+  it('sorts rows hidden by hand outside the filter', () => {
+    const { workbook, sheet, set, show, filter } = filtering();
+    filter([], range(0, 0, 2, 1));
+    set(8, 0, 'b');
+    set(9, 0, 'a');
+    workbook.execute({
+      type: 'setLines',
+      sheet,
+      direction: 'rows',
+      spans: [{ start: 9, end: 9, hidden: true }],
+    });
+    workbook.execute({
+      type: 'sort',
+      sheet,
+      range: range(8, 0, 9, 0),
+      keys: [{ col: 0 }],
+    });
+    expect([show(8, 0), show(9, 0)]).toEqual(['a', 'b']);
   });
 
   it('refuses a column outside the range', () => {

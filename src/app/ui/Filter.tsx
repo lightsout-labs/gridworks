@@ -151,10 +151,11 @@ export function FilterButton({
         >
           <Dialog.Title className={styles.dialogTitle}>{title}</Dialog.Title>
           <FilterForm
-            values={workbook.filterValues(view.state.sheet, col)}
+            values={() => workbook.filterValues(view.state.sheet, col)}
             column={column}
             onFilter={(filter) => {
-              view.filterBy(col, filter && { ...filter, col });
+              if (filter) view.filterBy({ ...filter, col });
+              else view.unfilter(col);
               setPlace(null);
             }}
             onCancel={() => setPlace(null)}
@@ -191,13 +192,16 @@ type DistributiveOmit<T, K extends keyof T> = T extends unknown
  * box, or a text or number condition.
  */
 function FilterForm({
-  values,
+  values: readValues,
   column,
   onFilter,
   onCancel,
 }: {
-  /** The column's values that the other columns let through. */
-  values: readonly string[];
+  /**
+   * The column's values that the other columns let through, read once when
+   * the panel opens rather than on every render of the button.
+   */
+  values: () => readonly string[];
   column: ColumnFilter | null;
   /** Filters by a criterion, or by nothing. */
   onFilter: (criterion: Criterion | null) => void;
@@ -205,6 +209,7 @@ function FilterForm({
 }) {
   const t = useTranslation();
   const id = useId();
+  const [values] = useState(readValues);
   const [kind, setKind] = useState<Kind>(
     column && column.type !== 'values'
       ? (`${column.type}.${column.test}` as Kind)

@@ -1531,10 +1531,16 @@ export class Workbook {
     }
     const area = { ...used, top };
     // Under a filter, the rows it hides keep their places, as in Excel.
+    const { filter } = sheet;
+    const filtered = (row: number) =>
+      filter !== null &&
+      row > filter.range.top &&
+      row <= filter.range.bottom &&
+      sheet.layout.rows.hidden.has(row);
     const rows = Array.from(
       { length: area.bottom - top + 1 },
       (_, index) => top + index,
-    ).filter((row) => !sheet.filter || !sheet.layout.rows.hidden.has(row));
+    ).filter((row) => !filtered(row));
     const order = sortOrder(rows.length, keys, (index, key) =>
       this.calc.cell(sheet, rows[index]!, keys[key]!.col),
     );
@@ -2237,10 +2243,12 @@ function movedLines(
     });
     return ranges.length === 0 ? [] : [{ ...rule, ranges }];
   });
-  // A filter keeps the lines of its range that stay, and the columns.
+  // A filter keeps the lines of its range that stay, and the columns; it
+  // is dropped with its header row.
   const { filter: old, ...rest } = snapshot;
   const kept =
     old &&
+    (!rows || moved(old.range.top) !== null) &&
     (rows
       ? span(old.range.top, old.range.bottom)
       : span(old.range.left, old.range.right));

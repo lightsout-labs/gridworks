@@ -588,10 +588,19 @@ export class View {
   }
 
   /**
-   * Filters the column `col` of the sheet's filter by `column`, in place of
-   * what it filtered by, or by nothing.
+   * Filters a column of the sheet's filter by `column`, in place of what it
+   * filtered by.
    */
-  filterBy(col: number, column: ColumnFilter | null): void {
+  filterBy(column: ColumnFilter): void {
+    this.refilter(column.col, column);
+  }
+
+  /** Stops filtering the column `col` of the sheet's filter. */
+  unfilter(col: number): void {
+    this.refilter(col, null);
+  }
+
+  private refilter(col: number, column: ColumnFilter | null): void {
     this.commit();
     const { sheet } = this.current;
     const filter = this.workbook.filter(sheet);
@@ -1115,7 +1124,6 @@ export class View {
     );
   }
 
-  /** What navigation needs to know of the shown sheet. */
   /**
    * The range a filter is turned on over: the one range selected, or the
    * data around the active cell when one cell is selected, cut down to the
@@ -1140,6 +1148,7 @@ export class View {
     return range.bottom < range.top || range.right < range.left ? null : range;
   }
 
+  /** What navigation needs to know of the shown sheet. */
   private sheetContents(): SheetContents {
     const { workbook } = this;
     const { sheet } = this.current;
