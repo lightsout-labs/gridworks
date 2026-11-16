@@ -37,6 +37,7 @@ import {
   NumberControls,
 } from './Format';
 import type { Language } from './i18n';
+import { RuleControls } from './Rules';
 import styles from './Shell.module.css';
 import type { Theme } from './theme';
 
@@ -140,6 +141,9 @@ export function Ribbon({
         </Group>
         <Group label={t('number')}>
           <NumberControls workbook={workbook} view={view} />
+        </Group>
+        <Group label={t('styles')}>
+          <RuleControls workbook={workbook} view={view} />
         </Group>
       </Tabs.Content>
       <Tabs.Content className={styles.ribbonPanel} value="formulas">

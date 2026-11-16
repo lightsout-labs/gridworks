@@ -363,9 +363,14 @@ test.describe('the controls', () => {
           'Thousands separator',
           'Separate thousands with commas, as in 1,234',
         ],
+        [
+          'button',
+          'Conditional formatting',
+          'Format cells by their values, such as those over a value or repeated',
+        ],
         ...statusBar,
       ],
-      32,
+      33,
     );
     await page.getByRole('tab', { name: 'View' }).click();
     await clickCell(page, 5, 5); // Away from the tab and its tooltip.

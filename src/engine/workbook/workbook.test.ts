@@ -5,6 +5,8 @@ import {
   SHEET_COLUMNS,
   SHEET_ROWS,
   Workbook,
+  type Command,
+  type Rule,
   type StyleChange,
 } from './index';
 
@@ -2098,6 +2100,213 @@ describe('merges', () => {
     workbook.undo();
     expect(workbook.merges(sheet)).toEqual([
       { top: 1, left: 2, bottom: 1, right: 3 },
+    ]);
+  });
+});
+
+describe('conditional formats', () => {
+  const RED = { color: '#9c0006', fill: '#ffc7ce' } as const;
+  const range = (top: number, left: number, bottom = top, right = left) => ({
+    top,
+    left,
+    bottom,
+    right,
+  });
+  /** A column A of values and a rule over A1:A6. */
+  function rules(condition: Rule['condition'], values: string[]) {
+    const { workbook, sheet, set } = setup();
+    values.forEach((input, row) => set(row, 0, input));
+    workbook.execute({
+      type: 'setRules',
+      sheet,
+      rules: [{ ranges: [range(0, 0, 5, 0)], condition, format: RED }],
+    });
+    /** The rows of column A that the rule formats. */
+    const formatted = () =>
+      values.flatMap((_, row) =>
+        workbook.cell(sheet, row, 0).conditional ? [row] : [],
+      );
+    return { workbook, sheet, set, formatted };
+  }
+
+  it('formats the cells greater than, less than, between or equal to a value', () => {
+    const values = ['5', '10', '15', 'ten', '', '=A2*2'];
+    expect(rules({ type: 'greater', value: '10' }, values).formatted()).toEqual(
+      // Text sorts after numbers, as in Excel; empty cells are left alone.
+      [2, 3, 5],
+    );
+    expect(rules({ type: 'less', value: '10' }, values).formatted()).toEqual([
+      0,
+    ]);
+    expect(
+      rules({ type: 'between', value: '20', other: '10' }, values).formatted(),
+    ).toEqual([1, 2, 5]);
+    expect(rules({ type: 'equal', value: 'TEN' }, values).formatted()).toEqual([
+      3,
+    ]);
+    expect(rules({ type: 'equal', value: '15' }, values).formatted()).toEqual([
+      2,
+    ]);
+  });
+
+  it('formats the cells whose text contains a string, in any case', () => {
+    const values = ['North', 'south', 'Northeast', '1200', 'west', ''];
+    expect(
+      rules({ type: 'contains', value: 'NORTH' }, values).formatted(),
+    ).toEqual([0, 2]);
+    expect(
+      rules({ type: 'contains', value: '20' }, values).formatted(),
+    ).toEqual([3]);
+  });
+
+  it('formats duplicate values and the top or bottom values, ties included', () => {
+    const values = ['3', 'a', '7', 'A', '3', '9'];
+    expect(rules({ type: 'duplicate' }, values).formatted()).toEqual([
+      0, 1, 3, 4,
+    ]);
+    expect(rules({ type: 'top', count: 2 }, values).formatted()).toEqual([
+      2, 5,
+    ]);
+    expect(rules({ type: 'bottom', count: 2 }, values).formatted()).toEqual([
+      0, 4,
+    ]);
+  });
+
+  it('gives the format of the first rule that matches, over the cell style, and leaves the style alone', () => {
+    const { workbook, sheet, set } = setup();
+    set(0, 0, '50');
+    workbook.execute({
+      type: 'setStyle',
+      sheet,
+      ranges: [range(0, 0)],
+      style: { bold: true, fill: '#00b050' },
+    });
+    workbook.execute({
+      type: 'setRules',
+      sheet,
+      rules: [
+        {
+          ranges: [range(0, 0)],
+          condition: { type: 'greater', value: '10' },
+          format: { color: '#c00000', italic: true },
+        },
+        {
+          ranges: [range(0, 0, 9, 0)],
+          condition: { type: 'greater', value: '0' },
+          format: { color: '#0070c0', fill: '#ffff00' },
+        },
+      ],
+    });
+    const cell = workbook.cell(sheet, 0, 0);
+    expect(cell.conditional).toEqual({
+      color: '#c00000',
+      italic: true,
+      fill: '#ffff00',
+    });
+    expect(cell.style).toEqual({ bold: true, fill: '#00b050' });
+  });
+
+  it('follows changed values and formula results', () => {
+    const { set, formatted } = rules({ type: 'top', count: 1 }, ['4', '=A1*2']);
+    expect(formatted()).toEqual([1]);
+    set(0, 0, '-4');
+    expect(formatted()).toEqual([0]);
+    set(0, 0, '1');
+    expect(formatted()).toEqual([1]);
+  });
+
+  it('undoes and redoes a change of rules, keeps them in snapshots, and tells listeners', () => {
+    const { workbook, sheet } = setup();
+    const heard: Command[] = [];
+    workbook.subscribe((command) => heard.push(command));
+    const rule: Rule = {
+      ranges: [range(0, 0, 2, 1)],
+      condition: { type: 'duplicate' },
+      format: { bold: true },
+    };
+    const change = workbook.execute({ type: 'setRules', sheet, rules: [rule] });
+    expect(change).toEqual({ sheet, ranges: [range(0, 0, 2, 1)] });
+    expect(workbook.rules(sheet)).toEqual([rule]);
+    expect(heard).toEqual([{ type: 'setRules', sheet, rules: [rule] }]);
+    expect(Workbook.fromSnapshot(workbook.toSnapshot()).rules(sheet)).toEqual([
+      rule,
+    ]);
+    workbook.undo();
+    expect(workbook.rules(sheet)).toEqual([]);
+    workbook.redo();
+    expect(workbook.rules(sheet)).toEqual([rule]);
+  });
+
+  it('works out duplicates on a copy of a sheet from its own values', () => {
+    const { workbook, sheet, set, formatted } = rules({ type: 'duplicate' }, [
+      '1',
+      '1',
+    ]);
+    expect(formatted()).toEqual([0, 1]);
+    workbook.execute({ type: 'addSheet', index: 1, copyOf: sheet });
+    const copy = workbook.sheets[1]!.id;
+    workbook.execute({
+      type: 'setCell',
+      sheet: copy,
+      row: 1,
+      col: 0,
+      input: '2',
+    });
+    set(0, 0, '1');
+    expect(formatted()).toEqual([0, 1]);
+    expect(workbook.cell(copy, 0, 0).conditional).toBeUndefined();
+    expect(workbook.cell(sheet, 0, 0).conditional).toBeDefined();
+    // Read the copy first, then the original, with nothing run in between.
+    workbook.execute({
+      type: 'setCell',
+      sheet: copy,
+      row: 1,
+      col: 0,
+      input: '2',
+    });
+    expect(workbook.cell(copy, 0, 0).conditional).toBeUndefined();
+    expect(workbook.cell(sheet, 0, 0).conditional).toBeDefined();
+  });
+
+  it('moves, grows and shrinks the ranges of rules with rows and columns, and drops those deleted', () => {
+    const { workbook, sheet } = setup();
+    const format = { bold: true } as const;
+    const condition = { type: 'duplicate' } as const;
+    workbook.execute({
+      type: 'setRules',
+      sheet,
+      rules: [
+        { ranges: [range(2, 0, 5, 0), range(9, 0)], condition, format },
+        { ranges: [range(1, 1)], condition, format },
+      ],
+    });
+    workbook.execute({
+      type: 'insertLines',
+      sheet,
+      direction: 'rows',
+      spans: [{ start: 3, end: 4 }],
+    });
+    expect(workbook.rules(sheet).map((rule) => rule.ranges)).toEqual([
+      [range(2, 0, 7, 0), range(11, 0)],
+      [range(1, 1)],
+    ]);
+    workbook.execute({
+      type: 'deleteLines',
+      sheet,
+      direction: 'rows',
+      spans: [{ start: 0, end: 2 }],
+    });
+    expect(workbook.rules(sheet).map((rule) => rule.ranges)).toEqual([
+      [range(0, 0, 4, 0), range(8, 0)],
+    ]);
+    workbook.execute({
+      type: 'insertLines',
+      sheet,
+      direction: 'columns',
+      spans: [{ start: 0, end: 0 }],
+    });
+    expect(workbook.rules(sheet).map((rule) => rule.ranges)).toEqual([
+      [range(0, 1, 4, 1), range(8, 1)],
     ]);
   });
 });

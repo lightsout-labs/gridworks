@@ -66,7 +66,7 @@ import styles from './Shell.module.css';
 const ICON_SIZE = 16;
 
 /** The colors offered for text and fills, by the key of their name. */
-const PALETTE: readonly [string, Key][] = [
+export const PALETTE: readonly [string, Key][] = [
   ['#000000', 'color.black'],
   ['#7f7f7f', 'color.gray'],
   ['#ffffff', 'color.white'],
