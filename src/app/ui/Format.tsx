@@ -1,3 +1,4 @@
+import * as Dialog from '@radix-ui/react-dialog';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
   AlignVerticalJustifyCenter,
@@ -7,6 +8,8 @@ import {
   Bold,
   Check,
   ChevronDown,
+  DecimalsArrowLeft,
+  DecimalsArrowRight,
   Grid2x2,
   Italic,
   PaintBucket,
@@ -29,6 +32,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
   useSyncExternalStore,
@@ -45,6 +49,13 @@ import {
   type StyleChange,
   type Workbook,
 } from '../../engine/workbook';
+import {
+  formatColor,
+  formatValue,
+  GENERAL,
+  isGroupedFormat,
+  validFormat,
+} from '../../engine/format';
 import { MAC } from '../grid/Grid';
 import { cssFont } from '../grid/text';
 import type { View } from '../grid/view';
@@ -613,5 +624,209 @@ function ColorMenu({
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
     </>
+  );
+}
+
+/** Excel's accounting format, with the dollar sign at the left of the cell. */
+const ACCOUNTING = '_("$"* #,##0.00_);_("$"* (#,##0.00);_("$"* "-"??_);_(@_)';
+
+/** The number formats of the ribbon, as Excel's Number Format menu has them. */
+const NUMBER_FORMATS: readonly [string, Key][] = [
+  [GENERAL, 'numberFormat.general'],
+  ['0.00', 'numberFormat.number'],
+  ['"$"#,##0.00', 'numberFormat.currency'],
+  [ACCOUNTING, 'numberFormat.accounting'],
+  ['0.00%', 'numberFormat.percentage'],
+  ['0.00E+00', 'numberFormat.scientific'],
+  ['m/d/yyyy', 'numberFormat.date'],
+  ['h:mm:ss AM/PM', 'numberFormat.time'],
+  ['@', 'numberFormat.text'],
+];
+
+/**
+ * The number format of the selected cells: a menu of Excel's formats,
+ * which shows that of the active cell, and a dialog for any other code;
+ * decimal places; and the thousands separator.
+ */
+export function NumberControls({
+  workbook,
+  view,
+}: {
+  workbook: Workbook;
+  view: View;
+}) {
+  const t = useTranslation();
+  const style = useActiveStyle(workbook, view);
+  const [custom, setCustom] = useState(false);
+  const code = style.numberFormat ?? GENERAL;
+  const known = NUMBER_FORMATS.find(([each]) => each === code);
+  const grouped = isGroupedFormat(code);
+  return (
+    <>
+      <Menu
+        label={t('numberFormat')}
+        tooltip={t('numberFormat.tooltip')}
+        shown={t(known ? known[1] : 'numberFormat.custom')}
+        wide
+      >
+        <DropdownMenu.RadioGroup
+          value={known ? code : ''}
+          onValueChange={(chosen) =>
+            view.format({ numberFormat: chosen === GENERAL ? null : chosen })
+          }
+        >
+          {NUMBER_FORMATS.map(([each, name]) => (
+            <DropdownMenu.RadioItem
+              key={each}
+              value={each}
+              className={styles.menuItem}
+            >
+              {t(name)}
+              <span className={styles.menuEnd} aria-hidden>
+                {formatValue(1234.5, each)}
+              </span>
+            </DropdownMenu.RadioItem>
+          ))}
+        </DropdownMenu.RadioGroup>
+        <DropdownMenu.Separator className={styles.menuSeparator} />
+        <DropdownMenu.Item
+          className={styles.menuItem}
+          onSelect={() => setCustom(true)}
+        >
+          {t('numberFormat.more')}
+        </DropdownMenu.Item>
+      </Menu>
+      <Tooltip text={t('decimals.more.tooltip')}>
+        <button
+          type="button"
+          className={styles.button}
+          aria-label={t('decimals.more')}
+          onClick={() => view.adjustFormat('moreDecimals')}
+        >
+          <DecimalsArrowRight size={ICON_SIZE} aria-hidden />
+        </button>
+      </Tooltip>
+      <Tooltip text={t('decimals.fewer.tooltip')}>
+        <button
+          type="button"
+          className={styles.button}
+          aria-label={t('decimals.fewer')}
+          onClick={() => view.adjustFormat('fewerDecimals')}
+        >
+          <DecimalsArrowLeft size={ICON_SIZE} aria-hidden />
+        </button>
+      </Tooltip>
+      <Tooltip text={t('thousands.tooltip')}>
+        <button
+          type="button"
+          className={styles.button}
+          aria-label={t('thousands')}
+          aria-pressed={grouped}
+          onClick={() => view.adjustFormat('thousands')}
+        >
+          <span className={styles.glyph} aria-hidden>
+            ,000
+          </span>
+        </button>
+      </Tooltip>
+      <Dialog.Root open={custom} onOpenChange={setCustom}>
+        <Dialog.Portal>
+          <Dialog.Overlay className={styles.overlay} />
+          <Dialog.Content className={styles.dialog}>
+            <CustomFormat
+              workbook={workbook}
+              view={view}
+              onDone={() => setCustom(false)}
+            />
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+    </>
+  );
+}
+
+/**
+ * A form for a format code, which starts from that of the active cell and
+ * previews its value in the code typed.
+ */
+function CustomFormat({
+  workbook,
+  view,
+  onDone,
+}: {
+  workbook: Workbook;
+  view: View;
+  onDone: () => void;
+}) {
+  const t = useTranslation();
+  const [cell] = useState(() => {
+    const { sheet, selection } = view.state;
+    const { row, col } = selection.active;
+    return workbook.cell(sheet, row, col);
+  });
+  const [code, setCode] = useState(cell.style.numberFormat ?? GENERAL);
+  const valid = validFormat(code);
+  const id = useId();
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!valid) return;
+        view.format({ numberFormat: code === GENERAL ? null : code });
+        onDone();
+      }}
+    >
+      <Dialog.Title className={styles.dialogTitle}>
+        {t('customFormat.title')}
+      </Dialog.Title>
+      <Dialog.Description className={styles.dialogText}>
+        {t('customFormat.description')}
+      </Dialog.Description>
+      <label className={styles.field} htmlFor={`${id}-code`}>
+        {t('customFormat.code')}
+      </label>
+      <input
+        id={`${id}-code`}
+        className={styles.textInput}
+        value={code}
+        spellCheck={false}
+        autoComplete="off"
+        aria-invalid={!valid}
+        aria-describedby={valid ? undefined : `${id}-problem`}
+        onChange={(event) => setCode(event.target.value)}
+      />
+      {valid ? (
+        <>
+          <label className={styles.field} htmlFor={`${id}-preview`}>
+            {t('customFormat.preview')}
+          </label>
+          <output
+            id={`${id}-preview`}
+            className={styles.preview}
+            style={{ color: formatColor(cell.value, code) }}
+          >
+            {formatValue(cell.value, code)}
+          </output>
+        </>
+      ) : (
+        <p id={`${id}-problem`} className={styles.problem}>
+          {t('customFormat.invalid')}
+        </p>
+      )}
+      <div className={styles.dialogButtons}>
+        <Dialog.Close asChild>
+          <button type="button" className={styles.button}>
+            {t('cancel')}
+          </button>
+        </Dialog.Close>
+        <button
+          type="submit"
+          className={`${styles.button} ${styles.primary}`}
+          disabled={!valid}
+        >
+          {t('ok')}
+        </button>
+      </div>
+    </form>
   );
 }

@@ -2,15 +2,20 @@ import {
   dateFromSerial,
   dateToSerial,
   format,
+  formatColor as numfmtColor,
   getFormatDateInfo,
   getFormatFromId,
+  getFormatInfo,
   isDateFormat,
   isPercentFormat,
+  isTextFormat,
+  isValidFormat,
   parseValue,
+  tokenize,
 } from 'numfmt';
 import { isError, type Value } from '../value';
 
-export { isDateFormat };
+export { isDateFormat, isTextFormat };
 
 /** The format of a cell that was given none. */
 export const GENERAL = 'General';
@@ -82,12 +87,133 @@ export function formatValue(value: Value, code: string = GENERAL): string {
   if (value === null) return '';
   if (isError(value)) return value.error;
   if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
-  if (typeof value === 'string') return value;
+  // Text goes through the text section of a format, as `"Text: "@`.
+  if (typeof value === 'string') {
+    return code === GENERAL ? value : format(code, value);
+  }
   // The common case, which the grid meets in every cell it draws.
   if (code === GENERAL && Number.isInteger(value) && Math.abs(value) < 1e11) {
     return String(value);
   }
   return format(code, value);
+}
+
+/** Whether a format code is one Gridworks can show values in. */
+export function validFormat(code: string): boolean {
+  return code.trim() !== '' && isValidFormat(code);
+}
+
+/** The colors that format codes name, as Excel draws them. */
+const COLORS: Readonly<Record<string, string>> = {
+  black: '#000000',
+  blue: '#0000ff',
+  cyan: '#00ffff',
+  green: '#00ff00',
+  magenta: '#ff00ff',
+  red: '#ff0000',
+  white: '#ffffff',
+  yellow: '#ffff00',
+};
+
+/**
+ * The color, as `#rrggbb`, that a format code gives a value, as `[Red]`
+ * does, or `undefined` when it gives none.
+ */
+export function formatColor(value: Value, code: string): string | undefined {
+  if (value === null || typeof value === 'boolean' || isError(value)) {
+    return undefined;
+  }
+  const color = numfmtColor(code, value);
+  if (typeof color !== 'string') return undefined;
+  return COLORS[color.toLowerCase()] ?? color.toLowerCase();
+}
+
+/** Whether a format code separates the thousands of positive numbers. */
+export function isGroupedFormat(code: string): boolean {
+  return getFormatInfo(code).grouped === 1;
+}
+
+/** The changes that the ribbon makes to the format of numbers. */
+export type FormatChange = 'moreDecimals' | 'fewerDecimals' | 'thousands';
+
+/**
+ * A format code with one more or one fewer decimal place, or with the
+ * thousands separator turned on or off, in each section that shows a
+ * number. A General format starts from the decimals its value shows, as
+ * in Excel; dates, times, fractions and text do not change.
+ */
+export function changedFormat(
+  code: string,
+  value: Value,
+  change: FormatChange,
+): string {
+  if (code === GENERAL) code = shownDecimals(value);
+  if (isDateFormat(code) || isTextFormat(code)) return code;
+  const grouped = isGroupedFormat(code);
+  const sections: string[][] = [[]];
+  for (const token of tokenize(code)) {
+    if (token.type === 'BREAK') sections.push([]);
+    else sections.at(-1)!.push(token.raw);
+  }
+  return sections
+    .map((raws) => changedSection(raws, change, grouped).join(''))
+    .join(';');
+}
+
+/** The code that shows a value's number with the decimals General shows. */
+function shownDecimals(value: Value): string {
+  if (typeof value !== 'number') return '0';
+  const [, decimals = ''] = formatValue(value).split('E')[0]!.split('.');
+  return decimals === '' ? '0' : `0.${'0'.repeat(decimals.length)}`;
+}
+
+const DIGIT = /^[0#?]$/;
+
+/** A section of a format code, as its tokens' text, changed. */
+function changedSection(
+  raws: readonly string[],
+  change: FormatChange,
+  grouped: boolean,
+): string[] {
+  // The number is the digits up to an exponent; a section with no `0` or
+  // `#`, as one of literal text, is left as it is.
+  const end = raws.findIndex((raw) => /^E[+-]$/i.test(raw));
+  const number = end === -1 ? raws.length : end;
+  const digits = raws
+    .slice(0, number)
+    .flatMap((raw, index) => (DIGIT.test(raw) ? [index] : []));
+  const fraction = raws.includes('/');
+  if (fraction || !digits.some((index) => raws[index] !== '?')) {
+    return [...raws];
+  }
+  const first = digits[0]!;
+  const last = digits.at(-1)!;
+  const point = raws.indexOf('.');
+  const result = [...raws];
+  if (change === 'moreDecimals') {
+    result.splice(
+      last + 1,
+      0,
+      ...(point === -1 || point > last ? ['.', '0'] : ['0']),
+    );
+  } else if (change === 'fewerDecimals') {
+    if (point !== -1 && point < last) result.splice(last, 1);
+    else return result;
+    if (point === last - 1) result.splice(point, 1);
+  } else {
+    const integerEnd = point === -1 || point > last ? last + 1 : point;
+    const integer = result
+      .slice(first, integerEnd)
+      .filter((raw) => raw !== ',');
+    const zeros = integer.filter((raw) => raw !== '#');
+    const plain = zeros.length > 0 ? zeros : ['0'];
+    result.splice(
+      first,
+      integerEnd - first,
+      ...(grouped ? plain : ['#', ',', '#', '#', ...plain]),
+    );
+  }
+  return result;
 }
 
 /**

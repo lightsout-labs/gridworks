@@ -824,7 +824,8 @@ function draw(
 
   context.textBaseline = 'middle';
   const padding = TEXT_PADDING * zoom;
-  const textColor = (look: Style) =>
+  const textColor = (look: Style, format?: string) =>
+    format ??
     look.color ??
     (look.fill !== undefined ? textColorOn(look.fill) : color('--text'));
 
@@ -855,14 +856,22 @@ function draw(
       drawText(context, lines, cell.style, align, box, {
         zoom,
         padding,
-        color: textColor(cell.style),
+        color: textColor(cell.style, cell.color),
         setFont,
       });
     }
     context.restore();
   }
   for (const { row, texts } of rows) {
-    for (const { col, lines, style: look, align, from, to } of texts) {
+    for (const {
+      col,
+      lines,
+      style: look,
+      color: format,
+      align,
+      from,
+      to,
+    } of texts) {
       const box = rect({ row, col });
       const start = rect({ row, col: from }).x;
       const end = rect({ row, col: to + 1 }).x;
@@ -889,7 +898,7 @@ function draw(
       drawText(context, lines, look, align, box, {
         zoom,
         padding,
-        color: textColor(look),
+        color: textColor(look, format),
         setFont,
       });
       context.restore();

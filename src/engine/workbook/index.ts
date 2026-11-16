@@ -1,4 +1,11 @@
-import { editText, formatValue, GENERAL, parseInput } from '../format';
+import {
+  editText,
+  formatColor,
+  formatValue,
+  GENERAL,
+  isTextFormat,
+  parseInput,
+} from '../format';
 import {
   columnName,
   parse,
@@ -337,6 +344,11 @@ export interface Cell {
   readonly formula: string | null;
   /** The value shown in the cell's format. */
   readonly display: string;
+  /**
+   * The color, as `#rrggbb`, that the cell's format gives its value, as
+   * `[Red]` does, over the style's; absent when it gives none.
+   */
+  readonly color?: string;
   /** The text that edits the cell, as the formula bar shows it. */
   readonly input: string;
   readonly style: Style;
@@ -627,11 +639,13 @@ export class Workbook {
         : (sheet.formulas.get(key(row, col))?.text ?? null);
     const style = this.styles[sheet.styleIds[col]?.[row] ?? 0]!;
     const code = style.numberFormat ?? GENERAL;
+    const color = code === GENERAL ? undefined : formatColor(value, code);
     return {
       value,
       formula,
       style,
       display: formatValue(value, code),
+      ...(color !== undefined && { color }),
       // Only the formula bar and the editor need it, not every drawn cell.
       get input() {
         return formula ?? editText(value, code);
@@ -1503,8 +1517,15 @@ export class Workbook {
     command: Extract<Command, { type: 'setCell' }>,
   ): number | undefined {
     const { row, col, input } = command;
-    const parsed = input.startsWith('=') ? parse(input.slice(1)) : null;
     const column = (sheet.columns[col] ??= []);
+    const code = this.styles[sheet.styleIds[col]?.[row] ?? 0]!.numberFormat;
+    if (code !== undefined && isTextFormat(code)) {
+      // A cell with the text format keeps what is typed, as in Excel.
+      this.calc.remove(sheet, row, col);
+      column[row] = input === '' ? null : input;
+      return undefined;
+    }
+    const parsed = input.startsWith('=') ? parse(input.slice(1)) : null;
     if (parsed) {
       // Sheet names are written as the sheets have them, as in Excel.
       const ast = this.sheetList.reduce(

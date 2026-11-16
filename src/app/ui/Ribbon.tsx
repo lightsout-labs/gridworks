@@ -33,6 +33,7 @@ import {
   BorderControls,
   FontControls,
   MergeControls,
+  NumberControls,
 } from './Format';
 import type { Language } from './i18n';
 import styles from './Shell.module.css';
@@ -135,6 +136,9 @@ export function Ribbon({
         <Group label={t('alignment')}>
           <AlignmentControls workbook={workbook} view={view} />
           <MergeControls workbook={workbook} view={view} />
+        </Group>
+        <Group label={t('number')}>
+          <NumberControls workbook={workbook} view={view} />
         </Group>
       </Tabs.Content>
       <Tabs.Content className={styles.ribbonPanel} value="formulas">

@@ -49,6 +49,8 @@ export interface RowText {
   /** One line, or those that wrapped text takes. */
   readonly lines: readonly string[];
   readonly style: Style;
+  /** The color the number format gives the text, over the style's. */
+  readonly color?: string;
   readonly align: 'left' | 'right' | 'center';
   /** The first and last columns the text may cover. */
   readonly from: number;
@@ -60,12 +62,14 @@ export interface ShownCell {
   readonly value: Value;
   readonly display: string;
   readonly style: Style;
+  readonly color?: string;
 }
 
 /**
  * The lines of a cell's text in a width, and how they align: as its style
  * says, or else numbers right, text left, and booleans and errors in the
- * middle. Text that does not wrap is one line, which may be too long.
+ * middle. Text that does not wrap is one line, which may be too long; a
+ * number too wide for the width is as many `#` as fit, as in Excel.
  */
 export function cellText(
   { value, display, style }: ShownCell,
@@ -79,10 +83,13 @@ export function cellText(
       : typeof value === 'string'
         ? 'left'
         : 'center');
+  const inside = width - 2 * TEXT_PADDING;
+  if (typeof value === 'number' && measure(display, style) > inside) {
+    const count = Math.floor(inside / measure('#', style));
+    return { lines: ['#'.repeat(Math.max(1, count))], align };
+  }
   const lines = style.wrap
-    ? wrapText(display, width - 2 * TEXT_PADDING, (text) =>
-        measure(text, style),
-      )
+    ? wrapText(display, inside, (text) => measure(text, style))
     : [display];
   return { lines, align };
 }
@@ -122,7 +129,18 @@ export function rowTexts(
         covered += width(to);
       }
     }
-    if (to >= left) texts.push({ col, lines, style, align, from: col, to });
+    if (to >= left) {
+      const { color } = shown;
+      texts.push({
+        col,
+        lines,
+        style,
+        ...(color !== undefined && { color }),
+        align,
+        from: col,
+        to,
+      });
+    }
   };
   // The nearest text to the left may run into the columns.
   let before = left - 1;
