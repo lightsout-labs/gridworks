@@ -1,6 +1,6 @@
 # Backlog
 
-Status: Approved
+Status: Draft
 
 Slices for Gridworks, built in this order. Each one is testable end to end.
 
@@ -781,6 +781,29 @@ Notes:
   lost after an autosave and a reload; the web platform now loads the
   whole sheet record. S20 onward add fields with nothing to change there.
 - WebKit could not run locally (missing system libraries); CI runs it.
+
+## S33: Picking references with Shift, Ctrl and the arrow keys
+
+Status: Todo
+
+Acceptance criteria:
+- While typing a formula, a click on A1 then a Shift+click on C3 gives the
+  reference `A1:C3`; a further Shift+click on B2 gives `A1:B2`, and a drag
+  from C3 to A1 followed by a Shift+click on D4 gives `C3:D4`. (R16)
+- A Shift+click with no reference before the caret inserts just the clicked
+  cell. (R16)
+- A Ctrl/Cmd+click or Ctrl/Cmd+drag after a reference adds a comma and the
+  new reference, as in `=SUM(A1,C3`; with no reference before the caret it
+  works as a plain click or drag. (R16)
+- In an entry started by typing in a cell, an arrow key after `=`, an
+  operator, `(` or `,` inserts a reference to the neighboring cell; further
+  arrows move it, Shift+arrows extend it into a range, and the reference is
+  outlined in its color as it moves. (R16, R40)
+- After pointing with the arrows, typing an operator keeps the entry going
+  and the next arrow starts a new reference from the cell being edited; an
+  arrow after any other text still commits and moves. (R16, R40)
+- In an entry started with F2, a double-click or the formula bar, the arrows
+  still move the caret. (R16, R40)
 
 ## S20: Conditional formatting: value rules
 
