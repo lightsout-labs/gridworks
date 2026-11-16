@@ -265,8 +265,9 @@ export function panes(
     scroll: number,
     frozen: number,
   ) => {
-    const end = frozenEnd(layout, direction, zoom);
-    const rest = { start: end, size: Math.max(0, size - end), scroll };
+    // Frozen lines past the canvas are not drawn.
+    const end = Math.min(frozenEnd(layout, direction, zoom), size);
+    const rest = { start: end, size: size - end, scroll };
     return frozen > 0
       ? [{ start: header * zoom, size: end - header * zoom, scroll: 0 }, rest]
       : [rest];

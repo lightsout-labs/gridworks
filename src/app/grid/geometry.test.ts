@@ -368,6 +368,25 @@ describe('grid geometry', () => {
         },
       },
     ]);
+    // Frozen lines past the canvas are left out, and nothing scrolls.
+    const tall = {
+      ...top,
+      layout: layoutOf({
+        rows: NONE,
+        columns: NONE,
+        frozen: { rows: SHEET_ROWS - 1, cols: 0 },
+      }),
+    };
+    expect(panes(tall, width, height)).toMatchObject([
+      {
+        clip: {
+          y: COLUMN_HEADER_HEIGHT,
+          height: height - COLUMN_HEADER_HEIGHT,
+        },
+        range: { top: 0, bottom: 6 },
+      },
+      { clip: { y: height, height: 0 } },
+    ]);
     // Without frozen lines, there is one pane.
     expect(panes(top, width, height)).toMatchObject([
       {
