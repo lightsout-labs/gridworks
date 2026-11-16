@@ -7,6 +7,7 @@ import { View } from '../grid/view';
 import type { ClipboardContents, Platform } from '../platform';
 import { restoreWorkbook, startAutosave } from './autosave';
 import { CellMenu } from './CellMenu';
+import { FillOptions } from './FillOptions';
 import { Translation } from './controls';
 import { droppedMessage, workbookName } from './files';
 import { startingLanguage, translator, type Language } from './i18n';
@@ -245,6 +246,9 @@ export function App({ platform }: { platform: Platform }) {
                   onCopy={copyToClipboard}
                   lines={lines}
                 />
+              )}
+              fillOptions={(filled) => (
+                <FillOptions view={open.view} filled={filled} />
               )}
             />
           </main>

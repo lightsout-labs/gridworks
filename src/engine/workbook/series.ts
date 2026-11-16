@@ -60,22 +60,44 @@ const modulo = (n: number, m: number) => ((n % m) + m) % m;
  * The series that a row or column of cells starts, as the fill handle
  * extends it, or `null` when it starts none and is repeated instead:
  * numbers by their step (a trend line for more than two), dates by days or
- * by months when they fall on the same day, and weekday and month names.
- * One date or name counts on by one; one number is repeated.
+ * by months when they fall on the same day, weekday and month names, and
+ * texts that end in a number by the step of that number. One date, name or
+ * numbered text counts on by one; one number is repeated, unless `count`.
  */
-export function series(seeds: readonly Seed[]): Series | null {
+export function series(seeds: readonly Seed[], count = false): Series | null {
   if (seeds.some((seed) => seed.formula || seed.value === null)) return null;
   const values = seeds.map((seed) => seed.value);
   if (values.every((value) => typeof value === 'string')) {
-    return names(values as string[]);
+    const texts = values as string[];
+    return names(texts) ?? numbered(texts);
   }
   if (!values.every((value) => typeof value === 'number')) return null;
   const numbers = values as number[];
   const dates = seeds.every((seed) => isDateFormat(seed.format));
   if (numbers.length === 1) {
-    return dates ? (place) => numbers[0]! + place : null;
+    return dates || count ? (place) => numbers[0]! + place : null;
   }
   return (dates && months(numbers)) || trend(numbers);
+}
+
+/**
+ * Texts that are the same but for the number they end in, each step the
+ * same, continued with as many digits as the first has, at least; below
+ * zero, the number counts up again, as in Excel.
+ */
+function numbered(texts: readonly string[]): Series | null {
+  const parts = texts.map((text) => /^(.*?)(\d+)$/.exec(text));
+  const [, prefix, digits] = parts[0] ?? [];
+  if (prefix === undefined || digits === undefined) return null;
+  if (parts.some((part) => part?.[1] !== prefix)) return null;
+  const numbers = parts.map((part) => Number(part![2]));
+  const step = numbers.length === 1 ? 1 : numbers[1]! - numbers[0]!;
+  if (numbers.some((n, place) => n !== numbers[0]! + step * place)) {
+    return null;
+  }
+  return (place) =>
+    prefix +
+    String(Math.abs(numbers[0]! + step * place)).padStart(digits.length, '0');
 }
 
 /** Weekday or month names, each step the same, in the case of the first. */

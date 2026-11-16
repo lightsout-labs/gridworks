@@ -705,3 +705,22 @@
 .primary:not(:disabled):hover {
   filter: brightness(1.1);
 }
+
+/* The Auto Fill Options button, at the corner of the cells filled. */
+.fillOptions {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--background);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.fillOptions:hover,
+.fillOptions[data-state='open'] {
+  background: var(--hover);
+}

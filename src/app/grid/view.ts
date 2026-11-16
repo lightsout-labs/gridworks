@@ -91,6 +91,11 @@ export interface ViewState {
    * included, or `null` when it is not dragged beyond the selection.
    */
   readonly filling: Range | null;
+  /**
+   * The last fill of the fill handle, which can be redone another way,
+   * until the workbook changes otherwise, or `null`.
+   */
+  readonly filled: Filled | null;
   /** The size a row or column is dragged to by its border, or `null`. */
   readonly resizing: Resizing | null;
   /**
@@ -106,6 +111,17 @@ export interface Resizing {
   readonly index: number;
   readonly size: number;
 }
+
+/** A fill of the fill handle, and whether it can extend a series. */
+export interface Filled {
+  readonly sheet: string;
+  readonly source: Range;
+  readonly target: Range;
+  readonly series: boolean;
+}
+
+/** How a fill is redone. */
+export type FillHow = 'copy' | 'series' | 'formats' | 'values';
 
 /** A range copied or cut, which a moving border shows until it is forgotten. */
 export interface Copied {
@@ -126,6 +142,8 @@ export class View {
   private sheetIds: string[];
   /** Whether a paste is running, which keeps what was copied. */
   private pasting = false;
+  /** Whether a fill is running, which keeps the last fill. */
+  private filling = false;
 
   /**
    * Make it right after the workbook, so that it hears of each change
@@ -137,6 +155,7 @@ export class View {
       this.keepSheet();
       // Any other change forgets what was copied, as in Excel.
       if (!this.pasting && this.current.copied) this.change({ copied: null });
+      if (!this.filling && this.current.filled) this.change({ filled: null });
     });
     this.current = {
       sheet: workbook.sheets[0]!.id,
@@ -146,6 +165,7 @@ export class View {
       endMode: false,
       copied: null,
       filling: null,
+      filled: null,
       resizing: null,
       painter: null,
     };
@@ -624,13 +644,38 @@ export class View {
 
   /**
    * Fills the range the fill handle was dragged over from the selection,
-   * extending its series, and selects it.
+   * extending its series, and selects it. With `swap`, as a drag with Ctrl
+   * does, it copies cells that would extend a series, and otherwise counts
+   * one number on by one.
    */
-  fill(): void {
-    const { filling } = this.current;
+  fill(swap = false): void {
+    const { filling, sheet } = this.current;
     if (!filling) return;
     this.change({ filling: null });
-    this.fillFrom(this.lastRange(), filling);
+    const source = this.lastRange();
+    const command = { type: 'fill', sheet, source, target: filling } as const;
+    const how = swap
+      ? this.workbook.fillsSeries(command)
+        ? 'copy'
+        : 'series'
+      : undefined;
+    this.fillFrom(source, filling, how);
+  }
+
+  /**
+   * Undoes the last fill and does it again another way, as one change to
+   * undo.
+   */
+  refill(how: FillHow): void {
+    const { filled } = this.current;
+    if (!filled) return;
+    this.filling = true;
+    try {
+      this.workbook.undo();
+      this.workbook.execute({ type: 'fill', ...filled, how });
+    } finally {
+      this.filling = false;
+    }
   }
 
   /**
@@ -869,11 +914,22 @@ export class View {
     return ranges[ranges.length - 1]!;
   }
 
-  private fillFrom(source: Range, target: Range): void {
+  private fillFrom(source: Range, target: Range, how?: FillHow): void {
     this.commit();
     const { sheet } = this.current;
-    this.workbook.execute({ type: 'fill', sheet, source, target });
-    this.change({ selection: covering([target]), endMode: false });
+    const command = { type: 'fill', sheet, source, target } as const;
+    this.filling = true;
+    try {
+      this.workbook.execute({ ...command, ...(how && { how }) });
+    } finally {
+      this.filling = false;
+    }
+    const series = this.workbook.fillsSeries({ ...command, how: 'series' });
+    this.change({
+      selection: covering([target]),
+      endMode: false,
+      filled: { sheet, source, target, series },
+    });
   }
 
   /** Pastes a range copied into another of whole copies of it. */

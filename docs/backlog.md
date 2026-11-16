@@ -815,7 +815,7 @@ Notes:
 
 ## S34: Fill options and numbered text
 
-Status: Todo
+Status: In progress
 
 Acceptance criteria:
 - Filling from `Item 1` gives `Item 2`, `Item 3`; from `Item 1` and
