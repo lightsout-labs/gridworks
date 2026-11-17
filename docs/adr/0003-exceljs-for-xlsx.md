@@ -1,7 +1,8 @@
 # 0003: ExcelJS reads and writes `.xlsx` files
 
-Reading is superseded by [ADR 0006](0006-own-xlsx-reader.md): ExcelJS
-was too slow for R47, and only writes.
+Superseded: reading by [ADR 0006](0006-own-xlsx-reader.md), as ExcelJS
+was too slow for R47, and writing by [ADR 0007](0007-own-xlsx-writer.md).
+ExcelJS is no longer used.
 
 ## Context
 

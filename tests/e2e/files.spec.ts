@@ -118,13 +118,15 @@ async function expectExcelFeatures(page: Page): Promise<void> {
   await expect(sheetTabs(page)).toHaveText(['Formats', 'My lists']);
   await page.getByRole('tab', { name: 'Home' }).click();
   await expectCell(page, 0, 0, 'A1 Total');
-  expect(await cellBackground(page, 0, 0)).toEqual([255, 255, 0]);
   await expect(
     page.getByRole('button', { name: 'Bold', exact: true }),
   ).toHaveAttribute('aria-pressed', 'true');
   await expect(
     page.getByRole('button', { name: 'Font', exact: true }),
   ).toHaveText('Arial');
+  await clickCell(page, 8, 8);
+  expect(await cellBackground(page, 0, 0)).toEqual([255, 255, 0]);
+  await clickCell(page, 0, 0);
   await page.getByRole('tab', { name: 'Review' }).click();
   await expect(
     page.getByRole('button', { name: 'Edit note', exact: true }),

@@ -37,7 +37,7 @@ sheet a moment later.
 | Fonts | The system UI font stack | Works offline (R35) and loads nothing. |
 | Formula engine and workbook model | Our own | See [ADR 0001](adr/0001-own-formula-engine.md). |
 | Number formats and input recognition | `numfmt` | Implements Excel format codes and value parsing (R4, R18). |
-| `.xlsx` | Our own reader over JSZip; ExcelJS for writing | See [ADR 0003](adr/0003-exceljs-for-xlsx.md) and [ADR 0006](adr/0006-own-xlsx-reader.md). |
+| `.xlsx` | Our own reader and writer over JSZip | See [ADR 0006](adr/0006-own-xlsx-reader.md) and [ADR 0007](adr/0007-own-xlsx-writer.md). |
 | `.csv` | Our own reader and writer | About a hundred lines; no dependency justified (R32). |
 | Threads | Main thread only, recalculation on demand | See [ADR 0004](adr/0004-main-thread-lazy-recalculation.md). |
 | Browser storage | IndexedDB, used directly | Holds large workbooks; the few calls needed do not justify a wrapper (R33). |
@@ -61,9 +61,9 @@ because a requirement needs it.
 | Module | Interface | Hides |
 |---|---|---|
 | `engine/workbook` | `execute(command)`, `undo()`, `redo()` (each giving the cells it changed), `canUndo`, `canRedo`, `cell(sheet, row, col)` (value, formula, display text, the color its format gives it, text to edit, style, what conditional formats change of it and the data bar they draw, note, link), the sheet size, queries (`find`: the cells that hold a search, `aggregate`, `extent`, `circularReference`, `fillsSeries`, sheet and name lists, `layout`: the sizes of rows and columns, those hidden and those frozen, `merges`: the merged cells, `rules`: the conditional formats, `filter` and `filterValues`: the filter and the values its checklist offers, `validation`, `listItems` and `allows`: a cell's rule of data validation, the items of its list, and whether typed input meets it, `names`, `nameProblem` and `locate`: the defined names, why a text cannot be a new one, and the sheet and range of an address or a name), `withMerges(range, merges)` (a range grown over the merged cells it overlaps), `calculations` (a count, to measure recalculation), `subscribe(listener)`, `toSnapshot()`, `fromSnapshot(snapshot, changes, measure)` (`measure` the `TextWidth` that fits rows); for drawing cells, `FONTS`, `FONT_SIZES`, `fontPixels`, `lineHeight`, `wrapText` and the standard sizes | Column-oriented cell storage; the dependency graph and on-demand recalculation; circular-reference detection; rewriting references when cells, rows, columns and sheets move; pasting cells copied or cut, all or only their values, formulas or formats; inverse patches for undo; fitting rows to wrapped text and large fonts; fill series; sort; filters; merges; data validation; conditional format evaluation; find and replace; named ranges; notes and hyperlinks (R1, R5, R6, R8–R10, R14, R15, R17, R19–R29). |
-| `engine/formula` | `parse(text)`, `print(ast, { file })` (with the `_xlfn.` prefix of newer functions for a file), `evaluate(ast, context)` (the context giving what a defined name refers to), `references(ast, names)`, `shift(ast, move)` (a sheet or a defined name renamed, the formula moved by rows and columns, or cells cut and pasted), `calculable(ast)`, `functions` (the names of the library), `tokenize(text)` (the tokens of a formula still being typed, with their places), `argumentHint(name, index)`, `quoteSheetName(name)` | Tokenizer and parser; operators and coercion rules; the error values; the library of at least 150 functions and the names of their arguments (R11–R13, R16). Used by `engine/workbook`, by `engine/io` to check and fill in the formulas of files, and `functions`, `tokenize` and `argumentHint` by the help while typing a formula, `parse` and `references` by the app to read the cells a conditional format applies to; the workbook re-exports `quoteSheetName` for the app. |
+| `engine/formula` | `parse(text)`, `print(ast, { file })` (with the `_xlfn.` prefix of newer functions for a file), `evaluate(ast, context)` (the context giving what a defined name refers to), `references(ast, names)`, `shift(ast, move)` (a sheet or a defined name renamed, the formula moved by rows and columns, or cells cut and pasted), `calculable(ast, isName)`, `functions` (the names of the library), `tokenize(text)` (the tokens of a formula still being typed, with their places), `argumentHint(name, index)`, `quoteSheetName(name)` | Tokenizer and parser; operators and coercion rules; the error values; the library of at least 150 functions and the names of their arguments (R11–R13, R16). Used by `engine/workbook`, by `engine/io` to check and fill in the formulas of files, and `functions`, `tokenize` and `argumentHint` by the help while typing a formula, `parse` and `references` by the app to read the cells a conditional format applies to; the workbook re-exports `quoteSheetName` for the app. |
 | `engine/format` | `formatValue(value, code)`, `formatColor(value, code)`, `validFormat(code)`, `changedFormat(code, value, change)` (one decimal more or fewer, or the thousands separator turned over), `parseInput(text)`, `parseDate(text)`, `editText(value, code)`, `builtinFormat(id)`, `isDateFormat(code)`, `isTextFormat(code)`, `isGroupedFormat(code)`, `dateSerial(year, month, day)`, `dateParts(serial)` | Excel format codes and their sections, colors and literal text; date serial numbers; and recognition of typed numbers, dates, times, percentages and booleans, on top of `numfmt` (R4, R18). |
-| `engine/io` | `readXlsx(bytes, name)` (a snapshot and what was dropped), `writeXlsx(snapshot)`, `readCsv(text)`, `writeCsv(snapshot, sheet)` | Reading the parts of an `.xlsx` file; shared formulas; the mapping from a workbook snapshot to ExcelJS; the list of dropped features reported on import; CSV quoting (R30–R32). |
+| `engine/io` | `readXlsx(bytes, name)` (a snapshot and what was dropped), `writeXlsx(snapshot)`, `readCsv(text)`, `writeCsv(snapshot, sheet)` | Reading and writing the parts of an `.xlsx` file: cells, shared formulas, styles with theme and indexed colors, sizes, merges, panes, conditional formats, data validation, defined names, notes with their drawing, hyperlinks; the list of dropped features reported on import; CSV quoting (R30–R32). |
 | `app/platform` | The `Platform` interface: `openFile()`, `saveFile(name, bytes)`, `workbooks` (list, load, record a change, save, rename, delete), `preferences` (get, set), `listenToClipboard(listener)` (the user's copy, cut and paste outside a text box), `writeClipboard(contents)` (tab-separated text and an HTML table), `print(document)`; and `webPlatform`, its one implementation | File inputs and downloads; the IndexedDB schema; clipboard events and the copy command; the print frame (R33, R34, R51). |
 | `app/grid` | `<Grid workbook view menu fillOptions filterButton listButton />` and the `View` it edits (active sheet, selection, zoom, entry, End mode, the cells copied or cut, the range the fill handle is dragged over and the last fill, the range of the format painter, the cell find went to, whether the entry was rejected by data validation) and its find and replace (`findNext`, `replace`, `replaceAll`), names (`selectionName`, `goTo`, `setName`, `deleteName`, and `definedNames` and `complete(name, defined)` for formula completion), and the active cell's note and link (`note`, `setNote`, `link`, `setLink`, `removeLink`, and `follow` for a link clicked); `<FormulaEditor>` and `keyAction`, which the formula bar shares to edit the same entry | Canvas drawing and virtualization; frozen panes; hit testing; text measurement, fonts, colors, fills, alignment, wrapping and overflow; `####` for numbers too wide; borders and merged cells; selection, resize, fill-handle and reference-picking gestures; the moving border of the cells copied; the in-cell editor and its Enter and Edit modes; function and name completion, the argument hint, reference colors and F4 (`formula.ts`); keyboard navigation and editing keys as in Excel; note markers and the note shown on hover; following a link clicked (R2, R3, R4, R8, R9, R16, R21, R28, R29, R45). |
 | `app/ui` | `<App platform />` | The start screen, ribbon, formula bar and name box, sheet tabs, status bar, context menus (the cell menu is the `menu` of the grid), dialogs and side panels; shortcuts; translation dictionaries; themes; autosave timing; building the printable document (R34, R36–R44). |
@@ -306,8 +306,7 @@ Decisions that are cheap to reverse, with their reasons:
   names. Formula completion offers the names that start with the text
   typed, before the functions, and puts one without a parenthesis; a
   name typed in full is not offered, so that Enter commits it. Names are
-  not colored as references in the editors. `.xlsx` files keep names from
-  S28 on.
+  not colored as references in the editors. `.xlsx` files keep names.
 - **Notes and hyperlinks belong to cells** (R28, R29), kept by their
   sheet by the cell's key, apart from values and styles, and are part of
   what `contents` reads and a `restore` puts back, as a style is. So undo
@@ -341,7 +340,7 @@ Decisions that are cheap to reverse, with their reasons:
   the active cell in a dialog of its text, a web address or a sheet and
   cell reference, with Remove link when it has one; the cell menu holds
   all of these, Remove link included. `.xlsx`
-  files keep notes and links from S28 on.
+  files keep notes and links.
 - **Inserting or deleting rows or columns rebuilds the sheets it
   changes.** `insertLines` and `deleteLines` name spans of rows or columns;
   an insertion puts as many empty lines before each span as it has, as
@@ -371,7 +370,7 @@ Decisions that are cheap to reverse, with their reasons:
   to its widest text, and gives a row back its fitted height. The context menu of the row
   and column headers inserts, deletes, hides and shows the selected
   lines; the ribbon has no row and column commands. `.xlsx` files keep
-  sizes and hidden lines from S28 on.
+  sizes and hidden lines.
 - **Frozen panes are a count of rows and columns** kept in the sheet's
   `layout` and its snapshot: `freeze` sets the rows above and columns
   left of a cell, the top row or the first column, and 0 and 0 unfreeze,
@@ -675,15 +674,43 @@ Decisions that are cheap to reverse, with their reasons:
   the one with the identifier `default`.
 - **A file opened is read as far as Gridworks supports it.** A formula
   that does not parse, or calls a function or name that Gridworks does not
-  have, is replaced by its last result. Charts, pivot tables and pictures
-  are counted from the file's parts and left out, and so are cells beyond
-  the 100,000 rows and 100 columns of a sheet. A message bar under the
+  have, is replaced by its last result; a defined name the file keeps is
+  calculated. Charts, pivot tables, pictures and Excel tables (whose
+  cells stay) are counted from the file's parts and left out, and so are
+  cells beyond the 100,000 rows and 100 columns of a sheet, and
+  conditional formats, rules of data validation, defined names and
+  hyperlinks of kinds Gridworks does not have. A message bar under the
   ribbon lists what was left out (R31), or says that a file is not a valid
   `.xlsx` file, which leaves the workbook shown as it was, or that a save
-  failed. The other
-  features of R30 are read by the slices that build them, and until then
-  are left out without a word. A file saved by Gridworks has no formula
-  results in it, and asks to be calculated when it is opened.
+  failed. Lesser differences are made without a word: what Gridworks does
+  not draw of a cell (rich text runs, rotation, indents, pattern and
+  gradient fills, diagonal borders), filters, which keep their hidden
+  rows, threaded comments, read as the notes Excel keeps beside them, and
+  sheet views other than frozen panes. A file saved by Gridworks has no
+  formula results in it, and asks to be calculated when it is opened.
+- **Files map Gridworks' formatting onto Excel's, and back** (R30). A
+  file's default font, Calibri 11 in Excel, stands for Gridworks' default
+  font and size, so a font keeps its name only when it is one of `FONTS`
+  and its size only when it differs from the default's; Gridworks writes
+  Calibri 11 as the default, so an explicit size of 11 reads back as the
+  default. Theme and indexed colors are read as the colors they show, a
+  theme's tint applied in HSL, which is within one step of a channel of
+  Excel's swatches; automatic colors, and the theme's text color, are
+  left to the theme's text color, and the Hyperlink style is not kept, as
+  the grid draws links itself. Excel's other border lines are drawn as
+  the nearest of Gridworks' six, and its other alignments as the nearest
+  of left, center and right or top and middle. Excel's row and column
+  styles are not kept; Excel writes a style on each cell in use as well,
+  so only empty cells of a formatted row or column lose it. Sizes keep
+  their proportions to the standard ones: Excel's 64 by 20 pixels are
+  Gridworks' 96 by 24, a width being Excel's characters of 7 pixels and a
+  height its points, and only heights set on rows are written or read, as
+  fitted heights are found again. A condition's value is written as a
+  number, a boolean or a quoted text, so a date typed in it reads back as
+  its serial number. Notes are written with the drawing Excel needs to
+  show them, without an author, and an author's name that starts a note
+  read is taken out; data bars are written with Excel 2010's extension,
+  so that they start from zero as Gridworks draws them.
 - **Cell fonts are a fixed list of fonts present on Windows and macOS**
   (Arial, Courier New, Georgia, Times New Roman, Trebuchet MS, Verdana),
   each with fallbacks for Linux, so that nothing is downloaded. A cell
@@ -736,7 +763,7 @@ src/engine/workbook/     Workbook model, commands, recalculation, undo
 src/engine/formula/      Parser, evaluator, and the function library, a file per family
 src/engine/format/       Number formats and input recognition
 src/engine/io/           XLSX and CSV
-tests/xlsx.ts            Builds .xlsx files laid out as Excel writes them, for tests
+tests/xlsx.ts            Builds .xlsx files laid out as Excel writes them, and a workbook with every feature of R30, for tests
 tests/formula.ts         Evaluates formulas over cells named as in A1, for tests
 src/app/platform/        Platform interface
 src/app/platform/web/    The web implementation

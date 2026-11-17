@@ -1,5 +1,8 @@
 # 0006: Gridworks reads `.xlsx` files with its own reader, and writes them with ExcelJS
 
+Writing is superseded by [ADR 0007](0007-own-xlsx-writer.md): Gridworks
+writes files with its own writer too.
+
 ## Context
 
 ADR 0003 chose ExcelJS for reading and writing `.xlsx` files, and named

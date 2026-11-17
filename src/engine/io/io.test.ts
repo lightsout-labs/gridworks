@@ -227,7 +227,8 @@ describe('readXlsx, of a workbook saved by Excel', () => {
       color: '#ff0000',
       fill: '#ffff00',
     });
-    // Theme colors, lightened or darkened by their tint.
+    // Theme colors, lightened or darkened by their tint, within one step of
+    // each channel of Excel's swatches (#2f5597 and #e2efda).
     expect(style('B1')).toEqual({
       numberFormat: '0.0%',
       font: 'Georgia',
@@ -235,7 +236,7 @@ describe('readXlsx, of a workbook saved by Excel', () => {
       underline: true,
       strike: true,
       color: '#2f5597',
-      fill: '#e2efda',
+      fill: '#e2f0d9',
     });
     // Automatic colors are left to the theme.
     expect(style('C1')).toEqual({
@@ -408,7 +409,8 @@ describe('writeXlsx', () => {
           color: '#00aa55',
           columns: [
             [1, 'two', true, 46340, null],
-            [null, 0.5, 'Q&A <b>'],
+            // Text that XML cannot hold, or that reads as Excel's escapes.
+            [null, 0.5, 'Q&A <b>\r_x0041_'],
           ],
           formulas: [
             [0, 1, '=A1+Totals!A1'],
