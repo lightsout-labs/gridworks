@@ -747,7 +747,8 @@ export class Workbook {
   private readonly conditions = new Rules();
 
   private constructor(
-    private readonly name: string,
+    /** The workbook's name, which names the files saved from it. */
+    readonly name: string,
     private readonly sheetList: Sheet[],
     private readonly styles: Style[],
     private readonly measure: TextWidth,

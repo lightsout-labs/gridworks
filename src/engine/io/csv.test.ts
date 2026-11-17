@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { SHEET_COLUMNS, SHEET_ROWS } from '../formula';
-import { isError } from '../value';
 import { Workbook, createWorkbook } from '../workbook';
 import { readCsv, writeCsv } from '.';
 
@@ -11,24 +10,21 @@ function open(text: string, name = 'Prices') {
   return { workbook, sheet: workbook.sheets[0]!.id, dropped };
 }
 
-/**
- * The values of the cells of a sheet in use, row by row, an error as its
- * text, as Gridworks has no error constants and reads an error as text.
- */
+/** The values of the cells of a sheet in use, row by row. */
 function values(workbook: Workbook, sheet: string) {
   const { rows, cols } = workbook.extent(sheet);
   return Array.from({ length: rows }, (_, row) =>
-    Array.from({ length: cols }, (_, col) => {
-      const { value } = workbook.cell(sheet, row, col);
-      return isError(value) ? value.error : value;
-    }),
+    Array.from(
+      { length: cols },
+      (_, col) => workbook.cell(sheet, row, col).value,
+    ),
   );
 }
 
 describe('readCsv', () => {
   it('opens as a workbook of one sheet named after the file', () => {
     const { workbook } = open('a,b\r\n', 'Prices 2026');
-    expect(workbook.toSnapshot().name).toBe('Prices 2026');
+    expect(workbook.name).toBe('Prices 2026');
     expect(workbook.sheets.map(({ name }) => name)).toEqual(['Prices 2026']);
   });
 
@@ -173,11 +169,26 @@ describe('writeCsv', () => {
       ['Item', 'Price', 'Sold', 'Note'],
       ['Tea, green', '3.75', '2026-03-01 08:30', 'said "fresh"\nand cheap'],
       ['', '=B2*4', 'FALSE', '0.1'],
-      ['Café 数据', '1e-7', '-42', '=NA()'],
+      ['Café 数据', '1e-7', '-42', ' padded '],
+      ['', '0.500002893518519', '0.99999999', ''],
     ]);
+    // Times with a part of a second, the last just before midnight.
+    workbook.execute({
+      type: 'setStyle',
+      sheet,
+      ranges: [{ top: 4, left: 1, bottom: 4, right: 2 }],
+      style: { numberFormat: 'hh:mm:ss' },
+    });
     const reopened = open(writeCsv(workbook, sheet));
     expect(values(reopened.workbook, reopened.sheet)).toEqual(
       values(workbook, sheet),
     );
+  });
+
+  it('gives an error that reopens as its text, as Gridworks has no error constants', () => {
+    const { workbook, sheet } = sheetOf([['=NA()']]);
+    expect(workbook.cell(sheet, 0, 0).value).toEqual({ error: '#N/A' });
+    const reopened = open(writeCsv(workbook, sheet));
+    expect(values(reopened.workbook, reopened.sheet)).toEqual([['#N/A']]);
   });
 });

@@ -223,7 +223,7 @@ export function App({ platform }: { platform: Platform }) {
     try {
       const { writeCsv } = await import('../../engine/io');
       await platform.saveFile(
-        `${workbook.toSnapshot().name}.csv`,
+        `${workbook.name}.csv`,
         new TextEncoder().encode(writeCsv(workbook, view.state.sheet)),
       );
     } catch {

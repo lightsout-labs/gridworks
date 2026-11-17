@@ -144,7 +144,9 @@ function records(
  * The text of a `.csv` file of a sheet's cells in use, starting with a
  * byte order mark so that Excel reads it as UTF-8, with lines ended by
  * CRLF. A formula is written as its result, a number in full whatever its
- * format, and a date or time as text that reads back as the same value.
+ * format, and a date or time as text that reads back as the same value,
+ * unless it has a part of a second. Text is written as it is, even when it
+ * starts with `=`, as Excel writes it.
  */
 export function writeCsv(workbook: Workbook, sheet: string): string {
   const { rows, cols } = workbook.extent(sheet);
@@ -166,7 +168,10 @@ function written(value: ReturnType<Workbook['cell']>['value'], format: string) {
   if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
   if (typeof value === 'object') return value.error;
   if (typeof value === 'string') return value;
-  if (!isDateFormat(format) || value < 0) return String(value);
+  // A part of a second would not read back, so such a value stays a number.
+  const seconds = (value % 1) * 86_400;
+  const whole = Math.abs(seconds - Math.round(seconds)) < 1e-6;
+  if (!isDateFormat(format) || value < 0 || !whole) return String(value);
   const time = value % 1 !== 0;
   if (value < 1) return formatValue(value, 'hh:mm:ss');
   return formatValue(value, time ? 'yyyy-mm-dd hh:mm:ss' : 'yyyy-mm-dd');

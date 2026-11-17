@@ -1135,7 +1135,7 @@ Notes:
 
 ## S29: CSV files
 
-Status: In progress
+Status: Done
 
 Acceptance criteria:
 - The user can open a `.csv` file as a new workbook, with typed values
@@ -1148,6 +1148,16 @@ Acceptance criteria:
 - Its controls are in the ribbon or a context menu, are translated in both
   languages, look right in both themes, and have hover, focus and disabled
   states and tooltips. (R37, R41, R42, R43, R44)
+
+Notes:
+- `engine/io/csv.ts` has `readCsv(text, name)` and `writeCsv(workbook, sheet)`;
+  the app decodes and encodes the UTF-8 bytes. The Open button takes `.xlsx`
+  and `.csv` (`isCsv` in `app/ui/files.ts` tells them apart by name), and
+  Export CSV in the File tab saves the active sheet. `Workbook.name` is now
+  public. S30 (start screen) lists workbooks opened from `.csv` files like
+  any other.
+- One full `make e2e` run failed 19 tests with no saved log; the next two
+  runs passed all 318, so it was not traced.
 
 ## S30: The start screen and stored workbooks
 
