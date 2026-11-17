@@ -2,6 +2,7 @@ import type { Snapshot } from '../workbook';
 
 export { readXlsx } from './read';
 export { writeXlsx } from './write';
+export { readCsv, writeCsv } from './csv';
 
 /** What a file holds that Gridworks leaves out when it opens it (R31). */
 export type DroppedFeature =

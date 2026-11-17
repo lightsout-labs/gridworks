@@ -13,7 +13,7 @@ import { ListButton, RejectedEntry } from './Validation';
 import { CellDialog, type Editing } from './Notes';
 import { FindPanel, type FindMode } from './Find';
 import { Translation } from './controls';
-import { droppedMessage, workbookName } from './files';
+import { droppedMessage, isCsv, workbookName } from './files';
 import { startingLanguage, translator, type Language } from './i18n';
 import { Ribbon } from './Ribbon';
 import { FormulaBar, MessageBar, StatusBar } from './Shell';
@@ -175,11 +175,13 @@ export function App({ platform }: { platform: Platform }) {
     if (!file) return;
     setBusy(true);
     try {
-      const { readXlsx } = await import('../../engine/io');
-      const { snapshot, dropped } = await readXlsx(
-        file.bytes,
-        workbookName(file.name),
-      );
+      const { readCsv, readXlsx } = await import('../../engine/io');
+      const name = workbookName(file.name);
+      // The decoder drops a byte order mark and replaces bytes that are
+      // not UTF-8.
+      const { snapshot, dropped } = isCsv(file.name)
+        ? readCsv(new TextDecoder().decode(file.bytes), name)
+        : await readXlsx(file.bytes, name);
       const workbook = Workbook.fromSnapshot(snapshot, [], measureText);
       setOpen({
         id: crypto.randomUUID(),
@@ -216,6 +218,21 @@ export function App({ platform }: { platform: Platform }) {
     }
   };
 
+  const exportCsv = async (workbook: Workbook, view: View) => {
+    setBusy(true);
+    try {
+      const { writeCsv } = await import('../../engine/io');
+      await platform.saveFile(
+        `${workbook.name}.csv`,
+        new TextEncoder().encode(writeCsv(workbook, view.state.sheet)),
+      );
+    } catch {
+      setMessage({ kind: 'saveFailed' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (!open) return null;
   const t = translator(language);
   // A rejected entry keeps the dialogs closed, so that what they set is
@@ -243,6 +260,7 @@ export function App({ platform }: { platform: Platform }) {
             busy={busy}
             onOpen={() => void openFile()}
             onSave={() => void saveFile(open.workbook)}
+            onExportCsv={() => void exportCsv(open.workbook, open.view)}
             onCopy={copyToClipboard}
             onFind={setFinding}
             onEdit={edit}

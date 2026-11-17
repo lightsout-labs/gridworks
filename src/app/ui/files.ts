@@ -1,9 +1,17 @@
 import type { Dropped } from '../../engine/io';
 import { translator, type Key, type Language } from './i18n';
 
-/** The name of the workbook in a file: the file's name without `.xlsx`. */
+/**
+ * The name of the workbook in a file: the file's name without `.xlsx` or
+ * `.csv`.
+ */
 export function workbookName(fileName: string): string {
-  return fileName.replace(/\.xlsx$/i, '');
+  return fileName.replace(/\.(?:xlsx|csv)$/i, '');
+}
+
+/** Whether a file is a `.csv` file, by its name. */
+export function isCsv(fileName: string): boolean {
+  return /\.csv$/i.test(fileName);
 }
 
 /** What the user is told about the content left out of a file opened (R31). */
