@@ -413,7 +413,7 @@ export class View {
 
   /** Sets the active cell to an item of its list, abandoning an entry. */
   choose(item: string): void {
-    this.cancel();
+    if (this.current.entry) this.cancel();
     const { sheet, selection } = this.current;
     const { row, col } = selection.active;
     this.workbook.execute({ type: 'setCell', sheet, row, col, input: item });
@@ -746,14 +746,14 @@ export class View {
   /**
    * Copies the selected range, the last one, to paste, after committing a
    * waiting entry, and gives its cells as they are shown, for the system
-   * clipboard.
+   * clipboard; `null` when the entry is rejected.
    */
-  copy(): ClipboardContents {
+  copy(): ClipboardContents | null {
     return this.copyRange(false);
   }
 
   /** Cuts the selected range, to move it with the next paste, as `copy`. */
-  cut(): ClipboardContents {
+  cut(): ClipboardContents | null {
     return this.copyRange(true);
   }
 
@@ -1208,9 +1208,8 @@ export class View {
     });
   }
 
-  private copyRange(cut: boolean): ClipboardContents {
-    // The rejection dialog is modal, so an entry is never rejected here.
-    this.commit();
+  private copyRange(cut: boolean): ClipboardContents | null {
+    if (!this.commit()) return null;
     const { sheet, selection } = this.current;
     const range = selection.ranges[selection.ranges.length - 1]!;
     const copied = { sheet, range, cut };

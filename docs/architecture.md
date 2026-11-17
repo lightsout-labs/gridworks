@@ -236,7 +236,9 @@ Decisions that are cheap to reverse, with their reasons:
 - **Data validation is rules kept by their sheet** (R26), each the
   ranges it applies to and a criterion: a list, of items typed with commas
   between them or of the shown texts of a range written after `=` (on any
-  sheet, read when asked for, empty cells left out); or a number, a date
+  sheet, read when asked for, empty cells left out; the reference is
+  kept as typed, so unlike Excel it does not follow a renamed sheet or
+  lines inserted or deleted there); or a number, a date
   or a text length between bounds, both included, either of which may be
   absent, which gives Excel's between, greater or equal and less or equal.
   The `validate` command gives the cells of ranges a criterion, taking
@@ -251,7 +253,8 @@ Decisions that are cheap to reverse, with their reasons:
   `commit` asks `allows` first, and a rejected entry stays, marked
   `rejected`, and the selection does not move, until the user tries again
   (Retry, in Edit mode) or abandons it (Cancel or Escape), as Excel's Stop
-  message; every command that commits first stops there too. Pastes,
+  message; every command that commits first stops there too, Copy and
+  Cut included, and the Data validation dialog does not open. Pastes,
   fills, text pasted from other applications, replace (S24's `replace`
   types each new text without asking) and choosing from a list are not
   checked, as in Excel. Excel's whole-number and decimal kinds, its other

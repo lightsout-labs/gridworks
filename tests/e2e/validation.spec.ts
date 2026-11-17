@@ -10,11 +10,11 @@ const button = (page: Page, name: string) =>
  * Answers the message that an entry was rejected, and waits for the
  * keyboard to come back: to the editor for Retry, to the grid for Cancel.
  */
-async function answer(page: Page, name: 'Retry' | 'Cancel') {
+async function answer(page: Page, name: 'Retry' | 'Cancel' | '重试' | '取消') {
   await button(page, name).click();
   await expect(page.getByRole('alertdialog')).toBeHidden();
   await expect(
-    name === 'Retry'
+    name === 'Retry' || name === '重试'
       ? page.getByRole('textbox', { name: /^[A-Z]+\d+$/ })
       : page.locator('canvas').locator('..').locator('..'),
   ).toBeFocused();
@@ -127,4 +127,59 @@ test('restricts cells to a number range, a date range or a text length, and chan
   await expect(
     page.getByRole('alertdialog', { name: 'Invalid entry' }),
   ).toBeVisible();
+});
+
+test.describe('in Chinese and the dark theme', () => {
+  test.use({ locale: 'zh-CN', colorScheme: 'dark' });
+
+  test('the dialog, the list and the message are translated and dark, with tooltips and hover states', async ({
+    page,
+  }) => {
+    await openApp(page);
+    const background = (locator: ReturnType<Page['locator']>) =>
+      locator.evaluate((node) => getComputedStyle(node).backgroundColor);
+    const dark = (color: string) => {
+      const [red, green, blue] = color.match(/\d+/g)!.map(Number);
+      return (red! + green! + blue!) / 3 < 128;
+    };
+    const hovered = async (locator: ReturnType<Page['locator']>) => {
+      const resting = await background(locator);
+      await locator.hover();
+      await expect.poll(() => background(locator)).not.toBe(resting);
+    };
+
+    await page.getByRole('tab', { name: '数据' }).click();
+    await clickCell(page, 0, 0);
+    await button(page, '数据验证').hover();
+    await expect(
+      page.getByRole('tooltip', { name: /^选择所选单元格中可以输入的内容/ }),
+    ).toBeVisible();
+    await button(page, '数据验证').click();
+    const dialog = page.getByRole('dialog', { name: '数据验证' });
+    expect(dark(await background(dialog))).toBe(true);
+    await dialog.getByLabel('允许').selectOption('序列');
+    await dialog.getByLabel('来源').fill('是,否');
+    await button(page, '确定').click();
+
+    const list = button(page, '从列表中选择');
+    await hovered(list);
+    await expect(
+      page.getByRole('tooltip', { name: '从列表中选择' }),
+    ).toBeVisible();
+    await list.click();
+    const menu = page.getByRole('menu');
+    expect(dark(await background(menu))).toBe(true);
+    await hovered(page.getByRole('menuitem', { name: '否' }));
+    await page.keyboard.press('Escape');
+
+    await clickCell(page, 0, 0);
+    await enter(page, 'maybe');
+    const message = page.getByRole('alertdialog', { name: '输入无效' });
+    await expect(message).toContainText(
+      '此值与此单元格定义的数据验证限制不匹配。',
+    );
+    expect(dark(await background(message))).toBe(true);
+    await hovered(button(page, '取消'));
+    await answer(page, '取消');
+  });
 });

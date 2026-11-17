@@ -1014,7 +1014,7 @@ Notes:
 
 ## S25: Data validation
 
-Status: In progress
+Status: Done
 
 Acceptance criteria:
 - The user can restrict the selected cells to a list, given as typed items or
@@ -1027,6 +1027,21 @@ Acceptance criteria:
 - Its controls are in the ribbon or a context menu, are translated in both
   languages, look right in both themes, and have hover, focus and disabled
   states and tooltips. (R37, R41, R42, R43, R44)
+
+Notes:
+- Snapshots keep the rules as `validations`: each `ranges` and a
+  `criterion` (`list` with a `source` of comma-separated items or `=` and a
+  range; `number`, `date` or `length` with optional `min` and `max`, both
+  included). S28 (XLSX) reads and writes them as `dataValidation`
+  elements: list as `formula1` (items quoted), the others as `between`,
+  `greaterThanOrEqual` or `lessThanOrEqual` with type `decimal`, `date` or
+  `textLength`; Excel's other types and operators are dropped on reading.
+- Only typed input is checked (`workbook.allows`, called by the view's
+  `commit`); replace, paste, fill and pasted text are not, as in Excel.
+- A list's range source is kept as typed and does not follow renamed
+  sheets or moved lines. S26 (named ranges): `listItems` parses the source
+  and accepts a `range` node only; a named range as a source needs it
+  resolved there.
 
 ## S26: Named ranges
 

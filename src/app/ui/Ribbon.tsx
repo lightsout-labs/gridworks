@@ -78,7 +78,7 @@ export function Ribbon({
   onOpen: () => void;
   onSave: () => void;
   /** Puts the cells copied or cut on the system clipboard. */
-  onCopy: (contents: ClipboardContents) => void;
+  onCopy: (contents: ClipboardContents | null) => void;
   /** Opens the find panel, alone or with replace. */
   onFind: (mode: FindMode) => void;
 }) {
@@ -355,7 +355,7 @@ function Clipboard({
   onCopy,
 }: {
   view: View;
-  onCopy: (contents: ClipboardContents) => void;
+  onCopy: (contents: ClipboardContents | null) => void;
 }) {
   const t = useTranslation();
   const copied = useCopied(view);

@@ -162,8 +162,9 @@ export function App({ platform }: { platform: Platform }) {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [open]);
 
-  const copyToClipboard = (contents: ClipboardContents) =>
-    platform.writeClipboard(contents);
+  const copyToClipboard = (contents: ClipboardContents | null) => {
+    if (contents) platform.writeClipboard(contents);
+  };
 
   const openFile = async () => {
     const file = await platform.openFile();

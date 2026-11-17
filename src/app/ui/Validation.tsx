@@ -55,7 +55,11 @@ export function ValidationControls({
         <button
           type="button"
           className={styles.button}
-          onClick={() => setOpen(true)}
+          // A rejected entry keeps the dialog closed, so that the rule it
+          // would set is not lost.
+          onClick={() => {
+            if (view.commit()) setOpen(true);
+          }}
         >
           <ListChecks size={ICON_SIZE} aria-hidden />
           {t('validation')}

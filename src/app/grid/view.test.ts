@@ -611,8 +611,8 @@ describe('View', () => {
         ],
       });
       selecting(view, 0, 0, 1, 1);
-      expect(view.copy().text).toBe('12%\t0.24\n\tx\n');
-      expect(view.cut().html).toContain('<td>0.24</td>');
+      expect(view.copy()?.text).toBe('12%\t0.24\n\tx\n');
+      expect(view.cut()?.html).toContain('<td>0.24</td>');
     });
 
     it('pastes text from another application at the selection as typed, in one change', () => {
@@ -642,7 +642,7 @@ describe('View', () => {
         input: '=A1+1',
       });
       selecting(view, 0, 0, 0, 1);
-      const { text } = view.copy();
+      const { text } = view.copy()!;
       view.select(single({ row: 2, col: 0 }));
       // As Windows puts it on the clipboard.
       view.pasteText(text.replaceAll('\n', '\r\n'));
@@ -1495,6 +1495,21 @@ describe('find and replace', () => {
       view.cancel();
       expect(view.state).toMatchObject({ rejected: false, entry: null });
       expect(workbook.cell(sheet, 0, 0).value).toBeNull();
+    });
+
+    it('does not copy while the entry is rejected', () => {
+      const { view } = validated();
+      view.type('20');
+      expect(view.copy()).toBeNull();
+      expect(view.state.copied).toBeNull();
+    });
+
+    it('keeps the format painter when an item is chosen', () => {
+      const { view } = setup();
+      view.validate({ type: 'list', source: 'Yes,No' });
+      view.startPainter();
+      view.choose('Yes');
+      expect(view.state.painter).not.toBeNull();
     });
 
     it('sets the active cell to an item chosen from its list', () => {
