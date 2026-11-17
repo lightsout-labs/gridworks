@@ -43,6 +43,7 @@ import type { Language } from './i18n';
 import { RuleControls } from './Rules';
 import { FilterControls } from './Filter';
 import { SortControls } from './Sort';
+import { ValidationControls } from './Validation';
 import styles from './Shell.module.css';
 import type { Theme } from './theme';
 
@@ -197,6 +198,9 @@ export function Ribbon({
         </Group>
         <Group label={t('filter.group')}>
           <FilterControls workbook={workbook} view={view} />
+        </Group>
+        <Group label={t('validation.group')}>
+          <ValidationControls workbook={workbook} view={view} />
         </Group>
       </Tabs.Content>
       <Tabs.Content className={styles.ribbonPanel} value="view">

@@ -289,7 +289,7 @@ test.describe('the controls', () => {
         ['tab', 'File', 'Open and save workbooks'],
         ['tab', 'Home', 'The most used commands'],
         ['tab', 'Formulas', 'Functions to use in formulas'],
-        ['tab', 'Data', 'Sort and filter data'],
+        ['tab', 'Data', 'Sort, filter and validate data'],
         ['tab', 'View', 'Appearance, language and frozen panes'],
         ['button', 'Undo', /^Undo the last change \((Ctrl\+|⌘)Z\)$/],
         ['button', 'Redo', /^Redo the last change undone \((Ctrl\+|⌘)Y\)$/],
@@ -428,10 +428,15 @@ test.describe('the controls', () => {
           'Filter',
           /^Put a filter button in each header of the selected cells/,
         ],
+        [
+          'button',
+          'Data validation',
+          /^Choose what can be typed in the selected cells/,
+        ],
         ...statusBar,
       ],
       // Clear, disabled until a column is filtered, is checked below.
-      8,
+      9,
     );
     // A filtered column enables Clear.
     await page.getByRole('button', { name: 'Filter', exact: true }).click();
@@ -448,7 +453,7 @@ test.describe('the controls', () => {
         ['button', 'Filter column B', 'Filter column B'],
         ...statusBar,
       ],
-      10,
+      11,
     );
     await page.getByRole('button', { name: 'Filter', exact: true }).click();
     await page.getByRole('tab', { name: 'Formulas' }).click();

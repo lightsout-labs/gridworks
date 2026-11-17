@@ -27,6 +27,7 @@ describe('View', () => {
       resizing: null,
       painter: null,
       reveal: null,
+      rejected: false,
     });
   });
 
@@ -1447,5 +1448,62 @@ describe('find and replace', () => {
     expect(workbook.cell(other, 1, 1).display).toBe('pear');
     expect(workbook.cell(sheet, 3, 0).formula).toBe('=B1');
     expect(view.replaceAll(search, 'pear')).toBe(0);
+  });
+
+  describe('data validation', () => {
+    const validated = () => {
+      const { workbook, view, sheet } = setup();
+      view.select(covering([{ top: 0, left: 0, bottom: 1, right: 0 }]));
+      view.validate({ type: 'number', min: 1, max: 10 });
+      view.select(single({ row: 0, col: 0 }));
+      return { workbook, view, sheet };
+    };
+
+    it('gives the selected cells a rule, and takes it away', () => {
+      const { workbook, view, sheet } = validated();
+      expect(workbook.validation(sheet, 1, 0)?.type).toBe('number');
+      view.validate(null);
+      expect(workbook.validation(sheet, 0, 0)).toBeNull();
+      expect(workbook.validation(sheet, 1, 0)?.type).toBe('number');
+    });
+
+    it('rejects an entry that breaks the rule, and keeps it where it is', () => {
+      const { workbook, view, sheet } = validated();
+      view.type('20');
+      view.navigate(down);
+      expect(view.state).toMatchObject({
+        rejected: true,
+        entry: { text: '20' },
+        selection: single({ row: 0, col: 0 }),
+      });
+      expect(workbook.cell(sheet, 0, 0).value).toBeNull();
+      view.retry();
+      expect(view.state).toMatchObject({
+        rejected: false,
+        entry: { text: '20', mode: 'edit' },
+      });
+      view.type('5');
+      view.navigate(down);
+      expect(workbook.cell(sheet, 0, 0).value).toBe(5);
+      expect(view.state.selection).toEqual(single({ row: 1, col: 0 }));
+    });
+
+    it('abandons a rejected entry on cancel', () => {
+      const { workbook, view, sheet } = validated();
+      view.type('x');
+      view.commit();
+      view.cancel();
+      expect(view.state).toMatchObject({ rejected: false, entry: null });
+      expect(workbook.cell(sheet, 0, 0).value).toBeNull();
+    });
+
+    it('sets the active cell to an item chosen from its list', () => {
+      const { workbook, view, sheet } = setup();
+      view.validate({ type: 'list', source: 'Yes,No' });
+      view.type('Ma');
+      view.choose('No');
+      expect(view.state.entry).toBeNull();
+      expect(workbook.cell(sheet, 0, 0).value).toBe('No');
+    });
   });
 });

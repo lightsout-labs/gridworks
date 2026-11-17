@@ -2,6 +2,7 @@ import { evaluate, references, type Area, type Ast } from '../formula';
 import type { ErrorValue, Value } from '../value';
 import type { Rule } from './rules';
 import type { Filter } from './filter';
+import type { Validation } from './validation';
 
 /** A stored value: formulas keep their text, not their result. */
 export type Constant = number | string | boolean | null;
@@ -76,6 +77,8 @@ export interface Sheet {
   rules: readonly Rule[];
   /** The filter of the sheet, or `null`; replaced, never changed. */
   filter: Filter | null;
+  /** The rules of data validation; replaced, never changed. */
+  validations: readonly Validation[];
   /** The formulas that read one cell, by the cell's key. */
   readonly cellReaders: Map<string, Set<Dependency>>;
   /** The formulas that read an area of several cells, by each column of it. */
@@ -104,6 +107,7 @@ export function emptySheet(
     merges: [],
     rules: [],
     filter: null,
+    validations: [],
     cellReaders: new Map(),
     areaReaders: new Map(),
   };
@@ -275,7 +279,15 @@ export class Calculation {
     return formula ? this.value(formula) : (sheet.columns[col]?.[row] ?? null);
   }
 
-  private context(formula: Formula) {
+  /**
+   * The result of a formula as if it were in a cell, without putting it
+   * there.
+   */
+  evaluate(sheet: Sheet, row: number, col: number, ast: Ast): Value {
+    return evaluate(ast, this.context({ sheet, row, col }));
+  }
+
+  private context(formula: Pick<Formula, 'sheet' | 'row' | 'col'>) {
     const resolve = (name: string | undefined) =>
       name === undefined ? formula.sheet : this.find(name);
     return {

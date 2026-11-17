@@ -9,6 +9,7 @@ import { restoreWorkbook, startAutosave } from './autosave';
 import { CellMenu } from './CellMenu';
 import { FillOptions } from './FillOptions';
 import { FilterButton } from './Filter';
+import { ListButton, RejectedEntry } from './Validation';
 import { FindPanel, type FindMode } from './Find';
 import { Translation } from './controls';
 import { droppedMessage, workbookName } from './files';
@@ -269,11 +270,13 @@ export function App({ platform }: { platform: Platform }) {
                   col={col}
                 />
               )}
+              listButton={<ListButton {...open} />}
             />
           </main>
           <SheetTabs {...open} />
           <StatusBar {...open} />
           <FindPanel view={open.view} mode={finding} onMode={setFinding} />
+          <RejectedEntry view={open.view} />
         </div>
       </TooltipProvider>
     </Translation>

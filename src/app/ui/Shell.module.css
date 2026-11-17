@@ -875,6 +875,12 @@
   color: var(--accent);
 }
 
+/* The items of a cell's list, which scroll when there are many. */
+.listMenu {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
 /* The panel a filter button opens, under the button. */
 .filterPanel {
   position: fixed;

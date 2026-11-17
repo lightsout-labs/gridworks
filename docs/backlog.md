@@ -1014,7 +1014,7 @@ Notes:
 
 ## S25: Data validation
 
-Status: Todo
+Status: In progress
 
 Acceptance criteria:
 - The user can restrict the selected cells to a list, given as typed items or
