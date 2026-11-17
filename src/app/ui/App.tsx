@@ -38,6 +38,7 @@ interface Open {
 type Message =
   | { readonly kind: 'invalid'; readonly name: string }
   | { readonly kind: 'invalidName'; readonly text: string }
+  | { readonly kind: 'deletedName'; readonly text: string }
   | { readonly kind: 'saveFailed' }
   | {
       readonly kind: 'dropped';
@@ -243,8 +244,13 @@ export function App({ platform }: { platform: Platform }) {
               text={
                 message.kind === 'invalid'
                   ? t('file.invalid').replace('{name}', () => message.name)
-                  : message.kind === 'invalidName'
-                    ? t('names.invalid').replace('{text}', () => message.text)
+                  : message.kind === 'invalidName' ||
+                      message.kind === 'deletedName'
+                    ? t(
+                        message.kind === 'invalidName'
+                          ? 'names.invalid'
+                          : 'names.deleted',
+                      ).replace('{text}', () => message.text)
                     : message.kind === 'saveFailed'
                       ? t('file.saveFailed')
                       : droppedMessage(message.name, message.dropped, language)
@@ -255,7 +261,12 @@ export function App({ platform }: { platform: Platform }) {
           )}
           <FormulaBar
             {...open}
-            onInvalid={(text) => setMessage({ kind: 'invalidName', text })}
+            onInvalid={(text, problem) =>
+              setMessage({
+                kind: problem === 'invalid' ? 'invalidName' : 'deletedName',
+                text,
+              })
+            }
           />
           <main className={styles.grid}>
             <Grid

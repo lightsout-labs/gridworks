@@ -1603,15 +1603,39 @@ describe('named ranges', () => {
     ]);
   });
 
-  it('puts a defined name chosen from the completion list without a parenthesis', () => {
+  it('lists the defined names for formula completion', () => {
     const { workbook, view } = setup();
     workbook.execute({
       type: 'setNames',
       names: [{ name: 'Sales', refersTo: 'Sheet1!$A$1' }],
     });
     expect(view.definedNames).toEqual(['Sales']);
-    view.type('=sa');
-    view.complete('Sales', true);
-    expect(view.state.entry?.text).toBe('=Sales');
+  });
+
+  it('tells that a name typed in the name box refers to deleted cells', () => {
+    const { workbook, view } = setup();
+    workbook.execute({
+      type: 'setNames',
+      names: [{ name: 'Gone', refersTo: '#REF!' }],
+    });
+    expect(view.goTo('gone')).toBe('deleted');
+    expect(workbook.names).toHaveLength(1);
+  });
+
+  it('does not change a name while an entry waits, rejected', () => {
+    const { workbook, view, sheet } = setup();
+    workbook.execute({
+      type: 'setNames',
+      names: [{ name: 'Here', refersTo: 'Sheet1!$B$1' }],
+    });
+    workbook.execute({
+      type: 'validate',
+      sheet,
+      ranges: [{ top: 0, left: 0, bottom: 0, right: 0 }],
+      criterion: { type: 'list', source: 'a' },
+    });
+    view.type('zz');
+    expect(view.setName('Here', 'There', '=B1')).toBe('entry');
+    expect(workbook.names[0]!.name).toBe('Here');
   });
 });

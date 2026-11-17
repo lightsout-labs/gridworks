@@ -25,7 +25,8 @@ const ONE_CELL = { rows: 1, cols: 1 };
  * The name box, which names the active cell or the range selected and
  * goes to a range or a name typed or chosen in it, and, beside it, what
  * the active cell holds, where it can be edited. `onInvalid` tells that a
- * text typed in the name box is neither a reference nor a new name.
+ * text typed in the name box is neither a reference nor a new name, or a
+ * name whose cells were deleted.
  */
 export function FormulaBar({
   workbook,
@@ -34,7 +35,7 @@ export function FormulaBar({
 }: {
   workbook: Workbook;
   view: View;
-  onInvalid: (text: string) => void;
+  onInvalid: (text: string, problem: 'invalid' | 'deleted') => void;
 }) {
   const t = useTranslation();
   const { sheet, selection } = useSyncExternalStore(
@@ -94,7 +95,7 @@ function NameBox({
 }: {
   workbook: Workbook;
   view: View;
-  onInvalid: (text: string) => void;
+  onInvalid: (text: string, problem: 'invalid' | 'deleted') => void;
 }) {
   const t = useTranslation();
   const subscribe = useCallback(
@@ -113,8 +114,9 @@ function NameBox({
   // What is typed, until it is gone to or abandoned.
   const [typed, setTyped] = useState<string | null>(null);
   const go = (text: string) => {
-    if (view.goTo(text) === 'invalid') {
-      onInvalid(text);
+    const problem = view.goTo(text);
+    if (problem) {
+      onInvalid(text, problem);
       return;
     }
     setTyped(null);

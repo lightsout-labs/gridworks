@@ -1,6 +1,6 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { Pencil, Tags, Trash2, type LucideIcon } from 'lucide-react';
-import { useId, useState, useSyncExternalStore } from 'react';
+import { useCallback, useId, useState, useSyncExternalStore } from 'react';
 import type { NamedRange, NameProblem, Workbook } from '../../engine/workbook';
 import type { View } from '../grid/view';
 import { Tooltip, useTranslation } from './controls';
@@ -51,10 +51,11 @@ export function NameControls({
 /** The defined names, each with its range, to edit or delete. */
 function NameList({ workbook, view }: { workbook: Workbook; view: View }) {
   const t = useTranslation();
-  const names = useSyncExternalStore(
-    workbook.subscribe.bind(workbook),
-    () => workbook.names,
+  const subscribe = useCallback(
+    (listener: () => void) => workbook.subscribe(listener),
+    [workbook],
   );
+  const names = useSyncExternalStore(subscribe, () => workbook.names);
   const [editing, setEditing] = useState<NamedRange | null>(null);
   if (editing) {
     return (
@@ -112,16 +113,19 @@ function NameForm({
   onCancel,
 }: {
   named: NamedRange;
-  onSave: (name: string, reference: string) => NameProblem | 'reference' | null;
+  onSave: (
+    name: string,
+    reference: string,
+  ) => NameProblem | 'reference' | 'entry' | null;
   onCancel: () => void;
 }) {
   const t = useTranslation();
   const id = useId();
   const [name, setName] = useState(named.name);
   const [reference, setReference] = useState(`=${named.refersTo}`);
-  const [problem, setProblem] = useState<NameProblem | 'reference' | null>(
-    null,
-  );
+  const [problem, setProblem] = useState<
+    NameProblem | 'reference' | 'entry' | null
+  >(null);
   return (
     <form
       onSubmit={(event) => {
@@ -150,7 +154,8 @@ function NameForm({
         aria-invalid={problem === 'reference'}
         onChange={(event) => setReference(event.target.value)}
       />
-      {problem && (
+      {/* A rejected entry has its own message. */}
+      {problem && problem !== 'entry' && (
         <p className={styles.problem} role="alert">
           {t(`names.problem.${problem}` satisfies Key)}
         </p>

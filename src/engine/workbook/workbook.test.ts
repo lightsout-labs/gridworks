@@ -3187,8 +3187,25 @@ describe('named ranges', () => {
     expect(workbook.cell(sheet, 0, 1).formula).toBe('=New+1');
     expect(show(0, 1)).toBe('5');
     workbook.undo();
-    expect(workbook.cell(sheet, 0, 1).formula).toBe('=Old+1');
+    expect(workbook.cell(sheet, 0, 1).formula).toBe('=old+1');
     expect(show(0, 1)).toBe('5');
+    workbook.redo();
+    expect(workbook.cell(sheet, 0, 1).formula).toBe('=New+1');
+  });
+
+  it('puts back on undo only the formulas a rename rewrote', () => {
+    const { workbook, sheet, set, show } = setup();
+    set(0, 0, '4');
+    workbook.execute(names(['Old', 'Sheet1!$A$1']));
+    set(0, 1, '=New');
+    workbook.execute({
+      ...names(['New', 'Sheet1!$A$1']),
+      renamed: { from: 'Old', to: 'New' },
+    } as Command);
+    expect(show(0, 1)).toBe('4');
+    workbook.undo();
+    expect(workbook.cell(sheet, 0, 1).formula).toBe('=New');
+    expect(show(0, 1)).toBe('#NAME?');
   });
 
   it('moves names with rows and columns inserted and deleted, and back on undo', () => {

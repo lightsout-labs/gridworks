@@ -1045,7 +1045,7 @@ Notes:
 
 ## S26: Named ranges
 
-Status: In progress
+Status: Done
 
 Acceptance criteria:
 - The user can name the selected range by typing a name in the name box. (R27)
@@ -1060,6 +1060,21 @@ Acceptance criteria:
 - Its controls are in the ribbon or a context menu, are translated in both
   languages, look right in both themes, and have hover, focus and disabled
   states and tooltips. (R37, R41, R42, R43, R44)
+
+Notes:
+- Snapshots keep the names as `names`: each `name` and `refersTo`, Excel's
+  text without `=` (`Sheet1!$A$1:$B$2`, or `#REF!`). S28 (XLSX) reads and
+  writes them as `definedName` elements of `workbook.xml`; names scoped to
+  a sheet (`localSheetId`), hidden ones, and names of constants or
+  formulas are not supported and should be reported as dropped. Until S28,
+  `calculable` still treats a name as unknown, so a file's formula using
+  a name keeps its last value; S28 should read the names first and accept
+  those formulas.
+- Formulas keep a name as written, in its case; `references(ast, names)`
+  and the context's `name` resolve it. A list source of data validation
+  may be `=Name`.
+- WebKit needs `libevent-2.1-7t64` and `libavif16` on Ubuntu to run
+  locally (`sudo npx playwright install-deps webkit`).
 
 ## S27: Notes and hyperlinks
 

@@ -295,11 +295,19 @@ export type Command =
       /**
        * Gives the workbook these defined names in place of its own (R27).
        * `renamed` rewrites the formulas that use the name `from` to use
-       * `to`, as Excel does when a name is renamed.
+       * `to`, as Excel does when a name is renamed. `formulas` sets cells
+       * of sheets to formulas instead: how the workbook undoes and redoes
+       * a rename, putting back only the formulas it rewrote.
        */
       readonly type: 'setNames';
       readonly names: readonly NamedRange[];
       readonly renamed?: { readonly from: string; readonly to: string };
+      readonly formulas?: readonly (readonly [
+        sheet: string,
+        row: number,
+        col: number,
+        formula: string,
+      ])[];
     }
   | {
       /**
@@ -1549,13 +1557,30 @@ export class Workbook {
       seen.add(name.toLowerCase());
     }
     const old = this.nameList;
-    if (renamed) {
+    // The formulas rewritten, as they were and as they become.
+    const before: [string, number, number, string][] = [];
+    const after: [string, number, number, string][] = [];
+    const put = (sheet: Sheet, row: number, col: number, ast: Ast) => {
+      const text = `=${print(ast)}`;
+      before.push([
+        sheet.id,
+        row,
+        col,
+        sheet.formulas.get(key(row, col))!.text,
+      ]);
+      after.push([sheet.id, row, col, text]);
+      this.calc.put(sheet, row, col, text, ast);
+    };
+    if (command.formulas) {
+      for (const [id, row, col, text] of command.formulas) {
+        put(this.sheet(id), row, col, parse(text.slice(1))!);
+      }
+    } else if (renamed) {
       const move = { type: 'renameName', ...renamed } as const;
       for (const each of this.sheetList) {
         for (const formula of [...each.formulas.values()]) {
           const ast = shift(formula.ast, move);
-          if (ast === formula.ast) continue;
-          this.calc.put(each, formula.row, formula.col, `=${print(ast)}`, ast);
+          if (ast !== formula.ast) put(each, formula.row, formula.col, ast);
         }
       }
     }
@@ -1570,11 +1595,16 @@ export class Workbook {
       .map(({ refersTo }) => this.locate(refersTo, this.sheetList[0]!.id))
       .find((found) => found !== null);
     return {
-      executed: command,
+      // Recorded as what it did, so that replaying it rewrites the same.
+      executed: {
+        type: 'setNames',
+        names,
+        ...(after.length > 0 && { formulas: after }),
+      },
       reverse: {
         type: 'setNames',
         names: old,
-        ...(renamed && { renamed: { from: renamed.to, to: renamed.from } }),
+        ...(before.length > 0 && { formulas: before }),
       },
       change: shown
         ? { sheet: shown.sheet, ranges: [shown.range] }

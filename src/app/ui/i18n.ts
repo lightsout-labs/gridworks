@@ -188,6 +188,7 @@ const en = {
   'names.list': 'Defined names',
   'names.list.tooltip': 'Go to a name of the workbook',
   'names.invalid': '"{text}" is not a valid reference or name.',
+  'names.deleted': '"{text}" refers to cells that were deleted.',
   'names.group': 'Defined names',
   'names.manager': 'Name manager',
   'names.manager.tooltip':
@@ -613,6 +614,7 @@ const zh: Record<Key, string> = {
   'names.list': '已定义的名称',
   'names.list.tooltip': '转到工作簿中的名称',
   'names.invalid': '“{text}”不是有效的引用或名称。',
+  'names.deleted': '“{text}”引用的单元格已被删除。',
   'names.group': '定义的名称',
   'names.manager': '名称管理器',
   'names.manager.tooltip':

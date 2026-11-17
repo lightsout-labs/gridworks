@@ -359,9 +359,10 @@ export class View {
   /**
    * Goes to a cell address, a range or a defined name typed in the name
    * box, on its sheet; or names the last range selected with a new name,
-   * as Excel does (R27). `invalid` when the text is none of these.
+   * as Excel does (R27). `deleted` for a name whose cells were deleted,
+   * and `invalid` when the text is none of these.
    */
-  goTo(text: string): 'invalid' | null {
+  goTo(text: string): 'invalid' | 'deleted' | null {
     if (!this.commit()) return null;
     const { sheet, selection } = this.current;
     const place = this.workbook.locate(text, sheet);
@@ -379,7 +380,9 @@ export class View {
       return null;
     }
     const name = text.trim();
-    if (this.workbook.nameProblem(name) !== null) return 'invalid';
+    const problem = this.workbook.nameProblem(name);
+    if (problem === 'taken') return 'deleted';
+    if (problem) return 'invalid';
     const range = selection.ranges[selection.ranges.length - 1]!;
     this.workbook.execute({
       type: 'setNames',
@@ -394,14 +397,15 @@ export class View {
   /**
    * Gives the defined name `old` a new name and the range of a reference
    * typed with or without its `=`, on the shown sheet unless it names one;
-   * formulas that use it follow a new name. Gives why it cannot, the
-   * reference being `reference`.
+   * formulas that use it follow a new name. Gives why it cannot: the
+   * reference being `reference`, or `entry` when an entry waiting to be
+   * committed is rejected by data validation.
    */
   setName(
     old: string,
     name: string,
     reference: string,
-  ): NameProblem | 'reference' | null {
+  ): NameProblem | 'reference' | 'entry' | null {
     const problem = this.workbook.nameProblem(name, old);
     if (problem) return problem;
     const place = this.workbook.locate(
@@ -409,7 +413,7 @@ export class View {
       this.current.sheet,
     );
     if (!place) return 'reference';
-    if (!this.commit()) return null;
+    if (!this.commit()) return 'entry';
     const folded = old.toLowerCase();
     this.workbook.execute({
       type: 'setNames',

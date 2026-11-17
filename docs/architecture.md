@@ -65,7 +65,7 @@ because a requirement needs it.
 | `engine/format` | `formatValue(value, code)`, `formatColor(value, code)`, `validFormat(code)`, `changedFormat(code, value, change)` (one decimal more or fewer, or the thousands separator turned over), `parseInput(text)`, `parseDate(text)`, `editText(value, code)`, `builtinFormat(id)`, `isDateFormat(code)`, `isTextFormat(code)`, `isGroupedFormat(code)`, `dateSerial(year, month, day)`, `dateParts(serial)` | Excel format codes and their sections, colors and literal text; date serial numbers; and recognition of typed numbers, dates, times, percentages and booleans, on top of `numfmt` (R4, R18). |
 | `engine/io` | `readXlsx(bytes, name)` (a snapshot and what was dropped), `writeXlsx(snapshot)`, `readCsv(text)`, `writeCsv(snapshot, sheet)` | Reading the parts of an `.xlsx` file; shared formulas; the mapping from a workbook snapshot to ExcelJS; the list of dropped features reported on import; CSV quoting (R30–R32). |
 | `app/platform` | The `Platform` interface: `openFile()`, `saveFile(name, bytes)`, `workbooks` (list, load, record a change, save, rename, delete), `preferences` (get, set), `listenToClipboard(listener)` (the user's copy, cut and paste outside a text box), `writeClipboard(contents)` (tab-separated text and an HTML table), `print(document)`; and `webPlatform`, its one implementation | File inputs and downloads; the IndexedDB schema; clipboard events and the copy command; the print frame (R33, R34, R51). |
-| `app/grid` | `<Grid workbook view menu fillOptions filterButton listButton />` and the `View` it edits (active sheet, selection, zoom, entry, End mode, the cells copied or cut, the range the fill handle is dragged over and the last fill, the range of the format painter, the cell find went to, whether the entry was rejected by data validation) and its find and replace (`findNext`, `replace`, `replaceAll`) and names (`selectionName`, `goTo`, `setName`, `deleteName`); `<FormulaEditor>` and `keyAction`, which the formula bar shares to edit the same entry | Canvas drawing and virtualization; frozen panes; hit testing; text measurement, fonts, colors, fills, alignment, wrapping and overflow; `####` for numbers too wide; borders and merged cells; selection, resize, fill-handle and reference-picking gestures; the moving border of the cells copied; the in-cell editor and its Enter and Edit modes; function and name completion, the argument hint, reference colors and F4 (`formula.ts`); keyboard navigation and editing keys as in Excel (R2, R3, R4, R8, R9, R16, R21, R45). |
+| `app/grid` | `<Grid workbook view menu fillOptions filterButton listButton />` and the `View` it edits (active sheet, selection, zoom, entry, End mode, the cells copied or cut, the range the fill handle is dragged over and the last fill, the range of the format painter, the cell find went to, whether the entry was rejected by data validation) and its find and replace (`findNext`, `replace`, `replaceAll`) and names (`selectionName`, `goTo`, `setName`, `deleteName`, and `definedNames` and `complete(name, defined)` for formula completion); `<FormulaEditor>` and `keyAction`, which the formula bar shares to edit the same entry | Canvas drawing and virtualization; frozen panes; hit testing; text measurement, fonts, colors, fills, alignment, wrapping and overflow; `####` for numbers too wide; borders and merged cells; selection, resize, fill-handle and reference-picking gestures; the moving border of the cells copied; the in-cell editor and its Enter and Edit modes; function and name completion, the argument hint, reference colors and F4 (`formula.ts`); keyboard navigation and editing keys as in Excel (R2, R3, R4, R8, R9, R16, R21, R45). |
 | `app/ui` | `<App platform />` | The start screen, ribbon, formula bar and name box, sheet tabs, status bar, context menus (the cell menu is the `menu` of the grid), dialogs and side panels; shortcuts; translation dictionaries; themes; autosave timing; building the printable document (R34, R36–R44). |
 
 Boundaries, enforced by the build so that R50 and R51 cannot erode:
@@ -280,8 +280,10 @@ Decisions that are cheap to reverse, with their reasons:
   than case. `setNames` replaces the list, kept in alphabetical order, as
   `setRules` replaces a sheet's rules, so defining, editing and deleting
   a name are each one command whose reverse is the list as it was; its
-  `renamed` rewrites the formulas that use the old name, as Excel does,
-  and its reverse renames them back. A formula keeps a name as written;
+  `renamed` rewrites the formulas that use the old name, as Excel does;
+  listeners get, and undo keeps, the formulas rewritten as `formulas`, so
+  undo puts back only those, as they were typed, and a formula that
+  already used the new name keeps it. A formula keeps a name as written;
   the evaluator asks the context what it refers to, and a name not
   defined gives `#NAME?`, so deleting a name, or a formula typed before
   its name, needs nothing of its own. The dependency graph enters the
@@ -295,8 +297,8 @@ Decisions that are cheap to reverse, with their reasons:
   name whose range is exactly the one range selected; Enter there goes to
   a cell address, a range (on another sheet too) or a name, revealing its
   top-left cell and giving the keyboard back to the grid, or names the
-  last range selected with a new name, and anything else gives a message
-  in the message bar. Its list, beside it, goes to a name chosen. The
+  last range selected with a new name, and anything else, or a name whose
+  cells were deleted, gives a message in the message bar. Its list, beside it, goes to a name chosen. The
   Formulas tab's Name manager lists the names with their ranges, edits a
   name and its range (typed with or without `=`, on the sheet shown
   unless it names one) and deletes one; Excel's New, Filter and comment
