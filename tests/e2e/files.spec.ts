@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
-import { UNSUPPORTED_PARTS, xlsxFile } from '../xlsx';
-import { clickCell, enter, expectCell, openApp } from './grid';
+import { excelWorkbook, UNSUPPORTED_PARTS, xlsxFile } from '../xlsx';
+import { cellBackground, clickCell, enter, expectCell, openApp } from './grid';
 
 const XLSX_TYPE =
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -104,6 +104,63 @@ test('a file with features Gridworks does not support opens and says what was dr
 
   await page.getByRole('button', { name: 'Close' }).click();
   await expect(page.getByRole('alert')).toHaveCount(0);
+});
+
+/** Selects a cell or a named range by typing it in the name box. */
+async function goTo(page: Page, text: string): Promise<void> {
+  const nameBox = page.getByRole('combobox', { name: 'Name box' });
+  await nameBox.fill(text);
+  await nameBox.press('Enter');
+}
+
+/** Expects the features of the workbook saved by Excel to show. */
+async function expectExcelFeatures(page: Page): Promise<void> {
+  await expect(sheetTabs(page)).toHaveText(['Formats', 'My lists']);
+  await page.getByRole('tab', { name: 'Home' }).click();
+  await expectCell(page, 0, 0, 'A1 Total');
+  await expect(
+    page.getByRole('button', { name: 'Bold', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  await expect(
+    page.getByRole('button', { name: 'Font', exact: true }),
+  ).toHaveText('Arial');
+  await clickCell(page, 8, 8);
+  expect(await cellBackground(page, 0, 0)).toEqual([255, 255, 0]);
+  await clickCell(page, 0, 0);
+  await page.getByRole('tab', { name: 'Review' }).click();
+  await expect(
+    page.getByRole('button', { name: 'Edit note', exact: true }),
+  ).toBeVisible();
+  await goTo(page, 'B1');
+  await expect(page.getByRole('status')).toHaveText('B1 12.5%');
+  await goTo(page, 'B3');
+  await expect(page.getByRole('status')).toHaveText('B3 45');
+  await expect(page.getByLabel('Formula bar')).toHaveValue('=SUM(Rates)');
+  await goTo(page, 'Colors');
+  await expect(page.getByRole('status')).toHaveText('A1 Red');
+}
+
+test('a workbook saved by Excel opens with its features, and saving it keeps them', async ({
+  page,
+}) => {
+  await openApp(page);
+  await openFile(page, 'Features.xlsx', await excelWorkbook());
+
+  await expect(page.getByRole('alert')).toHaveText(
+    'Some content of "Features.xlsx" is not supported and was not opened: ' +
+      '1 table, 3 conditional formats, 1 data validation rule, ' +
+      '2 defined names, 1 hyperlink that is not a web or email address.',
+  );
+  await page.getByRole('button', { name: 'Close' }).click();
+  await expectExcelFeatures(page);
+
+  await page.getByRole('tab', { name: 'File' }).click();
+  const downloading = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Save' }).click();
+  const saved = await readFile(await (await downloading).path());
+  await openFile(page, 'Features.xlsx', saved);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expectExcelFeatures(page);
 });
 
 test('a file that is not an .xlsx file leaves the workbook as it was', async ({

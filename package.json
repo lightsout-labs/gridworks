@@ -15,7 +15,6 @@
     "@radix-ui/react-dropdown-menu": "^2.2.1",
     "@radix-ui/react-tabs": "^1.2.1",
     "@radix-ui/react-tooltip": "^1.4.1",
-    "exceljs": "^4.4.0",
     "jszip": "^3.10.1",
     "lucide-react": "^1.72.0",
     "numfmt": "^4.1.3",

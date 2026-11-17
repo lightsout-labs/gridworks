@@ -814,21 +814,26 @@ function movedLines(move: Extract<Move, { type: 'lines' }>) {
 
 /**
  * Whether Gridworks can calculate a formula: whether every function it
- * calls is in the library and it uses no other name.
+ * calls is in the library and every other name it uses is one of those
+ * `isName` accepts, the defined names.
  */
-export function calculable(ast: Ast): boolean {
+export function calculable(
+  ast: Ast,
+  isName: (name: string) => boolean = () => false,
+): boolean {
+  const each = (node: Ast) => calculable(node, isName);
   switch (ast.type) {
     case 'name':
-      return false;
+      return isName(ast.name);
     case 'call':
-      return ast.name in LIBRARY && ast.args.every(calculable);
+      return ast.name in LIBRARY && ast.args.every(each);
     case 'unary':
     case 'percent':
-      return calculable(ast.operand);
+      return each(ast.operand);
     case 'paren':
-      return calculable(ast.inner);
+      return each(ast.inner);
     case 'binary':
-      return calculable(ast.left) && calculable(ast.right);
+      return each(ast.left) && each(ast.right);
     default:
       return true;
   }
