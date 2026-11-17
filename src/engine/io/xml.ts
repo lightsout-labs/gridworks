@@ -1,4 +1,4 @@
-import { columnName, type Area } from '../formula';
+import { columnName, SHEET_COLUMNS, SHEET_ROWS, type Area } from '../formula';
 
 /** The attributes of an element's start tag, decoded. */
 export function attributes(tag: string): Record<string, string> {
@@ -88,21 +88,38 @@ export function columnIndex(letters: string): number {
   return col - 1;
 }
 
-const CELL = /^\$?([A-Z]{1,3})\$?(\d+)$/;
+const CELL = /^\$?([A-Z]{1,3})?\$?(\d+)?$/;
 
-/** The area of a reference such as `A1` or `B2:C3`, or `null`. */
+/**
+ * The area of a reference such as `A1`, `B2:C3`, `A:A` or `1:1`, cut to
+ * the rows and columns of a sheet, or `null`.
+ */
 export function areaOf(reference: string): Area | null {
   const [first = '', last = first] = reference.split(':');
   const start = CELL.exec(first);
   const end = CELL.exec(last);
-  if (!start || !end) return null;
-  const rows = [Number(start[2]) - 1, Number(end[2]) - 1];
-  const cols = [columnIndex(start[1]!), columnIndex(end[1]!)];
+  if (!start || !end || first === '' || last === '') return null;
+  // A whole column has no row, and a whole row no column.
+  const rows = [start[2], end[2]].map((digits, at) =>
+    digits === undefined ? (at === 0 ? 0 : SHEET_ROWS - 1) : Number(digits) - 1,
+  );
+  const cols = [start[1], end[1]].map((letters, at) =>
+    letters === undefined
+      ? at === 0
+        ? 0
+        : SHEET_COLUMNS - 1
+      : columnIndex(letters),
+  );
+  if ((start[1] === undefined) !== (end[1] === undefined)) return null;
+  if ((start[2] === undefined) !== (end[2] === undefined)) return null;
+  const top = Math.min(...rows);
+  const left = Math.min(...cols);
+  if (top >= SHEET_ROWS || left >= SHEET_COLUMNS) return null;
   return {
-    top: Math.min(...rows),
-    left: Math.min(...cols),
-    bottom: Math.max(...rows),
-    right: Math.max(...cols),
+    top,
+    left,
+    bottom: Math.min(Math.max(...rows), SHEET_ROWS - 1),
+    right: Math.min(Math.max(...cols), SHEET_COLUMNS - 1),
   };
 }
 

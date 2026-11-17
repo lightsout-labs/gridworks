@@ -477,7 +477,8 @@ function criterionOf(
     if (first.startsWith('"')) {
       return { type: 'list', source: first.slice(1, -1).replaceAll('""', '"') };
     }
-    return parse(first)?.type === 'range'
+    const type = parse(first)?.type;
+    return type === 'range' || type === 'name'
       ? { type: 'list', source: `=${first}` }
       : null;
   }

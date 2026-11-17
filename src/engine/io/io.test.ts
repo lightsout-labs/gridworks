@@ -178,6 +178,26 @@ describe('readXlsx', () => {
     ]);
   });
 
+  it('reads rules of whole columns and rows, cut to the rows and columns of a sheet', async () => {
+    const { snapshot } = await open(
+      await xlsxFile({
+        sheets: [
+          {
+            name: 'Sheet1',
+            rows: '',
+            after:
+              '<conditionalFormatting sqref="B:B 3:3 A1:A1048576"><cfRule type="duplicateValues" priority="1"/></conditionalFormatting>',
+          },
+        ],
+      }),
+    );
+    expect(snapshot.sheets[0]!.conditionalFormats![0]!.ranges).toEqual([
+      { top: 0, left: 1, bottom: 99_999, right: 1 },
+      { top: 2, left: 0, bottom: 2, right: 99 },
+      { top: 0, left: 0, bottom: 99_999, right: 0 },
+    ]);
+  });
+
   it('rejects a file that is not an .xlsx file', async () => {
     await expect(
       readXlsx(new TextEncoder().encode('just text'), 'notes'),
@@ -483,6 +503,55 @@ describe('writeXlsx', () => {
     );
     expect(dropped).toEqual([]);
     expect(again).toEqual(snapshot);
+  });
+
+  it('writes what a workbook made in Gridworks has beyond that file, and reads it back the same', async () => {
+    const snapshot: Snapshot = {
+      version: 1,
+      name: 'Made here',
+      styles: [
+        {},
+        {
+          size: 12,
+          borderTop: { line: 'thick', color: '#00ff00' },
+          borderBottom: { line: 'dotted' },
+        },
+      ],
+      names: [{ name: 'Top', refersTo: 'Sheet1!$A$1' }],
+      sheets: [
+        {
+          id: 'sheet1',
+          name: 'Sheet1',
+          columns: [['Mail', 'x', 3]],
+          formulas: [[3, 0, '=Top&"!"']],
+          styleIds: [[1]],
+          conditionalFormats: [
+            {
+              ranges: [{ top: 0, left: 1, bottom: 9, right: 1 }],
+              condition: { type: 'scale', colors: ['#ffffff', '#ff0000'] },
+              format: {},
+            },
+          ],
+          validations: [
+            {
+              ranges: [{ top: 1, left: 0, bottom: 1, right: 0 }],
+              criterion: { type: 'list', source: '=Top' },
+            },
+            {
+              ranges: [{ top: 2, left: 0, bottom: 2, right: 0 }],
+              criterion: { type: 'number', max: 5 },
+            },
+          ],
+          links: [[0, 0, 'mailto:team@example.com']],
+        },
+      ],
+    };
+    const { snapshot: read, dropped } = await readXlsx(
+      await writeXlsx(snapshot),
+      'Made here',
+    );
+    expect(dropped).toEqual([]);
+    expect(read).toMatchObject(snapshot);
   });
 
   it('writes a package whose every part has a content type and every relationship a target', async () => {

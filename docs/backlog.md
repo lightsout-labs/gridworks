@@ -1106,7 +1106,7 @@ Notes:
 
 ## S28: XLSX files: formatting and everything else
 
-Status: In progress
+Status: Done
 
 Acceptance criteria:
 - Fonts, colors, alignment, wrap, borders and number formats survive saving
@@ -1119,6 +1119,19 @@ Acceptance criteria:
   every feature shown correctly. (R30)
 - A feature of the file that Gridworks does not support is named in the message
   shown after opening. (R31)
+
+Notes:
+- `engine/io` reads (`read.ts`) and writes (`write.ts`, `styles.ts`) `.xlsx`
+  with its own code over JSZip; ExcelJS is gone (ADR 0007). S29 (CSV) adds
+  `readCsv` and `writeCsv` beside them; `xml.ts` holds the shared XML and
+  A1-reference helpers (`areaOf`, `areaName`).
+- `tests/xlsx.ts` has `excelWorkbook()`, a fixture laid out as Excel 365
+  saves one, built by hand: no file saved by Excel itself is in the
+  repository. Filters, fitted row heights and print settings are not
+  written; S32 (printing) may add the print area if it needs it.
+- Not confirmed in Excel itself: that rows fitted to wrapped text open
+  tall enough without a written height, and that the hand-written VML of
+  notes and the data bar extension show as intended.
 
 ## S29: CSV files
 
