@@ -1158,6 +1158,9 @@ Notes:
   any other.
 - One full `make e2e` run failed 19 tests with no saved log; the next two
   runs passed all 318, so it was not traced.
+- CI `check` failed once on the engine timing test "totals a whole sheet of
+  100,000 by 100 cells quickly" (502 ms against 500), which this slice does
+  not touch; rerunning the job was the fix.
 
 ## S30: The start screen and stored workbooks
 
