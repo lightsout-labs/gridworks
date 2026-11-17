@@ -522,15 +522,24 @@ test.describe('the controls', () => {
     await clickCell(page, 5, 5);
     await check(
       [
-        ['button', 'Open', 'Open an Excel workbook (.xlsx) from your computer'],
+        [
+          'button',
+          'Open',
+          'Open an Excel workbook (.xlsx) or a CSV file (.csv) from your computer',
+        ],
         [
           'button',
           'Save',
           'Save the workbook to your computer as an Excel workbook (.xlsx)',
         ],
+        [
+          'button',
+          'Export CSV',
+          'Save the current sheet to your computer as a CSV file (.csv), with formulas as their results',
+        ],
         ...statusBar,
       ],
-      6,
+      7,
     );
     await expect(page.getByRole('slider')).toHaveCount(1);
     await expect(page.getByRole('textbox')).toHaveCount(1);

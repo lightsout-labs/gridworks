@@ -166,7 +166,7 @@ function openFile(): Promise<ChosenFile | null> {
   return new Promise((resolve, reject) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.xlsx';
+    input.accept = '.xlsx,.csv';
     input.hidden = true;
     let changed = false;
     input.addEventListener('change', () => {

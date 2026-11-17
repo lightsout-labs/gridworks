@@ -5,6 +5,7 @@ import {
   ClipboardPaste,
   Copy,
   Download,
+  FileText,
   FolderOpen,
   SquareFunction,
   Moon,
@@ -66,6 +67,7 @@ export function Ribbon({
   busy,
   onOpen,
   onSave,
+  onExportCsv,
   onCopy,
   onFind,
   onEdit,
@@ -80,6 +82,8 @@ export function Ribbon({
   busy: boolean;
   onOpen: () => void;
   onSave: () => void;
+  /** Saves the active sheet as a `.csv` file. */
+  onExportCsv: () => void;
   /** Puts the cells copied or cut on the system clipboard. */
   onCopy: (contents: ClipboardContents | null) => void;
   /** Opens the find panel, alone or with replace. */
@@ -150,6 +154,14 @@ export function Ribbon({
             tooltip={t('file.save.tooltip')}
             disabled={busy}
             onRun={onSave}
+            labeled
+          />
+          <Command
+            icon={FileText}
+            label={t('file.exportCsv')}
+            tooltip={t('file.exportCsv.tooltip')}
+            disabled={busy}
+            onRun={onExportCsv}
             labeled
           />
         </Group>

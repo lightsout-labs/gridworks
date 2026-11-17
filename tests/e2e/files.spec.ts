@@ -14,13 +14,14 @@ async function openFile(
   page: Page,
   name: string,
   bytes: Uint8Array,
+  mimeType = XLSX_TYPE,
 ): Promise<void> {
   await page.getByRole('tab', { name: 'File' }).click();
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: 'Open' }).click();
   await (
     await chooser
-  ).setFiles({ name, mimeType: XLSX_TYPE, buffer: Buffer.from(bytes) });
+  ).setFiles({ name, mimeType, buffer: Buffer.from(bytes) });
 }
 
 const budget = () =>
@@ -163,6 +164,48 @@ test('a workbook saved by Excel opens with its features, and saving it keeps the
   await expectExcelFeatures(page);
 });
 
+test('a .csv file opens with typed values, and exporting the sheet gives a file that reopens the same', async ({
+  page,
+}) => {
+  await openApp(page);
+  const csv =
+    '\uFEFFItem,Price,Sold,Note\r\n' +
+    '"Tea, green",3.75,2026-03-01,"said ""fresh""\nand cheap"\r\n' +
+    'Café,"1,200",FALSE,\r\n';
+  await openFile(page, 'Prices.csv', new TextEncoder().encode(csv), 'text/csv');
+
+  await expect(sheetTabs(page)).toHaveText(['Prices']);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expectCell(page, 1, 0, 'A2 Tea, green');
+  await expectCell(page, 1, 1, 'B2 3.75');
+  await expectCell(page, 1, 2, 'C2 3/1/2026');
+  await expectCell(page, 1, 3, 'D2 said "fresh"\nand cheap');
+  await expectCell(page, 2, 0, 'A3 Café');
+  await expectCell(page, 2, 1, 'B3 1,200');
+  await expectCell(page, 2, 2, 'C3 FALSE');
+
+  // A formula is exported as its result.
+  await clickCell(page, 3, 1);
+  await enter(page, '=B2+B3');
+  await page.getByRole('tab', { name: 'File' }).click();
+  const downloading = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export CSV' }).click();
+  const download = await downloading;
+  expect(download.suggestedFilename()).toBe('Prices.csv');
+  const saved = await readFile(await download.path());
+  expect(saved.toString('utf8')).toBe(
+    '\uFEFFItem,Price,Sold,Note\r\n' +
+      '"Tea, green",3.75,2026-03-01,"said ""fresh""\nand cheap"\r\n' +
+      'Café,1200,FALSE,\r\n' +
+      ',1203.75,,\r\n',
+  );
+
+  await openFile(page, 'Prices.csv', saved, 'text/csv');
+  await expectCell(page, 3, 1, 'B4 1203.75');
+  await expect(page.getByLabel('Formula bar')).toHaveValue('1203.75');
+  await expectCell(page, 1, 2, 'C2 3/1/2026');
+});
+
 test('a file that is not an .xlsx file leaves the workbook as it was', async ({
   page,
 }) => {
@@ -190,7 +233,13 @@ test.describe('in Chinese and the dark theme', () => {
     await page.getByRole('button', { name: '打开' }).hover();
     await expect(
       page.getByRole('tooltip', {
-        name: '从计算机中打开 Excel 工作簿 (.xlsx)',
+        name: '从计算机中打开 Excel 工作簿 (.xlsx) 或 CSV 文件 (.csv)',
+      }),
+    ).toBeVisible();
+    await page.getByRole('button', { name: '导出 CSV' }).hover();
+    await expect(
+      page.getByRole('tooltip', {
+        name: '将当前工作表以 CSV 文件 (.csv) 格式保存到计算机，公式保存为其结果',
       }),
     ).toBeVisible();
     const chooser = page.waitForEvent('filechooser');

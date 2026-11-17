@@ -4,12 +4,16 @@ const en = {
   ribbon: 'Ribbon',
   'tab.file': 'File',
   'tab.file.tooltip': 'Open and save workbooks',
-  'file.group': 'Excel workbook',
+  'file.group': 'Files',
   'file.open': 'Open',
-  'file.open.tooltip': 'Open an Excel workbook (.xlsx) from your computer',
+  'file.open.tooltip':
+    'Open an Excel workbook (.xlsx) or a CSV file (.csv) from your computer',
   'file.save': 'Save',
   'file.save.tooltip':
     'Save the workbook to your computer as an Excel workbook (.xlsx)',
+  'file.exportCsv': 'Export CSV',
+  'file.exportCsv.tooltip':
+    'Save the current sheet to your computer as a CSV file (.csv), with formulas as their results',
   'file.invalid':
     '"{name}" could not be opened because it is not a valid Excel workbook (.xlsx).',
   'file.saveFailed': 'The workbook could not be saved. Please try again.',
@@ -474,11 +478,14 @@ const zh: Record<Key, string> = {
   ribbon: '功能区',
   'tab.file': '文件',
   'tab.file.tooltip': '打开和保存工作簿',
-  'file.group': 'Excel 工作簿',
+  'file.group': '文件',
   'file.open': '打开',
-  'file.open.tooltip': '从计算机中打开 Excel 工作簿 (.xlsx)',
+  'file.open.tooltip': '从计算机中打开 Excel 工作簿 (.xlsx) 或 CSV 文件 (.csv)',
   'file.save': '保存',
   'file.save.tooltip': '将工作簿以 Excel 工作簿 (.xlsx) 格式保存到计算机',
+  'file.exportCsv': '导出 CSV',
+  'file.exportCsv.tooltip':
+    '将当前工作表以 CSV 文件 (.csv) 格式保存到计算机，公式保存为其结果',
   'file.invalid': '无法打开“{name}”，因为它不是有效的 Excel 工作簿 (.xlsx)。',
   'file.saveFailed': '无法保存工作簿，请重试。',
   'file.dropped': '“{name}”中有部分内容不受支持，未能打开：{list}。',

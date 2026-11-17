@@ -40,7 +40,7 @@ export interface ClipboardListener {
  */
 export interface Platform {
   /**
-   * Asks the user for an `.xlsx` file and reads it, or gives `null` when
+   * Asks the user for an `.xlsx` or `.csv` file and reads it, or gives `null` when
    * the user chooses none.
    */
   openFile(): Promise<ChosenFile | null>;

@@ -1,11 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { droppedMessage, workbookName } from './files';
+import { droppedMessage, isCsv, workbookName } from './files';
 
 describe('workbookName', () => {
   it('is the name of the file without its extension', () => {
     expect(workbookName('Budget 2026.xlsx')).toBe('Budget 2026');
     expect(workbookName('report.final.XLSX')).toBe('report.final');
     expect(workbookName('notes')).toBe('notes');
+    expect(workbookName('Prices.CSV')).toBe('Prices');
+  });
+});
+
+describe('isCsv', () => {
+  it('tells a .csv file by its name', () => {
+    expect(isCsv('Prices.csv')).toBe(true);
+    expect(isCsv('PRICES.CSV')).toBe(true);
+    expect(isCsv('Prices.xlsx')).toBe(false);
+    expect(isCsv('csv')).toBe(false);
   });
 });
 

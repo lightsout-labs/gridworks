@@ -1135,7 +1135,7 @@ Notes:
 
 ## S29: CSV files
 
-Status: Todo
+Status: In progress
 
 Acceptance criteria:
 - The user can open a `.csv` file as a new workbook, with typed values
