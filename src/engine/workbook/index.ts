@@ -181,6 +181,8 @@ export type Command =
       readonly col: number;
       readonly link: string | null;
       readonly text?: string;
+      /** As in `setCell`, for a date typed as `text` without a year. */
+      readonly year?: number;
     }
   | {
       /**
@@ -1344,7 +1346,11 @@ export class Workbook {
       // Listeners that record the command replay it with the same date.
       if (year !== undefined) executed = { ...command, year };
     } else if (command.type === 'setNote' || command.type === 'setLink') {
-      this.setNoteOrLink(sheet, command);
+      const year = this.setNoteOrLink(sheet, command);
+      // Only a link's text can be a date.
+      if (year !== undefined && command.type === 'setLink') {
+        executed = { ...command, year };
+      }
     } else if (command.type === 'clear') {
       for (const range of command.ranges) this.clear(sheet, range);
     } else if (command.type === 'setStyle') {
@@ -2450,11 +2456,14 @@ export class Workbook {
     return year;
   }
 
-  /** Gives a cell a note or a link, or none, and a link its text. */
+  /**
+   * Gives a cell a note or a link, or none, and a link its text, and gives
+   * the year it gave a date typed without one.
+   */
   private setNoteOrLink(
     sheet: Sheet,
     command: Extract<Command, { type: 'setNote' | 'setLink' }>,
-  ): void {
+  ): number | undefined {
     const { row, col } = command;
     const [map, text] =
       command.type === 'setNote'
@@ -2464,16 +2473,18 @@ export class Workbook {
     if (text === '') throw new Error(`An empty ${command.type}`);
     if (text === null) map.delete(key(row, col));
     else map.set(key(row, col), text);
-    if (command.type === 'setLink' && command.text !== undefined) {
-      const input = command.text;
-      this.setCell(sheet, {
-        type: 'setCell',
-        sheet: sheet.id,
-        row,
-        col,
-        input,
-      });
+    if (command.type !== 'setLink' || command.text === undefined) {
+      return undefined;
     }
+    const { text: input, year } = command;
+    return this.setCell(sheet, {
+      type: 'setCell',
+      sheet: sheet.id,
+      row,
+      col,
+      input,
+      ...(year !== undefined && { year }),
+    });
   }
 
   /**

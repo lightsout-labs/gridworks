@@ -1650,7 +1650,7 @@ describe('notes and hyperlinks', () => {
     expect(view.note).toBe('Ask Ann');
     view.setNote('Ask Bo');
     expect(workbook.cell(sheet, 1, 2).note).toBe('Ask Bo');
-    view.deleteNote();
+    view.setNote('');
     expect(workbook.cell(sheet, 1, 2).note).toBeUndefined();
     view.setNote('Again');
     view.setNote('');
@@ -1678,6 +1678,11 @@ describe('notes and hyperlinks', () => {
     expect(view.setLink({ address: 'mailto:a@b.c' }, 'Example')).toBeNull();
     expect(workbook.cell(sheet, 0, 0).link).toBe('mailto:a@b.c');
     expect(view.setLink({ address: ' ' }, 'Example')).toBe('address');
+    expect(view.setLink({ address: 'javascript:alert(1)' }, 'x')).toBe(
+      'address',
+    );
+    expect(view.setLink({ address: 'data:text/html,x' }, 'x')).toBe('address');
+    expect(workbook.cell(sheet, 0, 0).link).toBe('mailto:a@b.c');
   });
 
   it('shows the address as the text of an empty cell, and keeps the text of one in use', () => {
@@ -1713,10 +1718,19 @@ describe('notes and hyperlinks', () => {
   });
 
   it('gives a web address to open when followed, and nothing for a cell without a link', () => {
-    const { view } = setup();
+    const { workbook, view } = setup();
     view.setLink({ address: 'https://example.com' }, 'Example');
     view.select(single({ row: 4, col: 4 }));
     expect(view.follow({ row: 0, col: 0 })).toBe('https://example.com');
+    expect(view.follow({ row: 1, col: 0 })).toBeNull();
+    // A link stored by other means is not opened unless it is safe.
+    workbook.execute({
+      type: 'setLink',
+      sheet: view.state.sheet,
+      row: 1,
+      col: 0,
+      link: 'javascript:alert(1)',
+    });
     expect(view.follow({ row: 1, col: 0 })).toBeNull();
     expect(view.state.selection).toEqual(single({ row: 4, col: 4 }));
   });

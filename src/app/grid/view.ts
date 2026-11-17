@@ -465,11 +465,6 @@ export class View {
     return this.workbook.cell(sheet, row, col).note ?? '';
   }
 
-  /** Deletes the note of the active cell, after committing an entry. */
-  deleteNote(): void {
-    this.setNote('');
-  }
-
   /** Where the hyperlink of the active cell goes, or `null` (R29). */
   get link(): LinkTarget | null {
     const { sheet, selection } = this.current;
@@ -486,7 +481,9 @@ export class View {
   /**
    * Links the active cell, after committing an entry, and shows `text` in
    * it, or the address or reference when it is empty and so is the cell.
-   * A web address without a scheme takes `https://`. Gives why it cannot:
+   * A web address without a scheme takes `https://`, and only `http:`,
+   * `https:` and `mailto:` are allowed, so that no link runs script.
+   * Gives why it cannot:
    * the `address` or the `reference` being wrong, or the `entry` rejected
    * by data validation.
    */
@@ -502,6 +499,7 @@ export class View {
       link = /^[a-z][a-z\d+.-]*:/i.test(address)
         ? address
         : `https://${address}`;
+      if (!safeLink(link)) return 'address';
       shown = link;
     } else {
       const place = this.workbook.locate(target.reference, target.sheet);
@@ -545,7 +543,8 @@ export class View {
     if (entry) return null;
     const { link } = this.workbook.cell(sheet, row, col);
     if (link === undefined) return null;
-    if (!link.startsWith('#')) return link;
+    // A link from elsewhere, such as a stored change, is checked again.
+    if (!link.startsWith('#')) return safeLink(link) ? link : null;
     const place = this.workbook.locate(link.slice(1), sheet);
     if (place) this.reveal(place);
     return null;
@@ -1585,6 +1584,11 @@ function sameRange(a: Range, b: Range): boolean {
     a.bottom === b.bottom &&
     a.right === b.right
   );
+}
+
+/** Whether a web address is one a link may open: no script runs. */
+function safeLink(address: string): boolean {
+  return /^(https?:\/\/|mailto:)/i.test(address);
 }
 
 /** The name of a range, as in `A1` or `A1:B2`. */

@@ -3434,6 +3434,11 @@ describe('notes and hyperlinks', () => {
     workbook.execute({ type: 'clear', sheet, ranges: [range(0, 0)] });
     expect(workbook.cell(sheet, 0, 0).link).toBe('https://example.com');
     expect(() => workbook.execute(link(sheet, 0, 0, ''))).toThrow();
+    // Listeners get the year of a date typed without one, to replay it.
+    const heard: Command[] = [];
+    workbook.subscribe((command) => heard.push(command));
+    workbook.execute(link(sheet, 2, 0, 'https://example.com', '3/4'));
+    expect(heard[0]).toMatchObject({ year: new Date().getFullYear() });
   });
 
   it('keeps notes and links in snapshots, copies of sheets and replayed changes', () => {

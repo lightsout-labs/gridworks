@@ -63,7 +63,7 @@ export function NoteControls({
           type="button"
           className={styles.button}
           disabled={!has}
-          onClick={() => view.deleteNote()}
+          onClick={() => view.setNote('')}
         >
           <MessageSquareX size={ICON_SIZE} aria-hidden />
           {t('note.delete')}

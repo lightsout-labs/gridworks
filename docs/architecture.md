@@ -65,7 +65,7 @@ because a requirement needs it.
 | `engine/format` | `formatValue(value, code)`, `formatColor(value, code)`, `validFormat(code)`, `changedFormat(code, value, change)` (one decimal more or fewer, or the thousands separator turned over), `parseInput(text)`, `parseDate(text)`, `editText(value, code)`, `builtinFormat(id)`, `isDateFormat(code)`, `isTextFormat(code)`, `isGroupedFormat(code)`, `dateSerial(year, month, day)`, `dateParts(serial)` | Excel format codes and their sections, colors and literal text; date serial numbers; and recognition of typed numbers, dates, times, percentages and booleans, on top of `numfmt` (R4, R18). |
 | `engine/io` | `readXlsx(bytes, name)` (a snapshot and what was dropped), `writeXlsx(snapshot)`, `readCsv(text)`, `writeCsv(snapshot, sheet)` | Reading the parts of an `.xlsx` file; shared formulas; the mapping from a workbook snapshot to ExcelJS; the list of dropped features reported on import; CSV quoting (R30–R32). |
 | `app/platform` | The `Platform` interface: `openFile()`, `saveFile(name, bytes)`, `workbooks` (list, load, record a change, save, rename, delete), `preferences` (get, set), `listenToClipboard(listener)` (the user's copy, cut and paste outside a text box), `writeClipboard(contents)` (tab-separated text and an HTML table), `print(document)`; and `webPlatform`, its one implementation | File inputs and downloads; the IndexedDB schema; clipboard events and the copy command; the print frame (R33, R34, R51). |
-| `app/grid` | `<Grid workbook view menu fillOptions filterButton listButton />` and the `View` it edits (active sheet, selection, zoom, entry, End mode, the cells copied or cut, the range the fill handle is dragged over and the last fill, the range of the format painter, the cell find went to, whether the entry was rejected by data validation) and its find and replace (`findNext`, `replace`, `replaceAll`), names (`selectionName`, `goTo`, `setName`, `deleteName`, and `definedNames` and `complete(name, defined)` for formula completion), and the active cell's note and link (`note`, `setNote`, `deleteNote`, `link`, `setLink`, `removeLink`, and `follow` for a link clicked); `<FormulaEditor>` and `keyAction`, which the formula bar shares to edit the same entry | Canvas drawing and virtualization; frozen panes; hit testing; text measurement, fonts, colors, fills, alignment, wrapping and overflow; `####` for numbers too wide; borders and merged cells; selection, resize, fill-handle and reference-picking gestures; the moving border of the cells copied; the in-cell editor and its Enter and Edit modes; function and name completion, the argument hint, reference colors and F4 (`formula.ts`); keyboard navigation and editing keys as in Excel; note markers and the note shown on hover; following a link clicked (R2, R3, R4, R8, R9, R16, R21, R28, R29, R45). |
+| `app/grid` | `<Grid workbook view menu fillOptions filterButton listButton />` and the `View` it edits (active sheet, selection, zoom, entry, End mode, the cells copied or cut, the range the fill handle is dragged over and the last fill, the range of the format painter, the cell find went to, whether the entry was rejected by data validation) and its find and replace (`findNext`, `replace`, `replaceAll`), names (`selectionName`, `goTo`, `setName`, `deleteName`, and `definedNames` and `complete(name, defined)` for formula completion), and the active cell's note and link (`note`, `setNote`, `link`, `setLink`, `removeLink`, and `follow` for a link clicked); `<FormulaEditor>` and `keyAction`, which the formula bar shares to edit the same entry | Canvas drawing and virtualization; frozen panes; hit testing; text measurement, fonts, colors, fills, alignment, wrapping and overflow; `####` for numbers too wide; borders and merged cells; selection, resize, fill-handle and reference-picking gestures; the moving border of the cells copied; the in-cell editor and its Enter and Edit modes; function and name completion, the argument hint, reference colors and F4 (`formula.ts`); keyboard navigation and editing keys as in Excel; note markers and the note shown on hover; following a link clicked (R2, R3, R4, R8, R9, R16, R21, R28, R29, R45). |
 | `app/ui` | `<App platform />` | The start screen, ribbon, formula bar and name box, sheet tabs, status bar, context menus (the cell menu is the `menu` of the grid), dialogs and side panels; shortcuts; translation dictionaries; themes; autosave timing; building the printable document (R34, R36–R44). |
 
 Boundaries, enforced by the build so that R50 and R51 cannot erode:
@@ -320,10 +320,12 @@ Decisions that are cheap to reverse, with their reasons:
   Excel's author, threaded comments and a note's own size are not built.
   A link is a web address, given `https://` when typed without a scheme,
   or `#` and a reference in the workbook, as Excel's `HYPERLINK` writes
-  one (`#'My data'!C3`, or a defined name); `setLink` may also set the
+  one (`#'My data'!C3`; a defined name typed is kept as its range). Only
+  `http:`, `https:` and `mailto:` addresses are taken, and only they are
+  opened, so that no link runs script in the app. `setLink` may also set the
   cell's text as if typed, and the dialog shows the address or reference
   in an empty cell left without one. A reference in a link is kept as
-  typed, so it does not follow a renamed sheet or lines inserted, as in
+  written, so it does not follow a renamed sheet or lines inserted, as in
   Excel. Excel gives a link the Hyperlink cell style; Gridworks stores no
   style but draws a link's text underlined, in the theme's `--link` color
   unless the cell has a color of its own, so it shows in both themes. The
@@ -335,9 +337,10 @@ Decisions that are cheap to reverse, with their reasons:
   in a new tab with `noopener`; Excel's click-and-hold to select a link
   without following it is not built, but the keyboard selects it. The
   Review tab holds New note (Edit note when the active cell has one) and
-  Delete note, the Insert tab Link, which inserts or edits the link of the
-  active cell in a dialog of its text, a web address or a sheet and cell
-  reference, and Remove link, and the cell menu all of these. `.xlsx`
+  Delete note, and the Insert tab Link, which inserts or edits the link of
+  the active cell in a dialog of its text, a web address or a sheet and
+  cell reference, with Remove link when it has one; the cell menu holds
+  all of these, Remove link included. `.xlsx`
   files keep notes and links from S28 on.
 - **Inserting or deleting rows or columns rebuilds the sheets it
   changes.** `insertLines` and `deleteLines` name spans of rows or columns;

@@ -121,7 +121,7 @@ export function CellMenu({
               icon={MessageSquareX}
               label={t('note.delete')}
               disabled={!view.note}
-              onSelect={() => view.deleteNote()}
+              onSelect={() => view.setNote('')}
             />
             <MenuItem
               icon={Link2}

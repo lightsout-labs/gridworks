@@ -155,3 +155,68 @@ test('inserts, follows, edits and removes links to a web address and to a cell',
   await clickCell(page, 0, 1);
   await expect(page.getByRole('status')).toHaveText('D10');
 });
+
+/** Whether the canvas draws any text of a cell in the dark theme's blue. */
+async function hasLinkColor(page: Page, row: number, col: number) {
+  const rect = cellRect({ row, col }, TOP);
+  return page.locator('canvas').evaluate((canvas: HTMLCanvasElement, rect) => {
+    const scale = canvas.width / canvas.clientWidth;
+    const { data } = canvas
+      .getContext('2d')!
+      .getImageData(
+        (rect.x + 2) * scale,
+        (rect.y + 2) * scale,
+        (rect.width - 4) * scale,
+        (rect.height - 4) * scale,
+      );
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 2]! > 200 && data[i + 2]! - data[i]! > 80) return true;
+    }
+    return false;
+  }, rect);
+}
+
+test.describe('in Chinese and the dark theme', () => {
+  test.use({ locale: 'zh-CN', colorScheme: 'dark' });
+
+  test('the note and link controls are translated and drawn in the theme', async ({
+    page,
+  }) => {
+    await openApp(page);
+    await clickCell(page, 1, 1);
+    await page.getByRole('tab', { name: '审阅' }).click();
+    await button(page, '新建注释').click();
+    const dialog = page.getByRole('dialog', { name: '新建注释' });
+    await dialog.getByLabel('注释', { exact: true }).fill('核对');
+    await button(page, '确定').click();
+    await expect(dialog).toBeHidden();
+    await expect(button(page, '编辑注释')).toBeVisible();
+    await expect(button(page, '删除注释')).toBeEnabled();
+    await expect.poll(() => hasMarker(page, 1, 1)).toBe(true);
+    const { x, y } = await middle(page, 1, 1);
+    await page.mouse.move(x, y);
+    const note = page.getByRole('tooltip', { name: '核对' });
+    await expect(note).toHaveCSS('background-color', 'rgb(37, 36, 35)');
+    await expect(note).toHaveCSS('color', 'rgb(237, 235, 232)');
+
+    await clickCell(page, 0, 0);
+    await page.getByRole('tab', { name: '插入' }).click();
+    await button(page, '链接').click();
+    const link = page.getByRole('dialog', { name: '插入链接' });
+    await link.getByLabel('要显示的文字').fill('Example');
+    await link.getByLabel('地址', { exact: true }).fill('');
+    await button(page, '确定').click();
+    await expect(link.getByRole('alert')).toHaveText('请输入网址。');
+    await link.getByLabel('地址', { exact: true }).fill('example.com');
+    await button(page, '确定').click();
+    await expect(link).toBeHidden();
+    await expect.poll(() => hasLinkColor(page, 0, 0)).toBe(true);
+    expect(await hasLinkColor(page, 1, 1)).toBe(false);
+
+    await fromMenu(page, 0, 0, '编辑链接');
+    await expect(page.getByRole('dialog', { name: '编辑链接' })).toBeVisible();
+    await button(page, '取消').click();
+    await fromMenu(page, 0, 0, '删除链接');
+    await expect.poll(() => hasLinkColor(page, 0, 0)).toBe(false);
+  });
+});

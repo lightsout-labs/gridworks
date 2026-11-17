@@ -1078,7 +1078,7 @@ Notes:
 
 ## S27: Notes and hyperlinks
 
-Status: In progress
+Status: Done
 
 Acceptance criteria:
 - The user can add, edit and delete a note on a cell from the ribbon and the
@@ -1093,6 +1093,16 @@ Acceptance criteria:
 - Its controls are in the ribbon or a context menu, are translated in both
   languages, look right in both themes, and have hover, focus and disabled
   states and tooltips. (R37, R41, R42, R43, R44)
+
+Notes:
+- Snapshots keep `notes` and `links` per sheet as `[row, col, text]`. A
+  link is a web address (`http:`, `https:` or `mailto:` only) or `#` and
+  a reference (`#'My data'!C3`), as Excel's `location`. S28 (XLSX) should
+  read and write notes as the `comments` part with a VML drawing, and
+  links as `hyperlinks` with relationships for addresses and `location`
+  for references; a link with another scheme should be dropped and
+  reported. Excel's Hyperlink cell style is not stored: the grid draws
+  links itself.
 
 ## S28: XLSX files: formatting and everything else
 
