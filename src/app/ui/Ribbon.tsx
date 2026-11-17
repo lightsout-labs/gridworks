@@ -42,6 +42,7 @@ import type { FindMode } from './Find';
 import type { Language } from './i18n';
 import { RuleControls } from './Rules';
 import { FilterControls } from './Filter';
+import { NameControls } from './Names';
 import { SortControls } from './Sort';
 import { ValidationControls } from './Validation';
 import styles from './Shell.module.css';
@@ -190,6 +191,9 @@ export function Ribbon({
             keepsEntry
             labeled
           />
+        </Group>
+        <Group label={t('names.group')}>
+          <NameControls workbook={workbook} view={view} />
         </Group>
       </Tabs.Content>
       <Tabs.Content className={styles.ribbonPanel} value="data">

@@ -38,6 +38,25 @@ describe('function completion', () => {
       caret: 7,
     });
   });
+
+  it('offers the defined names that start with the name typed, before the functions', () => {
+    const names = ['Sales', 'Summary', 'Tax'];
+    const { completion } = formulaHelp('=1+su', 5, names);
+    expect(completion!.definedNames).toEqual(['Summary']);
+    expect(formulaHelp('=SA', 3, names).completion).toMatchObject({
+      definedNames: ['Sales'],
+      names: [],
+    });
+    expect(formulaHelp('=ta', 3, names).completion!.definedNames).toEqual([
+      'Tax',
+    ]);
+    // Nothing is offered for a name typed in full.
+    expect(formulaHelp('=1+tax', 6, names).completion).toBeNull();
+    expect(complete('=1+sa*2', 5, 'Sales', true)).toEqual({
+      text: '=1+Sales*2',
+      caret: 8,
+    });
+  });
 });
 
 describe('argument hint', () => {

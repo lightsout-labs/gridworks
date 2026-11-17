@@ -26,10 +26,14 @@ export interface Highlight {
 /** What helps while a formula is typed, with the caret at some place. */
 export interface FormulaHelp {
   readonly references: readonly Highlight[];
-  /** The functions whose names start with the name typed at the caret. */
+  /**
+   * The defined names, and the functions, whose names start with the name
+   * typed at the caret.
+   */
   readonly completion: {
     readonly start: number;
     readonly end: number;
+    readonly definedNames: readonly string[];
     readonly names: readonly string[];
   } | null;
   /** The arguments of the function call that holds the caret. */
@@ -49,19 +53,26 @@ export interface Edit {
 
 const NOTHING: FormulaHelp = { references: [], completion: null, hint: null };
 
-/** A name that may be the start of a function's, as `SU` or `LOG1`. */
-const FUNCTION_START = /^[A-Za-z][A-Za-z0-9._]*$/;
+/**
+ * A name that may be the start of a function's or a defined name's, as
+ * `SU` or `LOG1`.
+ */
+const NAME_START = /^[A-Za-z_\u00A1-\uFFFF][\w.\u00A1-\uFFFF]*$/;
 
 /**
  * The help for an entry with the caret at `caret`: none unless it is a
- * formula, which starts with `=`.
+ * formula, which starts with `=`. `definedNames` are the workbook's names.
  */
-export function formulaHelp(text: string, caret: number): FormulaHelp {
+export function formulaHelp(
+  text: string,
+  caret: number,
+  definedNames: readonly string[] = [],
+): FormulaHelp {
   const tokens = formulaTokens(text);
   if (!tokens) return NOTHING;
   return {
     references: highlights(tokens),
-    completion: completion(text, tokens, caret),
+    completion: completion(text, tokens, caret, definedNames),
     hint: hint(tokens, caret),
   };
 }
@@ -146,12 +157,19 @@ export function cycleReference(text: string, caret: number): Edit | null {
   return replace(text, token.start, token.end, cycled);
 }
 
-/** Puts a function and its opening parenthesis in place of the name typed. */
-export function complete(text: string, caret: number, name: string): Edit {
+/**
+ * Puts a function and its opening parenthesis in place of the name typed,
+ * or a defined name, without one, when `defined`.
+ */
+export function complete(
+  text: string,
+  caret: number,
+  name: string,
+  defined = false,
+): Edit {
   const tokens = formulaTokens(text);
-  const found = tokens && completion(text, tokens, caret);
-  const start = found ? found.start : caret;
-  return replace(text, start, caret, `${name}(`);
+  const start = (tokens && nameStart(text, tokens, caret)) ?? caret;
+  return replace(text, start, caret, defined ? name : `${name}(`);
 }
 
 /** The tokens of a formula, placed in the whole text, or `null`. */
@@ -194,16 +212,35 @@ function completion(
   text: string,
   tokens: Token[],
   caret: number,
+  definedNames: readonly string[],
 ): FormulaHelp['completion'] {
+  const start = nameStart(text, tokens, caret);
+  if (start === null) return null;
+  const prefix = text.slice(start, caret).toUpperCase();
+  // A name typed in full is not offered, so that Enter commits it.
+  const defined = definedNames.filter((name) => {
+    const upper = name.toUpperCase();
+    return upper.startsWith(prefix) && upper !== prefix;
+  });
+  const names = functions.filter((name) => name.startsWith(prefix));
+  return defined.length > 0 || names.length > 0
+    ? { start, end: caret, definedNames: defined, names }
+    : null;
+}
+
+/** Where the name being typed at the caret starts, or `null`. */
+function nameStart(
+  text: string,
+  tokens: Token[],
+  caret: number,
+): number | null {
   const token = tokenBefore(tokens, caret);
   if (token?.end !== caret) return null;
   if (token.kind !== 'name' && token.kind !== 'reference') return null;
   const typed = text.slice(token.start, caret);
   // After a `$`, it is the column of a reference.
-  if (!FUNCTION_START.test(typed) || text[token.start - 1] === '$') return null;
-  const prefix = typed.toUpperCase();
-  const names = functions.filter((name) => name.startsWith(prefix));
-  return names.length > 0 ? { start: token.start, end: caret, names } : null;
+  if (!NAME_START.test(typed) || text[token.start - 1] === '$') return null;
+  return token.start;
 }
 
 function hint(tokens: Token[], caret: number): FormulaHelp['hint'] {

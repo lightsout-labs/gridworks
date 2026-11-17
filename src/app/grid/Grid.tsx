@@ -65,6 +65,14 @@ import type { Entry, Filled, View, ViewState } from './view';
 const FONT_SIZE = 13;
 export const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
 
+/** The attribute of the element of the grid that takes the keyboard. */
+const GRID = 'data-grid';
+
+/** Gives the keyboard to the grid, as after going to a cell. */
+export function focusGrid(): void {
+  document.querySelector<HTMLElement>(`[${GRID}]`)?.focus();
+}
+
 let measuring: CanvasRenderingContext2D | null = null;
 
 /** The width of a text in a cell's font at 100%, as the grid draws it. */
@@ -559,6 +567,7 @@ export function Grid({
           ref={scroller}
           className={styles.grid}
           tabIndex={0}
+          {...{ [GRID]: '' }}
           onKeyDown={onKeyDown}
           data-copied={shownCopy}
         >

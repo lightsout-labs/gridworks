@@ -9,11 +9,18 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
+import { Tag } from 'lucide-react';
 import { useTranslation } from '../ui/controls';
 import styles from './FormulaEditor.module.css';
 import { functions } from '../../engine/formula';
 import { formulaHelp } from './formula';
 import type { Entry, View } from './view';
+
+/** A defined name or a function offered while a formula is typed. */
+interface Choice {
+  readonly name: string;
+  readonly defined: boolean;
+}
 
 /** The attribute that marks the editors of an entry, valued with their place. */
 export const EDITOR = 'data-entry-editor';
@@ -64,13 +71,22 @@ export function FormulaEditor({
   const { entry } = useSyncExternalStore(view.subscribe, () => view.state);
   const text = entry?.text ?? contents;
   const here = entry?.place === place;
-  const help = entry ? formulaHelp(entry.text, entry.caret) : null;
+  const help = entry
+    ? formulaHelp(entry.text, entry.caret, view.definedNames)
+    : null;
   // The list closed with Escape, until the entry changes.
   const [dismissed, setDismissed] = useState<Entry | null>(null);
   const [chosen, setChosen] = useState(0);
   const completion = here ? help?.completion : null;
-  const offered =
-    completion?.names ?? (here && entry.allFunctions ? functions : null);
+  // The defined names first, then the functions.
+  const offered: Choice[] | null = completion
+    ? [
+        ...completion.definedNames.map((name) => ({ name, defined: true })),
+        ...completion.names.map((name) => ({ name, defined: false })),
+      ]
+    : here && entry.allFunctions
+      ? functions.map((name) => ({ name, defined: false }))
+      : null;
   const names = entry !== dismissed ? offered : null;
   const highlighted = Math.min(chosen, (names?.length ?? 1) - 1);
 
@@ -86,8 +102,8 @@ export function FormulaEditor({
     mirror.current?.scrollTo(box.scrollLeft, 0);
   }, [entry, here]);
 
-  const choose = (name: string) => {
-    view.complete(name);
+  const choose = ({ name, defined }: Choice) => {
+    view.complete(name, defined);
     setChosen(0);
   };
 
@@ -166,18 +182,21 @@ export function FormulaEditor({
           role="listbox"
           aria-label={t('formula.functions')}
         >
-          {names.map((name, index) => (
+          {names.map((choice, index) => (
             <li
-              key={name}
+              key={`${choice.defined}${choice.name}`}
               id={`${listId}-${index}`}
               role="option"
               className={styles.option}
               aria-selected={index === highlighted}
               // The editor keeps the keyboard.
               onMouseDown={(event) => event.preventDefault()}
-              onClick={() => choose(name)}
+              onClick={() => choose(choice)}
             >
-              {name}
+              {choice.defined && (
+                <Tag className={styles.nameIcon} size={12} aria-hidden />
+              )}
+              {choice.name}
             </li>
           ))}
         </ul>

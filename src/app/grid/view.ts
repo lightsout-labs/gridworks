@@ -1,10 +1,12 @@
 import {
   cellName,
+  columnName,
   quoteSheetName,
   type Change,
   type Command,
   type Direction,
   type LineSpan,
+  type NameProblem,
   type Border,
   type BorderSides,
   type ColumnFilter,
@@ -322,10 +324,130 @@ export class View {
     if (edit) this.edited(edit);
   }
 
-  /** Puts a function in place of the start of its name typed at the caret. */
-  complete(name: string): void {
+  /**
+   * Puts a function in place of the start of its name typed at the caret,
+   * or a defined name when `defined`.
+   */
+  complete(name: string, defined = false): void {
     const { entry } = this.current;
-    if (entry) this.edited(complete(entry.text, entry.caret, name));
+    if (entry) this.edited(complete(entry.text, entry.caret, name, defined));
+  }
+
+  /** The workbook's defined names, in alphabetical order. */
+  get definedNames(): string[] {
+    return this.workbook.names.map((each) => each.name);
+  }
+
+  /**
+   * What the name box shows: the defined name of the range selected, when
+   * one range is selected and a name refers to exactly it, or else the
+   * active cell.
+   */
+  get selectionName(): string {
+    const { sheet, selection } = this.current;
+    const [only] = selection.ranges;
+    const found =
+      selection.ranges.length === 1 &&
+      this.workbook.names.find(({ refersTo }) => {
+        const place = this.workbook.locate(refersTo, sheet);
+        return place?.sheet === sheet && sameRange(place.range, only!);
+      });
+    const { row, col } = selection.active;
+    return found ? found.name : cellName(row, col);
+  }
+
+  /**
+   * Goes to a cell address, a range or a defined name typed in the name
+   * box, on its sheet; or names the last range selected with a new name,
+   * as Excel does (R27). `invalid` when the text is none of these.
+   */
+  goTo(text: string): 'invalid' | null {
+    if (!this.commit()) return null;
+    const { sheet, selection } = this.current;
+    const place = this.workbook.locate(text, sheet);
+    if (place) {
+      const { top, left } = place.range;
+      this.change({
+        sheet: place.sheet,
+        selection: overMerges(
+          covering([place.range]),
+          this.workbook.merges(place.sheet),
+        ),
+        endMode: false,
+        reveal: { row: top, col: left },
+      });
+      return null;
+    }
+    const name = text.trim();
+    if (this.workbook.nameProblem(name) !== null) return 'invalid';
+    const range = selection.ranges[selection.ranges.length - 1]!;
+    this.workbook.execute({
+      type: 'setNames',
+      names: [
+        ...this.workbook.names,
+        { name, refersTo: this.absoluteReference(sheet, range) },
+      ],
+    });
+    return null;
+  }
+
+  /**
+   * Gives the defined name `old` a new name and the range of a reference
+   * typed with or without its `=`, on the shown sheet unless it names one;
+   * formulas that use it follow a new name. Gives why it cannot, the
+   * reference being `reference`.
+   */
+  setName(
+    old: string,
+    name: string,
+    reference: string,
+  ): NameProblem | 'reference' | null {
+    const problem = this.workbook.nameProblem(name, old);
+    if (problem) return problem;
+    const place = this.workbook.locate(
+      reference.replace(/^\s*=/, ''),
+      this.current.sheet,
+    );
+    if (!place) return 'reference';
+    if (!this.commit()) return null;
+    const folded = old.toLowerCase();
+    this.workbook.execute({
+      type: 'setNames',
+      names: [
+        ...this.workbook.names.filter(
+          (each) => each.name.toLowerCase() !== folded,
+        ),
+        { name, refersTo: this.absoluteReference(place.sheet, place.range) },
+      ],
+      ...(name !== old && { renamed: { from: old, to: name } }),
+    });
+    return null;
+  }
+
+  /** Deletes a defined name; formulas that use it give `#NAME?`. */
+  deleteName(name: string): void {
+    if (!this.commit()) return;
+    this.workbook.execute({
+      type: 'setNames',
+      names: this.workbook.names.filter((each) => each.name !== name),
+    });
+  }
+
+  /** A range as a defined name refers to it, as in `Sheet1!$A$1:$B$2`. */
+  private absoluteReference(sheetId: string, range: Range): string {
+    const { top, left, bottom, right } = range;
+    const col = (index: number) => `$${columnName(index)}`;
+    const row = (index: number) => `$${index + 1}`;
+    const text =
+      top === 0 && bottom === SHEET_ROWS - 1
+        ? `${col(left)}:${col(right)}`
+        : left === 0 && right === SHEET_COLUMNS - 1
+          ? `${row(top)}:${row(bottom)}`
+          : top === bottom && left === right
+            ? col(left) + row(top)
+            : `${col(left)}${row(top)}:${col(right)}${row(bottom)}`;
+    const { name } = this.workbook.sheets.find((each) => each.id === sheetId)!;
+    return `${quoteSheetName(name)}!${text}`;
   }
 
   /**
@@ -1336,4 +1458,13 @@ export class View {
     this.current = { ...this.current, ...change };
     for (const listener of this.listeners) listener();
   }
+}
+
+function sameRange(a: Range, b: Range): boolean {
+  return (
+    a.top === b.top &&
+    a.left === b.left &&
+    a.bottom === b.bottom &&
+    a.right === b.right
+  );
 }

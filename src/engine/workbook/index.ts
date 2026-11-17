@@ -288,6 +288,18 @@ export type Command =
       readonly sheet: string;
       readonly ranges: readonly Range[];
       readonly sheets: readonly SheetSnapshot[];
+      /** The defined names as they were, when the change moved them. */
+      readonly names?: readonly NamedRange[];
+    }
+  | {
+      /**
+       * Gives the workbook these defined names in place of its own (R27).
+       * `renamed` rewrites the formulas that use the name `from` to use
+       * `to`, as Excel does when a name is renamed.
+       */
+      readonly type: 'setNames';
+      readonly names: readonly NamedRange[];
+      readonly renamed?: { readonly from: string; readonly to: string };
     }
   | {
       /**
@@ -371,6 +383,29 @@ export type SheetNameProblem = 'empty' | 'tooLong' | 'character' | 'taken';
 
 /** Excel's limit on the length of a sheet name. */
 const SHEET_NAME_LIMIT = 31;
+
+/**
+ * A defined name of the workbook and the range it refers to, as Excel
+ * writes it without its `=`: a reference with its sheet, absolute as a
+ * name made from a selection is (`Sheet1!$A$1:$B$2`), or `#REF!` when its
+ * cells were deleted.
+ */
+export interface NamedRange {
+  readonly name: string;
+  readonly refersTo: string;
+}
+
+/** Why a text cannot be a new defined name. */
+export type NameProblem = 'invalid' | 'taken';
+
+/** Excel's limit on the length of a defined name. */
+const NAME_LIMIT = 255;
+
+/** The characters of a defined name: Excel's, but for a backslash. */
+const NAME_PATTERN = /^[A-Za-z_\u00A1-\uFFFF][\w.\u00A1-\uFFFF]*$/;
+
+/** The names Excel refuses as they read as references in R1C1 style. */
+const R1C1_NAME = /^(?:[rc]|r\d*c\d*)$/i;
 
 /**
  * Makes ranges hold exactly the cells listed, with their contents and
@@ -526,6 +561,8 @@ export interface Snapshot {
    * snapshots saved before cells had styles.
    */
   readonly styles?: Style[];
+  /** The defined names, when there are any. */
+  readonly names?: NamedRange[];
 }
 
 type Paste = Extract<Command, { type: 'paste' }>;
@@ -645,7 +682,14 @@ export function createWorkbook(): Workbook {
 export class Workbook {
   private readonly listeners = new Set<(command: Command) => void>();
   /** The formulas, what they read, and their results. */
-  private readonly calc = new Calculation(() => this.sheetList);
+  private readonly calc = new Calculation(
+    () => this.sheetList,
+    (name) => this.nameTargets.get(name.toLowerCase()),
+  );
+  /** The defined names, in alphabetical order. */
+  private nameList: readonly NamedRange[] = [];
+  /** What each defined name refers to, parsed, by its name in lower case. */
+  private readonly nameTargets = new Map<string, Ast>();
   /** The index of each style in `styles`, by its JSON text. */
   private readonly styleIndex: Map<string, number>;
   /** The commands that undo the last changes, the latest last. */
@@ -686,6 +730,7 @@ export class Workbook {
       snapshot.styles ?? [{}],
       measure,
     );
+    workbook.putNames(snapshot.names ?? []);
     workbook.calc.rebuild();
     workbook.fitNewSheets();
     for (const command of changes) workbook.apply(command);
@@ -698,7 +743,50 @@ export class Workbook {
       name: this.name,
       sheets: this.sheetList.map(snapshotOf),
       styles: [...this.styles],
+      ...(this.nameList.length > 0 && { names: [...this.nameList] }),
     };
+  }
+
+  /** The defined names, in alphabetical order (R27). */
+  get names(): readonly NamedRange[] {
+    return this.nameList;
+  }
+
+  /**
+   * Why `name` cannot be a new defined name, or `null` when it can: one
+   * that Excel takes for a reference or a value is invalid. `except` is the
+   * name being edited, which the new one may be in another case.
+   */
+  nameProblem(name: string, except?: string): NameProblem | null {
+    if (!validName(name)) return 'invalid';
+    const folded = name.toLowerCase();
+    const taken =
+      folded !== except?.toLowerCase() && this.nameTargets.has(folded);
+    return taken ? 'taken' : null;
+  }
+
+  /**
+   * The sheet and range of a cell address, a range or a defined name, as
+   * typed in the name box, the sheet `sheetId` for an address without one;
+   * `null` for any other text, or a range outside the sheets.
+   */
+  locate(
+    text: string,
+    sheetId: string,
+  ): { sheet: string; range: Range } | null {
+    let ast = parse(text.trim());
+    if (ast?.type === 'name')
+      ast = this.nameTargets.get(ast.name.toLowerCase()) ?? null;
+    if (ast?.type !== 'range') return null;
+    const sheet =
+      ast.sheet === undefined
+        ? this.sheet(sheetId)
+        : this.sheetNamed(ast.sheet);
+    const range = references(ast)[0]!.area;
+    if (!sheet || range.bottom >= SHEET_ROWS || range.right >= SHEET_COLUMNS) {
+      return null;
+    }
+    return { sheet: sheet.id, range };
   }
 
   /** The sheets in tab order. */
@@ -872,14 +960,16 @@ export class Workbook {
     const typed = typedItems(criterion.source);
     if (typed) return typed;
     const ast = parse(criterion.source.slice(1));
-    const found = ast?.type === 'range' ? references(ast) : [];
+    const found =
+      ast?.type === 'range' || ast?.type === 'name'
+        ? references(ast, (name) => this.nameTargets.get(name.toLowerCase()))
+        : [];
     const items: string[] = [];
     for (const reference of found) {
-      const name = reference.sheet?.toLowerCase();
       const sheet =
-        name === undefined
+        reference.sheet === undefined
           ? this.sheet(sheetId)
-          : this.sheetList.find((each) => each.name.toLowerCase() === name);
+          : this.sheetNamed(reference.sheet);
       if (!sheet) continue;
       const { rows, cols } = this.extent(sheet.id);
       const { top, left } = reference.area;
@@ -1115,6 +1205,10 @@ export class Workbook {
       // Formulas have moved, so what each reads is found again.
       this.calc.rebuild();
       this.fitNewSheets();
+    } else if (command.type === 'setNames') {
+      applied = this.setNames(command);
+      // Formulas may read other cells through the names, or none.
+      this.calc.rebuild();
     } else if (command.type === 'replace') {
       applied = this.replace(command);
     } else if (command.type === 'freeze') {
@@ -1342,6 +1436,8 @@ export class Workbook {
           : { ...snapshot, formulas };
       this.sheetList[index] = sheetOf(after);
     });
+    const names = this.nameList;
+    this.moveNames((ast) => follow(sheet, ast));
     // The lines inserted, where they end up, or the lines deleted.
     let added = 0;
     const lines = spans.map(({ start, end }) => {
@@ -1357,6 +1453,9 @@ export class Workbook {
         sheet: sheet.id,
         ranges,
         sheets: before,
+        ...(this.nameList.some((each, index) => each !== names[index]) && {
+          names,
+        }),
       },
       change: { sheet: sheet.id, ranges },
     };
@@ -1420,12 +1519,95 @@ export class Workbook {
       this.sheetList[index] = sheetOf(contents);
       return snapshot;
     });
-    const { sheet, ranges } = command;
+    const { sheet, ranges, names } = command;
+    const reverse = {
+      ...command,
+      sheets: before,
+      ...(names && { names: this.nameList }),
+    };
+    if (names) this.putNames(names);
+    return { executed: command, reverse, change: { sheet, ranges } };
+  }
+
+  /**
+   * Replaces the defined names, and rewrites the formulas that use a
+   * renamed one. Gives as changed the range of a name added, changed or
+   * deleted, where it has one.
+   */
+  private setNames(command: Extract<Command, { type: 'setNames' }>): Applied {
+    const { names, renamed } = command;
+    const seen = new Set<string>();
+    for (const { name, refersTo } of names) {
+      const target = parse(refersTo);
+      const valid =
+        target?.type === 'range'
+          ? target.sheet !== undefined
+          : target?.type === 'error';
+      if (!validName(name) || seen.has(name.toLowerCase()) || !valid) {
+        throw new Error(`Invalid name: ${name} for ${refersTo}`);
+      }
+      seen.add(name.toLowerCase());
+    }
+    const old = this.nameList;
+    if (renamed) {
+      const move = { type: 'renameName', ...renamed } as const;
+      for (const each of this.sheetList) {
+        for (const formula of [...each.formulas.values()]) {
+          const ast = shift(formula.ast, move);
+          if (ast === formula.ast) continue;
+          this.calc.put(each, formula.row, formula.col, `=${print(ast)}`, ast);
+        }
+      }
+    }
+    this.putNames(names);
+    const same = (a: NamedRange, b: NamedRange) =>
+      a.name === b.name && a.refersTo === b.refersTo;
+    const changed = [
+      ...this.nameList.filter((each) => !old.some((was) => same(was, each))),
+      ...old.filter((was) => !this.nameList.some((each) => same(was, each))),
+    ];
+    const shown = changed
+      .map(({ refersTo }) => this.locate(refersTo, this.sheetList[0]!.id))
+      .find((found) => found !== null);
     return {
       executed: command,
-      reverse: { ...command, sheets: before },
-      change: { sheet, ranges },
+      reverse: {
+        type: 'setNames',
+        names: old,
+        ...(renamed && { renamed: { from: renamed.to, to: renamed.from } }),
+      },
+      change: shown
+        ? { sheet: shown.sheet, ranges: [shown.range] }
+        : { sheet: this.sheetList[0]!.id, ranges: [] },
     };
+  }
+
+  /** Keeps defined names, in alphabetical order, and what they refer to. */
+  private putNames(names: readonly NamedRange[]): void {
+    this.nameList = [...names].sort((a, b) =>
+      a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1,
+    );
+    this.nameTargets.clear();
+    for (const { name, refersTo } of this.nameList) {
+      this.nameTargets.set(name.toLowerCase(), parse(refersTo)!);
+    }
+  }
+
+  /** Makes defined names refer to what `move` makes of their references. */
+  private moveNames(move: (ast: Ast) => Ast): void {
+    this.putNames(
+      this.nameList.map((each) => {
+        const ast = this.nameTargets.get(each.name.toLowerCase())!;
+        const moved = move(ast);
+        return moved === ast ? each : { ...each, refersTo: print(moved) };
+      }),
+    );
+  }
+
+  /** The sheet of a name, in any case, or `undefined`. */
+  private sheetNamed(name: string): Sheet | undefined {
+    const folded = name.toLowerCase();
+    return this.sheetList.find((each) => each.name.toLowerCase() === folded);
   }
 
   /** Freezes rows and columns, or unfreezes them. */
@@ -1984,6 +2166,7 @@ export class Workbook {
         this.calc.put(each, row, col, `=${print(ast)}`, ast);
       }
     }
+    this.moveNames((ast) => shift(ast, move));
     sheet.name = name;
   }
 
@@ -2563,6 +2746,19 @@ function movedLines(
 }
 
 /** A sheet of the workbook, made from a snapshot of it. */
+/**
+ * Whether a text can be a defined name, as Excel allows: not one it takes
+ * for a reference, in either style, or for a value.
+ */
+function validName(name: string): boolean {
+  return (
+    name.length <= NAME_LIMIT &&
+    NAME_PATTERN.test(name) &&
+    !R1C1_NAME.test(name) &&
+    parse(name)?.type === 'name'
+  );
+}
+
 function sheetOf(snapshot: SheetSnapshot): Sheet {
   const sheet = emptySheet(
     snapshot.id,

@@ -1045,7 +1045,7 @@ Notes:
 
 ## S26: Named ranges
 
-Status: Todo
+Status: In progress
 
 Acceptance criteria:
 - The user can name the selected range by typing a name in the name box. (R27)
