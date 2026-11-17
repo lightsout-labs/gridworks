@@ -1,6 +1,10 @@
 import JSZip from 'jszip';
 import { describe, expect, it } from 'vitest';
-import { UNSUPPORTED_PARTS, xlsxFile } from '../../../tests/xlsx';
+import {
+  excelWorkbook,
+  UNSUPPORTED_PARTS,
+  xlsxFile,
+} from '../../../tests/xlsx';
 import { Workbook, type Snapshot } from '../workbook';
 import { readXlsx, writeXlsx } from '.';
 
@@ -199,6 +203,198 @@ describe('readXlsx', () => {
   });
 });
 
+describe('readXlsx, of a workbook saved by Excel', () => {
+  const opened = async () => {
+    const result = await open(await excelWorkbook());
+    const [formats, lists] = result.snapshot.sheets.map(({ id }) => id);
+    return { ...result, formats: formats!, lists: lists! };
+  };
+
+  it('reads fonts, colors, fills, alignment, wrap, borders and number formats', async () => {
+    const { workbook, formats, lists } = await opened();
+    const style = (name: string) => {
+      const [, letters, digits] = /^([A-Z]+)(\d+)$/.exec(name)!;
+      return workbook.cell(
+        formats,
+        Number(digits) - 1,
+        letters!.charCodeAt(0) - 65,
+      ).style;
+    };
+    expect(style('A1')).toEqual({
+      font: 'Arial',
+      size: 14,
+      bold: true,
+      color: '#ff0000',
+      fill: '#ffff00',
+    });
+    // Theme colors, lightened or darkened by their tint.
+    expect(style('B1')).toEqual({
+      numberFormat: '0.0%',
+      font: 'Georgia',
+      italic: true,
+      underline: true,
+      strike: true,
+      color: '#2f5597',
+      fill: '#e2efda',
+    });
+    // Automatic colors are left to the theme.
+    expect(style('C1')).toEqual({
+      horizontal: 'center',
+      vertical: 'middle',
+      wrap: true,
+      borderTop: { line: 'dashed' },
+      borderRight: { line: 'medium', color: '#0070c0' },
+      borderBottom: { line: 'double', color: '#ed7d31' },
+      borderLeft: { line: 'thin' },
+    });
+    expect(cellOf(workbook, formats, 'D1').display).toBe('11/14/2026');
+    expect(style('G1')).toEqual({
+      font: 'Courier New',
+      size: 9,
+      color: '#ff0000',
+      horizontal: 'right',
+      vertical: 'top',
+    });
+    // Excel's default font, and its Hyperlink style, are not kept.
+    expect(style('A2')).toEqual({});
+    expect(style('E1')).toEqual({});
+    expect(workbook.sheets[1]).toMatchObject({ id: lists, color: '#ed7d31' });
+  });
+
+  it('reads column widths, row heights, hidden rows and columns, merges and frozen panes', async () => {
+    const { snapshot, workbook, formats } = await opened();
+    // Excel's standard 64 by 20 pixels are Gridworks' 96 by 24.
+    expect(snapshot.sheets[0]).toMatchObject({
+      columnWidths: [[0, 225]],
+      rowHeights: [[1, 48]],
+      hiddenColumns: [7],
+      hiddenRows: [5],
+      merges: [{ top: 0, left: 4, bottom: 1, right: 5 }],
+      frozen: { rows: 1, cols: 1 },
+    });
+    expect(workbook.layout(formats).rows.hidden).toEqual(new Set([5]));
+  });
+
+  it('reads conditional formats in their order, data validation and named ranges, and calculates formulas that use names', async () => {
+    const { snapshot, workbook, formats } = await opened();
+    const area = (top: number, left: number, bottom = top, right = left) => ({
+      top,
+      left,
+      bottom,
+      right,
+    });
+    const red = { color: '#9c0006', fill: '#ffc7ce' };
+    const green = {
+      bold: true,
+      italic: true,
+      color: '#006100',
+      fill: '#c6efce',
+    };
+    expect(snapshot.sheets[0]!.conditionalFormats).toEqual([
+      {
+        ranges: [area(2, 3, 4)],
+        condition: { type: 'top', count: 1 },
+        format: red,
+      },
+      {
+        ranges: [area(2, 0, 4)],
+        condition: { type: 'duplicate' },
+        format: green,
+      },
+      {
+        ranges: [area(2, 0, 4)],
+        condition: { type: 'greater', value: '10' },
+        format: red,
+      },
+      {
+        ranges: [area(1, 0, 1, 1)],
+        condition: { type: 'contains', value: 'Ex' },
+        format: { underline: true, strike: true },
+      },
+      {
+        ranges: [area(2, 2, 4)],
+        condition: { type: 'scale', colors: ['#f8696b', '#ffeb84', '#63be7b'] },
+        format: {},
+      },
+      {
+        ranges: [area(2, 3, 4)],
+        condition: { type: 'bar', color: '#638ec6' },
+        format: {},
+      },
+      {
+        ranges: [area(2, 2, 4)],
+        condition: { type: 'bottom', count: 2 },
+        format: green,
+      },
+      {
+        ranges: [area(2, 0, 4), area(2, 2, 4)],
+        condition: { type: 'between', value: '2', other: '6' },
+        format: { underline: true, strike: true },
+      },
+      {
+        ranges: [area(0, 0, 0, 6)],
+        condition: { type: 'less', value: 'M' },
+        format: red,
+      },
+      {
+        ranges: [area(0, 0, 0, 6)],
+        condition: { type: 'equal', value: '46340' },
+        format: green,
+      },
+    ]);
+    expect(snapshot.sheets[0]!.validations).toEqual([
+      {
+        ranges: [area(9, 0, 11, 0)],
+        criterion: { type: 'list', source: 'Yes,No,Maybe' },
+      },
+      { ranges: [area(9, 1)], criterion: { type: 'number', min: 1, max: 10 } },
+      { ranges: [area(9, 2)], criterion: { type: 'date', min: 46023 } },
+      {
+        ranges: [area(9, 3), area(11, 3)],
+        criterion: { type: 'length', max: 5 },
+      },
+      {
+        ranges: [area(9, 4)],
+        criterion: { type: 'list', source: '=$A$3:$A$5' },
+      },
+      {
+        ranges: [area(9, 6)],
+        criterion: { type: 'list', source: "='My lists'!$A$1:$A$3" },
+      },
+    ]);
+    expect(workbook.names).toEqual([
+      { name: 'Colors', refersTo: "'My lists'!$A$1:$A$3" },
+      { name: 'Rates', refersTo: 'Formats!$A$3:$A$5' },
+    ]);
+    expect(cellOf(workbook, formats, 'B3')).toEqual({
+      value: 45,
+      formula: '=SUM(Rates)',
+      display: '45',
+    });
+  });
+
+  it('reads notes without their author, and hyperlinks to addresses and to places in the workbook', async () => {
+    const { workbook, formats } = await opened();
+    expect(workbook.cell(formats, 0, 0).note).toBe('Check the total');
+    expect(workbook.cell(formats, 0, 3).note).toBe('Due & paid');
+    expect(workbook.cell(formats, 1, 0).link).toBe('https://example.com/');
+    expect(workbook.cell(formats, 1, 1).link).toBe("#'My lists'!A1");
+    // A link to a file is dropped.
+    expect(workbook.cell(formats, 0, 6).link).toBeUndefined();
+  });
+
+  it('lists what it dropped', async () => {
+    const { dropped } = await opened();
+    expect(dropped).toEqual([
+      { feature: 'table', count: 1 },
+      { feature: 'conditionalFormat', count: 3 },
+      { feature: 'validation', count: 1 },
+      { feature: 'name', count: 2 },
+      { feature: 'link', count: 1 },
+    ]);
+  });
+});
+
 describe('writeXlsx', () => {
   it('writes a file that reads back as the same sheets, values, formulas and formats', async () => {
     const snapshot: Snapshot = {
@@ -275,5 +471,43 @@ describe('writeXlsx', () => {
       value: Math.SQRT2 + 4,
       formula: '=IFS(A1>0,STDEV.S(A1:A2))+SUM(A1:A2)',
     });
+  });
+
+  it('writes every feature of a workbook opened from Excel so that it reads back the same', async () => {
+    const { snapshot } = await readXlsx(await excelWorkbook(), 'Excel');
+    const { snapshot: again, dropped } = await readXlsx(
+      await writeXlsx(snapshot),
+      'Excel',
+    );
+    expect(dropped).toEqual([]);
+    expect(again).toEqual(snapshot);
+  });
+
+  it('writes a package whose every part has a content type and every relationship a target', async () => {
+    const { snapshot } = await readXlsx(await excelWorkbook(), 'Excel');
+    const zip = await JSZip.loadAsync(await writeXlsx(snapshot));
+    const types = await zip.file('[Content_Types].xml')!.async('string');
+    const extensions = [...types.matchAll(/Extension="(\w+)"/g)].map(
+      ([, extension]) => extension,
+    );
+    for (const path of Object.keys(zip.files)) {
+      if (zip.files[path]!.dir) continue;
+      const declared =
+        types.includes(`PartName="/${path}"`) ||
+        extensions.includes(path.slice(path.lastIndexOf('.') + 1));
+      expect(declared, path).toBe(true);
+    }
+    for (const path of Object.keys(zip.files).filter((each) =>
+      each.endsWith('.rels'),
+    )) {
+      const base = path.replace(/_rels\/([^/]*)\.rels$/, '');
+      const rels = await zip.file(path)!.async('string');
+      for (const [tag] of rels.matchAll(/<Relationship\b[^>]*>/g)) {
+        if (tag.includes('TargetMode="External"')) continue;
+        const target = /Target="([^"]*)"/.exec(tag)![1]!;
+        const resolved = new URL(target, `file:///${base}`).pathname.slice(1);
+        expect(zip.file(resolved), `${path}: ${target}`).not.toBeNull();
+      }
+    }
   });
 });

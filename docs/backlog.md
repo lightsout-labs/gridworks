@@ -1106,7 +1106,7 @@ Notes:
 
 ## S28: XLSX files: formatting and everything else
 
-Status: Todo
+Status: In progress
 
 Acceptance criteria:
 - Fonts, colors, alignment, wrap, borders and number formats survive saving
