@@ -43,6 +43,7 @@ import type { Language } from './i18n';
 import { RuleControls } from './Rules';
 import { FilterControls } from './Filter';
 import { NameControls } from './Names';
+import { LinkControls, NoteControls, type Editing } from './Notes';
 import { SortControls } from './Sort';
 import { ValidationControls } from './Validation';
 import styles from './Shell.module.css';
@@ -67,6 +68,7 @@ export function Ribbon({
   onSave,
   onCopy,
   onFind,
+  onEdit,
 }: {
   workbook: Workbook;
   view: View;
@@ -82,6 +84,8 @@ export function Ribbon({
   onCopy: (contents: ClipboardContents | null) => void;
   /** Opens the find panel, alone or with replace. */
   onFind: (mode: FindMode) => void;
+  /** Opens the dialog of the active cell's note or link. */
+  onEdit: (editing: Editing) => void;
 }) {
   const t = useTranslation();
   const key = MAC ? '⌘' : 'Ctrl+';
@@ -103,6 +107,11 @@ export function Ribbon({
               {t('tab.home')}
             </Tabs.Trigger>
           </Tooltip>
+          <Tooltip text={t('tab.insert.tooltip')}>
+            <Tabs.Trigger className={styles.ribbonTab} value="insert">
+              {t('tab.insert')}
+            </Tabs.Trigger>
+          </Tooltip>
           <Tooltip text={t('tab.formulas.tooltip')}>
             <Tabs.Trigger className={styles.ribbonTab} value="formulas">
               {t('tab.formulas')}
@@ -111,6 +120,11 @@ export function Ribbon({
           <Tooltip text={t('tab.data.tooltip')}>
             <Tabs.Trigger className={styles.ribbonTab} value="data">
               {t('tab.data')}
+            </Tabs.Trigger>
+          </Tooltip>
+          <Tooltip text={t('tab.review.tooltip')}>
+            <Tabs.Trigger className={styles.ribbonTab} value="review">
+              {t('tab.review')}
             </Tabs.Trigger>
           </Tooltip>
           <Tooltip text={t('tab.view.tooltip')}>
@@ -180,6 +194,11 @@ export function Ribbon({
           />
         </Group>
       </Tabs.Content>
+      <Tabs.Content className={styles.ribbonPanel} value="insert">
+        <Group label={t('links')}>
+          <LinkControls onEdit={onEdit} />
+        </Group>
+      </Tabs.Content>
       <Tabs.Content className={styles.ribbonPanel} value="formulas">
         <Group label={t('formulas.library')}>
           <Command
@@ -205,6 +224,11 @@ export function Ribbon({
         </Group>
         <Group label={t('validation.group')}>
           <ValidationControls workbook={workbook} view={view} />
+        </Group>
+      </Tabs.Content>
+      <Tabs.Content className={styles.ribbonPanel} value="review">
+        <Group label={t('notes')}>
+          <NoteControls workbook={workbook} view={view} onEdit={onEdit} />
         </Group>
       </Tabs.Content>
       <Tabs.Content className={styles.ribbonPanel} value="view">

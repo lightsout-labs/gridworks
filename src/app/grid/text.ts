@@ -68,18 +68,24 @@ export interface ShownCell {
 
 /**
  * A cell as it is drawn: with the format its conditional formats give it
- * over its style, and their text color over that of its number format.
+ * over its style, and their text color over that of its number format; a
+ * link underlined, in `linkColor` unless it has a color of its own.
  */
 export function shownCell<T extends ShownCell>(
-  cell: T & { readonly conditional?: RuleFormat },
+  cell: T & { readonly conditional?: RuleFormat; readonly link?: string },
+  linkColor: string,
 ): ShownCell {
-  const { conditional } = cell;
-  if (!conditional) return cell;
-  const color = conditional.color ?? cell.color;
+  const { conditional, link } = cell;
+  if (!conditional && link === undefined) return cell;
+  const color = conditional?.color ?? cell.color;
+  const style = { ...cell.style, ...conditional };
   return {
     value: cell.value,
     display: cell.display,
-    style: { ...cell.style, ...conditional },
+    style:
+      link === undefined
+        ? style
+        : { ...style, underline: true, color: style.color ?? linkColor },
     ...(color !== undefined && { color }),
   };
 }

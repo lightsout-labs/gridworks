@@ -13,7 +13,7 @@ const TOP = { scrollX: 0, scrollY: 0, zoom: 1, layout: UNIFORM };
 
 /** Chooses an item of the Freeze panes menu on the View tab. */
 async function freeze(page: Page, item: string): Promise<void> {
-  await page.getByRole('tab', { name: 'View' }).click();
+  await page.getByRole('tab', { name: 'View', exact: true }).click();
   await page.getByRole('button', { name: 'Freeze panes' }).click();
   await page.getByRole('menuitem', { name: item, exact: true }).click();
 }
@@ -53,7 +53,7 @@ test('the top row stays in place while the rest scrolls, with a line under it, a
   await clickCell(page, 11, 1);
   await enter(page, '7');
 
-  await page.getByRole('tab', { name: 'View' }).click();
+  await page.getByRole('tab', { name: 'View', exact: true }).click();
   await page.getByRole('button', { name: 'Freeze panes' }).click();
   await expect(
     page.getByRole('menuitem', { name: 'Unfreeze panes' }),
@@ -126,7 +126,7 @@ test('freezes the rows above and the columns left of the active cell, or the fir
 }) => {
   await openApp(page);
   // At A1 there is nothing to freeze.
-  await page.getByRole('tab', { name: 'View' }).click();
+  await page.getByRole('tab', { name: 'View', exact: true }).click();
   await page.getByRole('button', { name: 'Freeze panes' }).click();
   await expect(
     page.getByRole('menuitem', { name: 'Freeze panes', exact: true }),
@@ -153,7 +153,7 @@ test('freezes the rows above and the columns left of the active cell, or the fir
 
 test('the Freeze panes menu is translated', async ({ page }) => {
   await openApp(page);
-  await page.getByRole('tab', { name: 'View' }).click();
+  await page.getByRole('tab', { name: 'View', exact: true }).click();
   await page.getByRole('button', { name: '中文' }).click();
   await page.getByRole('button', { name: '冻结窗格' }).click();
   await expect(page.getByRole('menuitem', { name: '冻结首行' })).toBeVisible();
@@ -168,7 +168,7 @@ test.describe('in the dark theme', () => {
 
   test('the Freeze panes menu is dark', async ({ page }) => {
     await openApp(page);
-    await page.getByRole('tab', { name: 'View' }).click();
+    await page.getByRole('tab', { name: 'View', exact: true }).click();
     await page.getByRole('button', { name: 'Freeze panes' }).click();
     const menu = page.getByRole('menu');
     await expect(menu).toBeVisible();

@@ -183,7 +183,7 @@ test('the Auto Fill Options menu is in Simplified Chinese', async ({
   page,
 }) => {
   await openApp(page);
-  await page.getByRole('tab', { name: 'View' }).click();
+  await page.getByRole('tab', { name: 'View', exact: true }).click();
   await page.getByRole('button', { name: '中文' }).click();
   await clickCell(page, 0, 0);
   await enter(page, '1');

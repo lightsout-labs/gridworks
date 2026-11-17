@@ -85,7 +85,9 @@ test.describe('in a browser set to English', () => {
   test('the interface starts in English', async ({ page }) => {
     await openApp(page);
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
-    await expect(page.getByRole('tab', { name: 'View' })).toBeVisible();
+    await expect(
+      page.getByRole('tab', { name: 'View', exact: true }),
+    ).toBeVisible();
   });
 });
 
@@ -155,7 +157,7 @@ test.describe('in a browser set to Chinese', () => {
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
     const english = [
       page.getByRole('tablist', { name: 'Ribbon' }),
-      page.getByRole('tab', { name: 'View' }),
+      page.getByRole('tab', { name: 'View', exact: true }),
       page.getByRole('group', { name: 'Theme' }),
       page.getByRole('button', { name: 'Light' }),
       page.getByRole('button', { name: 'Dark' }),
@@ -173,7 +175,7 @@ test.describe('in a browser set to Chinese', () => {
     for (const each of chinese) await expect(each).toHaveCount(0);
 
     await page.reload();
-    await page.getByRole('tab', { name: 'View' }).click();
+    await page.getByRole('tab', { name: 'View', exact: true }).click();
     await page.getByRole('button', { name: '中文' }).click();
     await expect(page.getByRole('tab', { name: '视图' })).toBeVisible();
   });
@@ -190,7 +192,10 @@ for (const system of ['light', 'dark'] as const) {
     }) => {
       // Polled, because the colors of the controls change in a transition.
       const expectTheme = async (dark: boolean) => {
-        const ribbon = page.getByRole('tabpanel', { name: 'View' });
+        const ribbon = page.getByRole('tabpanel', {
+          name: 'View',
+          exact: true,
+        });
         const status = page.getByRole('contentinfo');
         const button = page.getByRole('button', { name: 'English' });
         const zoomIn = page.getByRole('button', { name: 'Zoom in' });
@@ -216,7 +221,7 @@ for (const system of ['light', 'dark'] as const) {
       await openApp(page);
       // A1 and B1 selected; A1, the active cell, is not shaded.
       await page.keyboard.press('Shift+ArrowRight');
-      await page.getByRole('tab', { name: 'View' }).click();
+      await page.getByRole('tab', { name: 'View', exact: true }).click();
       await expectTheme(system === 'dark');
       await expect(page.getByRole('button', { name: other })).toHaveAttribute(
         'aria-pressed',
@@ -232,7 +237,7 @@ for (const system of ['light', 'dark'] as const) {
 
       await page.reload();
       await expect(page.locator('canvas')).toBeVisible();
-      await page.getByRole('tab', { name: 'View' }).click();
+      await page.getByRole('tab', { name: 'View', exact: true }).click();
       await expectTheme(system !== 'dark');
     });
   });
@@ -297,8 +302,10 @@ test.describe('the controls', () => {
       [
         ['tab', 'File', 'Open and save workbooks'],
         ['tab', 'Home', 'The most used commands'],
+        ['tab', 'Insert', 'Links to web pages and to cells'],
         ['tab', 'Formulas', 'Functions to use in formulas'],
         ['tab', 'Data', 'Sort, filter and validate data'],
+        ['tab', 'Review', 'Notes on cells'],
         ['tab', 'View', 'Appearance, language and frozen panes'],
         ['button', 'Undo', /^Undo the last change \((Ctrl\+|⌘)Z\)$/],
         ['button', 'Redo', /^Redo the last change undone \((Ctrl\+|⌘)Y\)$/],
@@ -392,7 +399,7 @@ test.describe('the controls', () => {
       ],
       36,
     );
-    await page.getByRole('tab', { name: 'View' }).click();
+    await page.getByRole('tab', { name: 'View', exact: true }).click();
     await clickCell(page, 5, 5); // Away from the tab and its tooltip.
     await check(
       [
@@ -479,6 +486,38 @@ test.describe('the controls', () => {
       ],
       6,
     );
+    await page.getByRole('tab', { name: 'Insert' }).click();
+    await clickCell(page, 5, 5);
+    await check(
+      [
+        [
+          'button',
+          'Link',
+          'Link the active cell to a web page or to a cell of the workbook',
+        ],
+        ...statusBar,
+      ],
+      5,
+    );
+    // Delete note, disabled until the active cell has a note, is checked
+    // once it has one.
+    await page.getByRole('tab', { name: 'Review' }).click();
+    await clickCell(page, 5, 5);
+    await check(
+      [['button', 'New note', 'Add a note to the active cell'], ...statusBar],
+      6,
+    );
+    await page.getByRole('button', { name: 'New note', exact: true }).click();
+    await page.getByLabel('Note', { exact: true }).fill('A note');
+    await page.getByRole('button', { name: 'OK', exact: true }).click();
+    await check(
+      [
+        ['button', 'Edit note', 'Change the note of the active cell'],
+        ['button', 'Delete note', 'Delete the note of the active cell'],
+        ...statusBar,
+      ],
+      6,
+    );
     await page.getByRole('tab', { name: 'File' }).click();
     await clickCell(page, 5, 5);
     await check(
@@ -497,7 +536,7 @@ test.describe('the controls', () => {
     await expect(page.getByRole('textbox')).toHaveCount(1);
     await expect(
       page.getByRole('tablist', { name: 'Ribbon' }).getByRole('tab'),
-    ).toHaveCount(5);
+    ).toHaveCount(7);
   });
 
   test('are rounded and show hover, keyboard focus and disabled states with a short transition', async ({
@@ -517,7 +556,7 @@ test.describe('the controls', () => {
     expect(await style(undo, 'cursor')).toBe('default');
     expect(await style(undo, 'background-color')).toBe('rgba(0, 0, 0, 0)');
 
-    const tab = page.getByRole('tab', { name: 'View' });
+    const tab = page.getByRole('tab', { name: 'View', exact: true });
     await tab.click();
     await clickCell(page, 5, 5); // The focus leaves the tab.
     const button = page.getByRole('button', { name: 'Dark' });

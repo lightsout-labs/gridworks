@@ -147,7 +147,7 @@ test('grows a row to fit wrapped text and a large font', async ({ page }) => {
 
 test('translates the format controls', async ({ page }) => {
   await openApp(page);
-  await page.getByRole('tab', { name: 'View' }).click();
+  await page.getByRole('tab', { name: 'View', exact: true }).click();
   await page.getByRole('button', { name: '中文' }).click();
   await page.getByRole('tab', { name: '开始' }).click();
   for (const name of ['加粗', '倾斜', '下划线', '填充颜色', '自动换行']) {

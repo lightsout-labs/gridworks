@@ -1078,7 +1078,7 @@ Notes:
 
 ## S27: Notes and hyperlinks
 
-Status: Todo
+Status: In progress
 
 Acceptance criteria:
 - The user can add, edit and delete a note on a cell from the ribbon and the

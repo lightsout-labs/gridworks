@@ -304,7 +304,7 @@ test('offers the rules in Chinese, and stays usable in the dark theme', async ({
   page,
 }) => {
   await openApp(page);
-  await page.getByRole('tab', { name: 'View' }).click();
+  await page.getByRole('tab', { name: 'View', exact: true }).click();
   await page.getByRole('button', { name: 'Dark' }).click();
   await page.getByRole('button', { name: '中文' }).click();
   await page.getByRole('tab', { name: '开始' }).click();

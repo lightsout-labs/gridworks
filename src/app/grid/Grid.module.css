@@ -57,3 +57,21 @@
 .filterButton {
   position: absolute;
 }
+
+/* A cell's note, beside it while the pointer rests on it. */
+.note {
+  position: absolute;
+  z-index: 1;
+  box-sizing: border-box;
+  max-width: 240px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}

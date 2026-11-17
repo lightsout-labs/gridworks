@@ -10,6 +10,7 @@ import { CellMenu } from './CellMenu';
 import { FillOptions } from './FillOptions';
 import { FilterButton } from './Filter';
 import { ListButton, RejectedEntry } from './Validation';
+import { CellDialog, type Editing } from './Notes';
 import { FindPanel, type FindMode } from './Find';
 import { Translation } from './controls';
 import { droppedMessage, workbookName } from './files';
@@ -61,6 +62,7 @@ export function App({ platform }: { platform: Platform }) {
   const [message, setMessage] = useState<Message | null>(null);
   const [busy, setBusy] = useState(false);
   const [finding, setFinding] = useState<FindMode | null>(null);
+  const [editing, setEditing] = useState<Editing | null>(null);
 
   // On the root element, so that the tooltips and menus drawn outside the
   // app's own element are themed too, and before the grid first paints.
@@ -216,6 +218,11 @@ export function App({ platform }: { platform: Platform }) {
 
   if (!open) return null;
   const t = translator(language);
+  // A rejected entry keeps the dialogs closed, so that what they set is
+  // not lost.
+  const edit = (what: Editing) => {
+    if (open.view.commit()) setEditing(what);
+  };
   return (
     <Translation value={t}>
       <TooltipProvider delayDuration={400} disableHoverableContent>
@@ -238,6 +245,7 @@ export function App({ platform }: { platform: Platform }) {
             onSave={() => void saveFile(open.workbook)}
             onCopy={copyToClipboard}
             onFind={setFinding}
+            onEdit={edit}
           />
           {message && (
             <MessageBar
@@ -275,6 +283,7 @@ export function App({ platform }: { platform: Platform }) {
                 <CellMenu
                   view={open.view}
                   onCopy={copyToClipboard}
+                  onEdit={edit}
                   lines={lines}
                 />
               )}
@@ -295,6 +304,11 @@ export function App({ platform }: { platform: Platform }) {
           <StatusBar {...open} />
           <FindPanel view={open.view} mode={finding} onMode={setFinding} />
           <RejectedEntry view={open.view} />
+          <CellDialog
+            {...open}
+            editing={editing}
+            onClose={() => setEditing(null)}
+          />
         </div>
       </TooltipProvider>
     </Translation>

@@ -1639,3 +1639,95 @@ describe('named ranges', () => {
     expect(workbook.names[0]!.name).toBe('Here');
   });
 });
+
+describe('notes and hyperlinks', () => {
+  it('adds, edits and deletes the note of the active cell', () => {
+    const { workbook, view, sheet } = setup();
+    view.select(single({ row: 1, col: 2 }));
+    expect(view.note).toBe('');
+    view.setNote('Ask Ann');
+    expect(workbook.cell(sheet, 1, 2).note).toBe('Ask Ann');
+    expect(view.note).toBe('Ask Ann');
+    view.setNote('Ask Bo');
+    expect(workbook.cell(sheet, 1, 2).note).toBe('Ask Bo');
+    view.deleteNote();
+    expect(workbook.cell(sheet, 1, 2).note).toBeUndefined();
+    view.setNote('Again');
+    view.setNote('');
+    expect(workbook.cell(sheet, 1, 2).note).toBeUndefined();
+  });
+
+  it('commits an entry before changing a note', () => {
+    const { workbook, view, sheet } = setup();
+    view.type('7');
+    view.setNote('Seven');
+    expect(workbook.cell(sheet, 0, 0)).toMatchObject({
+      value: 7,
+      note: 'Seven',
+    });
+  });
+
+  it('links the active cell to a web address, taking https when none is typed', () => {
+    const { workbook, view, sheet } = setup();
+    expect(view.setLink({ address: 'example.com' }, 'Example')).toBeNull();
+    expect(workbook.cell(sheet, 0, 0)).toMatchObject({
+      value: 'Example',
+      link: 'https://example.com',
+    });
+    expect(view.link).toEqual({ address: 'https://example.com' });
+    expect(view.setLink({ address: 'mailto:a@b.c' }, 'Example')).toBeNull();
+    expect(workbook.cell(sheet, 0, 0).link).toBe('mailto:a@b.c');
+    expect(view.setLink({ address: ' ' }, 'Example')).toBe('address');
+  });
+
+  it('shows the address as the text of an empty cell, and keeps the text of one in use', () => {
+    const { workbook, view, sheet } = setup();
+    view.setLink({ address: 'https://example.com' }, '');
+    expect(workbook.cell(sheet, 0, 0).value).toBe('https://example.com');
+    view.select(single({ row: 1, col: 0 }));
+    view.type('1234.5');
+    view.commit();
+    view.format({ numberFormat: '#,##0.00' });
+    view.setLink({ address: 'https://example.com' }, '1,234.50');
+    expect(workbook.cell(sheet, 1, 0).value).toBe(1234.5);
+  });
+
+  it('links to a cell of the workbook, and goes there when followed', () => {
+    const { workbook, view, sheet } = setup();
+    workbook.execute({ type: 'addSheet', index: 1, name: 'My data' });
+    const other = workbook.sheets[1]!.id;
+    expect(
+      view.setLink({ sheet: other, reference: 'c3' }, 'Totals'),
+    ).toBeNull();
+    expect(workbook.cell(sheet, 0, 0).link).toBe("#'My data'!C3");
+    expect(view.link).toEqual({ sheet: other, reference: 'C3' });
+    expect(view.setLink({ sheet: other, reference: 'nowhere' }, '')).toBe(
+      'reference',
+    );
+    expect(view.follow({ row: 0, col: 0 })).toBeNull();
+    expect(view.state).toMatchObject({
+      sheet: other,
+      selection: single({ row: 2, col: 2 }),
+      reveal: { row: 2, col: 2 },
+    });
+  });
+
+  it('gives a web address to open when followed, and nothing for a cell without a link', () => {
+    const { view } = setup();
+    view.setLink({ address: 'https://example.com' }, 'Example');
+    view.select(single({ row: 4, col: 4 }));
+    expect(view.follow({ row: 0, col: 0 })).toBe('https://example.com');
+    expect(view.follow({ row: 1, col: 0 })).toBeNull();
+    expect(view.state.selection).toEqual(single({ row: 4, col: 4 }));
+  });
+
+  it('removes the link of the active cell, keeping its text', () => {
+    const { workbook, view, sheet } = setup();
+    view.setLink({ address: 'https://example.com' }, 'Example');
+    view.removeLink();
+    expect(workbook.cell(sheet, 0, 0)).toMatchObject({ value: 'Example' });
+    expect(view.link).toBeNull();
+    view.undo();
+    expect(view.link).toEqual({ address: 'https://example.com' });
+  });
+});
