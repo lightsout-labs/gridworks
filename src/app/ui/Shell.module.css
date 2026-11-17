@@ -978,3 +978,15 @@
   min-height: 1.5em;
   margin-bottom: 8px;
 }
+
+.noteInput {
+  height: 96px;
+  padding: 6px 8px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.linkKinds {
+  display: flex;
+  gap: 16px;
+}

@@ -257,9 +257,12 @@ describe('shownCell', () => {
       style: { bold: true, fill: '#ffffff', color: '#000000' } as const,
       color: '#ff0000',
     };
-    expect(shownCell(cell)).toBe(cell);
+    expect(shownCell(cell, '#0563c1')).toBe(cell);
     expect(
-      shownCell({ ...cell, conditional: { fill: '#ffc7ce', italic: true } }),
+      shownCell(
+        { ...cell, conditional: { fill: '#ffc7ce', italic: true } },
+        '#0563c1',
+      ),
     ).toEqual({
       value: -1,
       display: '(1)',
@@ -267,7 +270,24 @@ describe('shownCell', () => {
       color: '#ff0000',
     });
     expect(
-      shownCell({ ...cell, conditional: { color: '#9c0006' } }),
+      shownCell({ ...cell, conditional: { color: '#9c0006' } }, '#0563c1'),
     ).toMatchObject({ style: { color: '#9c0006' }, color: '#9c0006' });
+  });
+});
+
+describe('shownCell with a link', () => {
+  it('underlines a link, in the link color unless the cell has a color of its own', () => {
+    const cell = { value: 'Site', display: 'Site', style: {} };
+    expect(shownCell({ ...cell, link: '#A1' }, '#0563c1')).toEqual({
+      ...cell,
+      style: { underline: true, color: '#0563c1' },
+    });
+    expect(
+      shownCell(
+        { ...cell, style: { color: '#ff0000' }, link: '#A1' },
+        '#0563c1',
+      ).style,
+    ).toEqual({ color: '#ff0000', underline: true });
+    expect(shownCell(cell, '#0563c1')).toBe(cell);
   });
 });

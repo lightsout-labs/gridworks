@@ -85,6 +85,9 @@ export const measureText: TextWidth = (text: string, style: Style) => {
 /** How often the border of the cells copied moves, in milliseconds. */
 const MARCH = 100;
 
+/** How long the pointer rests on a cell before its note shows, in ms. */
+const NOTE_DELAY = 300;
+
 /**
  * The cells of the sheet that the view shows, drawn on a canvas that stays
  * in place while the element around it scrolls over the whole sheet. The
@@ -126,6 +129,14 @@ export function Grid({
    * range it picks for a formula.
    */
   const drag = useRef<Target['kind'] | 'fill' | 'point' | null>(null);
+  /** The cell clicked, whose link is followed unless the click drags. */
+  const pressed = useRef<CellPosition | null>(null);
+  /** The cell the pointer rests on, and the wait before its note shows. */
+  const resting = useRef<{ cell: CellPosition; timer: number } | null>(null);
+  /** The cell of the sheet whose note shows. */
+  const [noteAt, setNoteAt] = useState<
+    (CellPosition & { sheet: string }) | null
+  >(null);
   const state = useSyncExternalStore(view.subscribe, () => view.state);
   const { sheet, selection, entry, zoom, copied, filled } = state;
   const { active } = selection;
@@ -318,6 +329,7 @@ export function Grid({
         return;
       }
       view.select(next);
+      pressed.current = null;
       // Over the headers, the grid scrolls along them only: the focus of
       // a whole row is in its last column.
       const shown = topLeft();
@@ -335,6 +347,10 @@ export function Grid({
         view.fill(MAC ? event.altKey : event.ctrlKey);
       // The format painter paints the range a click or drag selects.
       else if (drag.current && drag.current !== 'point') view.paint();
+      // A click on a link follows it, to a cell or to a new tab (R29).
+      const url = pressed.current && view.follow(pressed.current);
+      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+      pressed.current = null;
       if (resizeDrag.current) view.resize();
       drag.current = null;
       resizeDrag.current = null;
@@ -359,6 +375,42 @@ export function Grid({
       viewport(),
     );
   };
+
+  /** The cell under a mouse event, the top-left one of a merged cell. */
+  const cellUnder = (event: MouseEvent): CellPosition | null => {
+    const { x, y } = point(event);
+    const target = hitTest(x, y, viewport());
+    if (target.kind !== 'cell') return null;
+    const merge = mergeAt(workbook.merges(view.state.sheet), target);
+    return merge
+      ? { row: merge.top, col: merge.left }
+      : { row: target.row, col: target.col };
+  };
+
+  /**
+   * Shows the note of the cell the pointer rests on, once it has rested
+   * there a moment, and hides any other.
+   */
+  const rest = (cell: CellPosition | null) => {
+    const current = resting.current;
+    if (current?.cell.row === cell?.row && current?.cell.col === cell?.col) {
+      return;
+    }
+    if (current) window.clearTimeout(current.timer);
+    resting.current = null;
+    setNoteAt(null);
+    if (!cell) return;
+    const { sheet } = view.state;
+    resting.current = {
+      cell,
+      timer: window.setTimeout(() => {
+        if (workbook.cell(sheet, cell.row, cell.col).note !== undefined) {
+          setNoteAt({ ...cell, sheet });
+        }
+      }, NOTE_DELAY),
+    };
+  };
+  useEffect(() => () => window.clearTimeout(resting.current?.timer), []);
 
   /** The header border under a mouse event, to resize its line. */
   const onBorder = (event: MouseEvent) => {
@@ -409,6 +461,11 @@ export function Grid({
       event.preventDefault();
       return;
     }
+    // A plain click on a link follows it when released, as in Excel.
+    pressed.current =
+      mode === 'replace' && !view.state.entry && !view.state.painter
+        ? cellUnder(event)
+        : null;
     view.select(pick(view.state.selection, target, mode, topLeft()));
     drag.current = target.kind;
     // Keep the keyboard on the grid, which the browser would otherwise
@@ -558,6 +615,17 @@ export function Grid({
   };
   const fillBox =
     filledCorner && areaRect(cellRange(filledCorner), onSheet(filledCorner));
+  const note =
+    noteAt?.sheet === sheet
+      ? workbook.cell(sheet, noteAt.row, noteAt.col).note
+      : undefined;
+  const noteBox =
+    noteAt &&
+    note !== undefined &&
+    areaRect(
+      mergeAt(workbook.merges(sheet), noteAt) ?? cellRange(noteAt),
+      onSheet(noteAt),
+    );
   const shownCopy =
     copied && copied.sheet === sheet ? rangeName(copied.range) : undefined;
   return (
@@ -578,6 +646,13 @@ export function Grid({
               onMouseDown={onMouseDown}
               onMouseMove={(event) => {
                 const border = onBorder(event);
+                const cell = cellUnder(event);
+                rest(cell);
+                const linked =
+                  cell !== null &&
+                  !view.state.entry &&
+                  workbook.cell(view.state.sheet, cell.row, cell.col).link !==
+                    undefined;
                 canvas.current!.style.cursor = border
                   ? border.direction === 'rows'
                     ? 'row-resize'
@@ -586,8 +661,11 @@ export function Grid({
                     ? 'crosshair'
                     : view.state.painter
                       ? 'copy'
-                      : '';
+                      : linked
+                        ? 'pointer'
+                        : '';
               }}
+              onMouseLeave={() => rest(null)}
               onDoubleClick={onDoubleClick}
               onContextMenu={onContextMenu}
             />
@@ -667,6 +745,15 @@ export function Grid({
               onContextMenu={(event) => event.stopPropagation()}
             >
               {listButton}
+            </div>
+          )}
+          {noteBox && (
+            <div
+              role="tooltip"
+              className={styles.note}
+              style={{ left: noteBox.x + noteBox.width + 4, top: noteBox.y }}
+            >
+              {note}
             </div>
           )}
           <div role="status" className={styles.announcement}>
@@ -822,6 +909,27 @@ function drawText(
   });
 }
 
+/** The size of the corner that marks a note, at 100%. */
+const NOTE_MARKER = 6;
+
+/** Marks a cell's note with a triangle in its top-right corner. */
+function drawNoteMarker(
+  context: CanvasRenderingContext2D,
+  box: Rect,
+  zoom: number,
+  color: string,
+): void {
+  const right = box.x + box.width;
+  const size = NOTE_MARKER * zoom;
+  context.fillStyle = color;
+  context.beginPath();
+  context.moveTo(right - size, box.y + 1);
+  context.lineTo(right, box.y + 1);
+  context.lineTo(right, box.y + 1 + size);
+  context.closePath();
+  context.fill();
+}
+
 function draw(
   canvas: HTMLCanvasElement,
   workbook: Workbook,
@@ -867,11 +975,12 @@ function draw(
   const background = color('--background');
   // The styles of the cells read, shared by the panes.
   const looks = new Map<string, Style>();
+  const linkColor = color('--link');
   const lookOf = (row: number, col: number): Style => {
     const key = `${row},${col}`;
     let look = looks.get(key);
     if (!look) {
-      look = shownCell(workbook.cell(sheet, row, col)).style;
+      look = shownCell(workbook.cell(sheet, row, col), linkColor).style;
       looks.set(key, look);
     }
     return look;
@@ -904,12 +1013,17 @@ function draw(
     // read for them.
     const rows: { row: number; texts: RowText[] }[] = [];
     const bars = new Map<string, DataBar>();
+    // The cells with a note, outside merged cells.
+    const noted: CellPosition[] = [];
     for (let row = range.top; row <= range.bottom; row++) {
       const texts = rowTexts(
         (col) => {
           const read = workbook.cell(sheet, row, col);
           if (read.bar) bars.set(`${row},${col}`, read.bar);
-          const cell = shownCell(read);
+          if (read.note !== undefined && col >= range.left) {
+            noted.push({ row, col });
+          }
+          const cell = shownCell(read, linkColor);
           looks.set(`${row},${col}`, cell.style);
           return cell;
         },
@@ -1010,7 +1124,8 @@ function draw(
         context.fillStyle = color('--selection');
         context.fillRect(box.x, box.y, box.width, box.height);
       }
-      const cell = shownCell(workbook.cell(sheet, row, col));
+      const read = workbook.cell(sheet, row, col);
+      const cell = shownCell(read, linkColor);
       if (cell.display !== '') {
         const { lines, align } = cellText(cell, box.width / zoom, measure);
         drawText(context, lines, cell.style, align, box, {
@@ -1020,6 +1135,8 @@ function draw(
           setFont,
         });
       }
+      if (read.note !== undefined)
+        drawNoteMarker(context, box, zoom, color('--note'));
       context.restore();
     }
     for (const { row, texts } of rows) {
@@ -1093,6 +1210,15 @@ function draw(
                   : col < merge.right);
           if (!inside) drawBorder(context, border, side, box, automatic);
         }
+      }
+    }
+
+    // The corner that marks a note, as in Excel.
+    const noteColor = color('--note');
+    for (const cell of noted) {
+      const box = rect(cell);
+      if (box.width > 0 && box.height > 0) {
+        drawNoteMarker(context, box, zoom, noteColor);
       }
     }
 

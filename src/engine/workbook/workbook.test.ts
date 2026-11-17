@@ -3354,3 +3354,185 @@ describe('named ranges', () => {
     expect(workbook.listItems(sheet, 0, 0)).toEqual(['Red', 'Blue']);
   });
 });
+
+describe('notes and hyperlinks', () => {
+  const range = (top: number, left: number, bottom = top, right = left) => ({
+    top,
+    left,
+    bottom,
+    right,
+  });
+  const note = (sheet: string, row: number, col: number, text: string | null) =>
+    ({ type: 'setNote', sheet, row, col, note: text }) as const;
+  const link = (
+    sheet: string,
+    row: number,
+    col: number,
+    target: string | null,
+    text?: string,
+  ) =>
+    ({
+      type: 'setLink',
+      sheet,
+      row,
+      col,
+      link: target,
+      ...(text !== undefined && { text }),
+    }) as const;
+
+  it('adds, edits and deletes a note, and undoes and redoes each', () => {
+    const { workbook, sheet, set } = setup();
+    set(0, 0, '5');
+    const heard: Command[] = [];
+    workbook.subscribe((command) => heard.push(command));
+    expect(workbook.execute(note(sheet, 0, 0, 'Check this'))).toEqual({
+      sheet,
+      ranges: [range(0, 0)],
+    });
+    expect(heard).toEqual([note(sheet, 0, 0, 'Check this')]);
+    expect(workbook.cell(sheet, 0, 0)).toMatchObject({
+      value: 5,
+      note: 'Check this',
+    });
+    expect(workbook.cell(sheet, 1, 0).note).toBeUndefined();
+    workbook.execute(note(sheet, 0, 0, 'Checked'));
+    expect(workbook.cell(sheet, 0, 0).note).toBe('Checked');
+    workbook.execute(note(sheet, 0, 0, null));
+    expect(workbook.cell(sheet, 0, 0).note).toBeUndefined();
+    expect(workbook.cell(sheet, 0, 0).value).toBe(5);
+    workbook.undo();
+    expect(workbook.cell(sheet, 0, 0).note).toBe('Checked');
+    workbook.undo();
+    expect(workbook.cell(sheet, 0, 0).note).toBe('Check this');
+    workbook.redo();
+    expect(workbook.cell(sheet, 0, 0).note).toBe('Checked');
+  });
+
+  it('inserts a link with its text, edits it, and removes it keeping the text', () => {
+    const { workbook, sheet, set } = setup();
+    workbook.execute(link(sheet, 0, 0, 'https://example.com', 'Example'));
+    expect(workbook.cell(sheet, 0, 0)).toMatchObject({
+      value: 'Example',
+      link: 'https://example.com',
+    });
+    workbook.execute(link(sheet, 0, 0, '#Sheet1!B2'));
+    expect(workbook.cell(sheet, 0, 0)).toMatchObject({
+      value: 'Example',
+      link: '#Sheet1!B2',
+    });
+    workbook.execute(link(sheet, 0, 0, null));
+    expect(workbook.cell(sheet, 0, 0).link).toBeUndefined();
+    expect(workbook.cell(sheet, 0, 0).value).toBe('Example');
+    workbook.undo();
+    workbook.undo();
+    workbook.undo();
+    expect(workbook.cell(sheet, 0, 0).link).toBeUndefined();
+    expect(workbook.cell(sheet, 0, 0).value).toBeNull();
+    // Typing over a link, or deleting its text, keeps it, as in Excel.
+    workbook.redo();
+    set(0, 0, 'Other');
+    workbook.execute({ type: 'clear', sheet, ranges: [range(0, 0)] });
+    expect(workbook.cell(sheet, 0, 0).link).toBe('https://example.com');
+    expect(() => workbook.execute(link(sheet, 0, 0, ''))).toThrow();
+    // Listeners get the year of a date typed without one, to replay it.
+    const heard: Command[] = [];
+    workbook.subscribe((command) => heard.push(command));
+    workbook.execute(link(sheet, 2, 0, 'https://example.com', '3/4'));
+    expect(heard[0]).toMatchObject({ year: new Date().getFullYear() });
+  });
+
+  it('keeps notes and links in snapshots, copies of sheets and replayed changes', () => {
+    const { workbook, sheet } = setup();
+    const commands = [
+      note(sheet, 2, 1, 'A note'),
+      link(sheet, 3, 0, 'https://example.com', 'Site'),
+    ];
+    for (const command of commands) workbook.execute(command);
+    const check = (each: Workbook, id = sheet) => {
+      expect(each.cell(id, 2, 1).note).toBe('A note');
+      expect(each.cell(id, 3, 0).link).toBe('https://example.com');
+      expect(each.cell(id, 3, 0).value).toBe('Site');
+    };
+    check(Workbook.fromSnapshot(workbook.toSnapshot()));
+    check(Workbook.fromSnapshot(createWorkbook().toSnapshot(), commands));
+    workbook.execute({ type: 'addSheet', index: 1, copyOf: sheet });
+    check(workbook, workbook.sheets[1]!.id);
+  });
+
+  it('moves notes and links with rows and columns, and drops those deleted', () => {
+    const { workbook, sheet } = setup();
+    workbook.execute(note(sheet, 2, 2, 'Moves'));
+    workbook.execute(link(sheet, 4, 1, 'https://example.com', 'Site'));
+    workbook.execute({
+      type: 'insertLines',
+      sheet,
+      direction: 'rows',
+      spans: [{ start: 0, end: 1 }],
+    });
+    expect(workbook.cell(sheet, 4, 2).note).toBe('Moves');
+    expect(workbook.cell(sheet, 6, 1).link).toBe('https://example.com');
+    workbook.execute({
+      type: 'deleteLines',
+      sheet,
+      direction: 'columns',
+      spans: [{ start: 1, end: 1 }],
+    });
+    expect(workbook.cell(sheet, 4, 1).note).toBe('Moves');
+    expect(workbook.toSnapshot().sheets[0]!.links).toBeUndefined();
+    workbook.undo();
+    expect(workbook.cell(sheet, 6, 1).link).toBe('https://example.com');
+  });
+
+  it('copies, cuts and sorts notes and links with their cells', () => {
+    const { workbook, sheet, set } = setup();
+    set(0, 0, '2');
+    set(1, 0, '1');
+    workbook.execute(note(sheet, 0, 0, 'Two'));
+    workbook.execute(link(sheet, 1, 0, 'https://example.com'));
+    workbook.execute({
+      type: 'sort',
+      sheet,
+      range: range(0, 0, 1, 0),
+      keys: [{ col: 0, descending: false }],
+    });
+    expect(workbook.cell(sheet, 1, 0).note).toBe('Two');
+    expect(workbook.cell(sheet, 0, 0).link).toBe('https://example.com');
+    workbook.execute({
+      type: 'paste',
+      sheet,
+      target: range(0, 2),
+      source: { sheet, range: range(0, 0, 1, 0) },
+    });
+    expect(workbook.cell(sheet, 1, 2).note).toBe('Two');
+    expect(workbook.cell(sheet, 0, 2).link).toBe('https://example.com');
+    // A cell whose formula a cut rewrites keeps its note.
+    set(5, 5, '=A2');
+    workbook.execute(note(sheet, 5, 5, 'Reads A2'));
+    workbook.execute({
+      type: 'paste',
+      sheet,
+      target: range(0, 3),
+      source: { sheet, range: range(0, 0, 1, 0) },
+      cut: true,
+    });
+    expect(workbook.cell(sheet, 1, 3).note).toBe('Two');
+    expect(workbook.cell(sheet, 1, 0).note).toBeUndefined();
+    expect(workbook.cell(sheet, 5, 5)).toMatchObject({
+      formula: '=D2',
+      note: 'Reads A2',
+    });
+    // Pasting only values keeps the target's own note.
+    set(9, 0, '7');
+    workbook.execute({
+      type: 'paste',
+      sheet,
+      target: range(1, 3),
+      source: { sheet, range: range(9, 0) },
+      only: 'values',
+    });
+    expect(workbook.cell(sheet, 1, 3)).toMatchObject({
+      value: 7,
+      note: 'Two',
+    });
+  });
+});

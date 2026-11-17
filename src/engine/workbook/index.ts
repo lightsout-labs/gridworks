@@ -162,6 +162,29 @@ export type Command =
     }
   | Restore
   | {
+      /** Gives a cell a note, in place of the one it had, or none (R28). */
+      readonly type: 'setNote';
+      readonly sheet: string;
+      readonly row: number;
+      readonly col: number;
+      readonly note: string | null;
+    }
+  | {
+      /**
+       * Gives a cell a hyperlink, in place of the one it had, or none
+       * (R29): a web address, or `#` and a reference in the workbook, as
+       * in `#Sheet1!B2`. `text`, when given, is set as if typed.
+       */
+      readonly type: 'setLink';
+      readonly sheet: string;
+      readonly row: number;
+      readonly col: number;
+      readonly link: string | null;
+      readonly text?: string;
+      /** As in `setCell`, for a date typed as `text` without a year. */
+      readonly year?: number;
+    }
+  | {
       /**
        * Copies the cells of a range, or moves them when `cut`, to a sheet.
        * A target made of whole copies of the source is filled with them;
@@ -431,7 +454,10 @@ export interface Restore {
   readonly merges?: readonly Range[];
 }
 
-/** A cell's contents and style, as a `restore` command puts them back. */
+/**
+ * A cell's contents, style, note and link, as a `restore` command puts
+ * them back.
+ */
 export interface CellContents {
   readonly row: number;
   readonly col: number;
@@ -440,6 +466,9 @@ export interface CellContents {
   readonly formula?: string;
   /** Absent for the default style. */
   readonly style?: Style;
+  /** Absent for none. */
+  readonly note?: string;
+  readonly link?: string;
 }
 
 /**
@@ -518,6 +547,10 @@ export interface Cell {
   readonly conditional?: RuleFormat;
   /** The data bar that a conditional format draws in it, if any (R20). */
   readonly bar?: DataBar;
+  /** Absent for none (R28). */
+  readonly note?: string;
+  /** A web address, or `#` and a reference in the workbook (R29). */
+  readonly link?: string;
 }
 
 export interface SheetInfo {
@@ -554,6 +587,10 @@ export interface SheetSnapshot extends SheetInfo {
   readonly filter?: Filter;
   /** The rules of data validation; absent for none. */
   readonly validations?: Validation[];
+  /** The notes as `[row, column, text]`; absent for none. */
+  readonly notes?: [number, number, string][];
+  /** The hyperlinks as `[row, column, link]`; absent for none. */
+  readonly links?: [number, number, string][];
 }
 
 /**
@@ -589,6 +626,8 @@ type CellCommand = Extract<
     type:
       | 'setCell'
       | 'setCells'
+      | 'setNote'
+      | 'setLink'
       | 'clear'
       | 'restore'
       | 'setStyle'
@@ -877,6 +916,10 @@ export class Workbook {
         : this.conditions.format(sheet.rules, row, col, value, (area, visit) =>
             this.calc.cells(sheet, area, visit),
           );
+    const note =
+      sheet.notes.size === 0 ? undefined : sheet.notes.get(key(row, col));
+    const link =
+      sheet.links.size === 0 ? undefined : sheet.links.get(key(row, col));
     return {
       value,
       formula,
@@ -884,6 +927,8 @@ export class Workbook {
       display: formatValue(value, code),
       ...(color !== undefined && { color }),
       ...conditional,
+      ...(note !== undefined && { note }),
+      ...(link !== undefined && { link }),
       // Only the formula bar and the editor need it, not every drawn cell.
       get input() {
         return formula ?? editText(value, code);
@@ -1156,6 +1201,8 @@ export class Workbook {
     if (
       command.type === 'setCell' ||
       command.type === 'setCells' ||
+      command.type === 'setNote' ||
+      command.type === 'setLink' ||
       command.type === 'clear' ||
       command.type === 'restore' ||
       command.type === 'setStyle' ||
@@ -1261,7 +1308,9 @@ export class Workbook {
           ? combined(command.ranges, sheet.merges)
           : command.type === 'unmerge'
             ? this.mergesIn(sheet, command.ranges)
-            : command.type === 'setCell'
+            : command.type === 'setCell' ||
+                command.type === 'setNote' ||
+                command.type === 'setLink'
               ? [
                   {
                     top: command.row,
@@ -1296,6 +1345,12 @@ export class Workbook {
           : this.setCells(sheet, command, ranges[0]!);
       // Listeners that record the command replay it with the same date.
       if (year !== undefined) executed = { ...command, year };
+    } else if (command.type === 'setNote' || command.type === 'setLink') {
+      const year = this.setNoteOrLink(sheet, command);
+      // Only a link's text can be a date.
+      if (year !== undefined && command.type === 'setLink') {
+        executed = { ...command, year };
+      }
     } else if (command.type === 'clear') {
       for (const range of command.ranges) this.clear(sheet, range);
     } else if (command.type === 'setStyle') {
@@ -1848,12 +1903,23 @@ export class Workbook {
     const pasted = new Map<string, CellContents>();
     if (only) {
       for (const cell of this.contents(to, [area])) {
-        const { row, col, value, formula, style } = cell;
+        const { row, col, value, formula, style, note, link } = cell;
+        // Notes and links stay, as they are neither contents nor formats.
+        const own = {
+          ...(note !== undefined && { note }),
+          ...(link !== undefined && { link }),
+        };
         pasted.set(
           key(row, col),
           only === 'formats'
-            ? { row, col, value, ...(formula !== undefined && { formula }) }
-            : { row, col, value: null, ...(style && { style }) },
+            ? {
+                row,
+                col,
+                value,
+                ...(formula !== undefined && { formula }),
+                ...own,
+              }
+            : { row, col, value: null, ...(style && { style }), ...own },
         );
       }
     }
@@ -1882,18 +1948,25 @@ export class Workbook {
           }
           const style =
             only === 'values' || only === 'formulas' ? kept?.style : cell.style;
+          const { note, link } = only ? (kept ?? {}) : cell;
           pasted.set(key(row, col), {
             row,
             col,
             ...contents,
             ...(style && { style }),
+            ...(note !== undefined && { note }),
+            ...(link !== undefined && { link }),
           });
         }
       }
     }
     const filled = [...pasted.values()].filter(
-      ({ value, formula, style }) =>
-        value !== null || formula !== undefined || style !== undefined,
+      ({ value, formula, style, note, link }) =>
+        value !== null ||
+        formula !== undefined ||
+        style !== undefined ||
+        note !== undefined ||
+        link !== undefined,
     );
     // Formats bring the merges of the cells copied, as in Excel.
     const merges: Range[] = [];
@@ -1943,11 +2016,10 @@ export class Workbook {
     const { how } = fill;
     // What the target keeps: its contents when formats are filled, and its
     // formats when contents are.
+    // Notes and links stay where they are, as in Excel.
     const kept = new Map<string, CellContents>();
-    if (how === 'formats' || how === 'values') {
-      for (const cell of this.contents(sheet, [area])) {
-        kept.set(key(cell.row, cell.col), cell);
-      }
+    for (const cell of this.contents(sheet, [area])) {
+      kept.set(key(cell.row, cell.col), cell);
     }
     const cells: CellContents[] = [];
     for (const { seeds, extended, at } of lines) {
@@ -1976,8 +2048,20 @@ export class Workbook {
           contents = { value: seed?.value ?? null };
         }
         const style = how === 'values' ? keep?.style : seed?.style;
-        if (contents.value === null && !contents.formula && !style) continue;
-        cells.push({ row, col, ...contents, ...(style && { style }) });
+        const own = {
+          ...(keep?.note !== undefined && { note: keep.note }),
+          ...(keep?.link !== undefined && { link: keep.link }),
+        };
+        if (
+          contents.value === null &&
+          !contents.formula &&
+          !style &&
+          !own.note &&
+          !own.link
+        ) {
+          continue;
+        }
+        cells.push({ row, col, ...contents, ...(style && { style }), ...own });
       }
     }
     return { type: 'restore', sheet: sheet.id, ranges: [area], cells };
@@ -2160,12 +2244,16 @@ export class Workbook {
         const moved = shift(ast, move(sheet, sheet));
         if (moved === ast) continue;
         const id = sheet.styleIds[col]?.[row] ?? 0;
+        const note = sheet.notes.get(key(row, col));
+        const link = sheet.links.get(key(row, col));
         changed.push({
           row,
           col,
           value: null,
           formula: `=${print(moved)}`,
           ...(id !== 0 && { style: this.styles[id] }),
+          ...(note !== undefined && { note }),
+          ...(link !== undefined && { link }),
         });
       }
       if (changed.length === 0) continue;
@@ -2234,7 +2322,10 @@ export class Workbook {
     }
   }
 
-  /** The cells of ranges that have contents or a style other than the default. */
+  /**
+   * The cells of ranges that have contents, a style other than the
+   * default, a note or a link.
+   */
   private contents(sheet: Sheet, ranges: readonly Range[]): CellContents[] {
     const cells = new Map<string, CellContents>();
     for (const { top, left, bottom, right } of ranges) {
@@ -2269,11 +2360,27 @@ export class Workbook {
           ...(id !== 0 && { style: this.styles[id] }),
         });
       }
+      for (const [property, map] of [
+        ['note', sheet.notes],
+        ['link', sheet.links],
+      ] as const) {
+        for (const [cellKey, text] of map) {
+          const [row, col] = placeOf(cellKey);
+          if (row < top || row > bottom || col < left || col > right) continue;
+          cells.set(cellKey, {
+            ...(cells.get(cellKey) ?? { row, col, value: null }),
+            [property]: text,
+          });
+        }
+      }
     }
     return [...cells.values()];
   }
 
-  /** Empties the ranges of a `restore`, styles too, and fills in its cells. */
+  /**
+   * Empties the ranges of a `restore`, styles, notes and links too, and
+   * fills in its cells.
+   */
   private restore(sheet: Sheet, { ranges, cells, merges }: Restore): void {
     for (const range of ranges) {
       this.clear(sheet, range);
@@ -2285,8 +2392,16 @@ export class Workbook {
         const end = Math.min(bottom, ids.length - 1);
         for (let row = top; row <= end; row++) ids[row] = 0;
       }
+      for (const map of [sheet.notes, sheet.links]) {
+        for (const cellKey of map.keys()) {
+          const [row, col] = placeOf(cellKey);
+          if (row >= top && row <= bottom && col >= left && col <= right) {
+            map.delete(cellKey);
+          }
+        }
+      }
     }
-    for (const { row, col, value, formula, style } of cells) {
+    for (const { row, col, value, formula, style, note, link } of cells) {
       if (formula !== undefined) {
         const ast = parse(formula.slice(1));
         // A command read back from storage may be damaged.
@@ -2295,6 +2410,8 @@ export class Workbook {
       }
       (sheet.columns[col] ??= [])[row] = value;
       if (style) (sheet.styleIds[col] ??= [])[row] = this.styleId(style);
+      if (note !== undefined) sheet.notes.set(key(row, col), note);
+      if (link !== undefined) sheet.links.set(key(row, col), link);
     }
     if (merges) {
       this.unmerge(sheet, ranges);
@@ -2337,6 +2454,37 @@ export class Workbook {
     const style = { ...this.styles[ids[row] ?? 0], numberFormat: format };
     ids[row] = this.styleId(style);
     return year;
+  }
+
+  /**
+   * Gives a cell a note or a link, or none, and a link its text, and gives
+   * the year it gave a date typed without one.
+   */
+  private setNoteOrLink(
+    sheet: Sheet,
+    command: Extract<Command, { type: 'setNote' | 'setLink' }>,
+  ): number | undefined {
+    const { row, col } = command;
+    const [map, text] =
+      command.type === 'setNote'
+        ? [sheet.notes, command.note]
+        : [sheet.links, command.link];
+    // A command read back from storage may be damaged.
+    if (text === '') throw new Error(`An empty ${command.type}`);
+    if (text === null) map.delete(key(row, col));
+    else map.set(key(row, col), text);
+    if (command.type !== 'setLink' || command.text === undefined) {
+      return undefined;
+    }
+    const { text: input, year } = command;
+    return this.setCell(sheet, {
+      type: 'setCell',
+      sheet: sheet.id,
+      row,
+      col,
+      input,
+      ...(year !== undefined && { year }),
+    });
   }
 
   /**
@@ -2729,6 +2877,15 @@ function movedLines(
       });
       return ranges.length === 0 ? [] : [{ ...rule, ranges }];
     });
+  // Notes and links go with their cells, and are dropped with them.
+  const movedCells = (list: [number, number, string][] | undefined) =>
+    list?.flatMap(([row, col, text]): [number, number, string][] => {
+      const place = moved(rows ? row : col);
+      if (place === null) return [];
+      return [rows ? [place, col, text] : [row, place, text]];
+    });
+  const notes = movedCells(snapshot.notes);
+  const links = movedCells(snapshot.links);
   const conditionalFormats = movedRules(snapshot.conditionalFormats);
   const validations = movedRules(snapshot.validations);
   // A filter keeps the lines of its range that stay, and the columns; it
@@ -2755,8 +2912,12 @@ function movedLines(
         }
       : undefined;
   delete rest.validations;
+  delete rest.notes;
+  delete rest.links;
   return {
     ...rest,
+    ...(notes?.length && { notes }),
+    ...(links?.length && { links }),
     ...(filter && { filter }),
     ...(merges && { merges }),
     ...(conditionalFormats && { conditionalFormats }),
@@ -2818,6 +2979,12 @@ function sheetOf(snapshot: SheetSnapshot): Sheet {
   }
   if (snapshot.filter) sheet.filter = snapshot.filter;
   if (snapshot.validations) sheet.validations = snapshot.validations;
+  for (const [row, col, text] of snapshot.notes ?? []) {
+    sheet.notes.set(key(row, col), text);
+  }
+  for (const [row, col, link] of snapshot.links ?? []) {
+    sheet.links.set(key(row, col), link);
+  }
   for (const [row, col, text] of snapshot.formulas) {
     const ast = parse(text.slice(1));
     if (!ast) throw new Error(`Invalid formula in snapshot: ${text}`);
@@ -2853,5 +3020,20 @@ function snapshotOf(sheet: Sheet): SheetSnapshot {
     ...(sheet.validations.length > 0 && {
       validations: [...sheet.validations],
     }),
+    ...(sheet.notes.size > 0 && { notes: cellTexts(sheet.notes) }),
+    ...(sheet.links.size > 0 && { links: cellTexts(sheet.links) }),
   };
+}
+
+/** The row and column of a cell's key. */
+function placeOf(cellKey: string): [number, number] {
+  return cellKey.split(',').map(Number) as [number, number];
+}
+
+/** Texts kept by the key of their cell, as `[row, column, text]`. */
+function cellTexts(map: Map<string, string>): [number, number, string][] {
+  return Array.from(map, ([cellKey, text]) => {
+    const [row, col] = placeOf(cellKey);
+    return [row, col, text];
+  });
 }

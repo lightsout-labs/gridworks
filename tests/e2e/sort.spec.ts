@@ -97,7 +97,7 @@ test('sorts by several columns with a header row in the dialog', async ({
 
 test('translates the sort controls', async ({ page }) => {
   await openApp(page);
-  await page.getByRole('tab', { name: 'View' }).click();
+  await page.getByRole('tab', { name: 'View', exact: true }).click();
   await page.getByRole('button', { name: '中文' }).click();
   await page.getByRole('tab', { name: '数据' }).click();
   for (const name of ['升序排序', '降序排序', '自定义排序']) {

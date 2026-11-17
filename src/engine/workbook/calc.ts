@@ -79,6 +79,10 @@ export interface Sheet {
   filter: Filter | null;
   /** The rules of data validation; replaced, never changed. */
   validations: readonly Validation[];
+  /** The notes of cells, by the cell's key (R28). */
+  readonly notes: Map<string, string>;
+  /** The hyperlinks of cells, by the cell's key (R29). */
+  readonly links: Map<string, string>;
   /** The formulas that read one cell, by the cell's key. */
   readonly cellReaders: Map<string, Set<Dependency>>;
   /** The formulas that read an area of several cells, by each column of it. */
@@ -108,6 +112,8 @@ export function emptySheet(
     rules: [],
     filter: null,
     validations: [],
+    notes: new Map(),
+    links: new Map(),
     cellReaders: new Map(),
     areaReaders: new Map(),
   };

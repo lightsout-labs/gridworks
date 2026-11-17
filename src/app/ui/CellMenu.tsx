@@ -5,9 +5,13 @@ import {
   Copy,
   Eye,
   EyeOff,
+  Link2,
+  MessageSquareX,
   Plus,
   Scissors,
+  StickyNote,
   Trash2,
+  Unlink,
   type LucideIcon,
 } from 'lucide-react';
 import { useSyncExternalStore } from 'react';
@@ -17,6 +21,7 @@ import type { View } from '../grid/view';
 import type { ClipboardContents } from '../platform';
 import { useTranslation } from './controls';
 import type { Key } from './i18n';
+import type { Editing } from './Notes';
 import styles from './Shell.module.css';
 
 const ICON_SIZE = 16;
@@ -34,17 +39,21 @@ export function useCopied(view: View) {
 }
 
 /**
- * The menu that right-clicking a cell opens, or a row or column header,
- * with the actions on the rows or columns selected.
+ * The menu that right-clicking a cell opens, with the actions on its note
+ * and link, or a row or column header, with the actions on the rows or
+ * columns selected.
  */
 export function CellMenu({
   view,
   onCopy,
+  onEdit,
   lines,
 }: {
   view: View;
   /** Puts the cells copied or cut on the system clipboard. */
   onCopy: (contents: ClipboardContents | null) => void;
+  /** Opens the dialog of the active cell's note or link. */
+  onEdit: (editing: Editing) => void;
   /** Whether the menu is that of row or column headers. */
   lines?: Direction;
 }) {
@@ -100,6 +109,33 @@ export function CellMenu({
             </ContextMenu.SubContent>
           </ContextMenu.Portal>
         </ContextMenu.Sub>
+        {!lines && (
+          <>
+            <ContextMenu.Separator className={styles.menuSeparator} />
+            <MenuItem
+              icon={StickyNote}
+              label={t(view.note ? 'note.edit' : 'note.new')}
+              onSelect={() => onEdit('note')}
+            />
+            <MenuItem
+              icon={MessageSquareX}
+              label={t('note.delete')}
+              disabled={!view.note}
+              onSelect={() => view.setNote('')}
+            />
+            <MenuItem
+              icon={Link2}
+              label={t(view.link ? 'link.edit' : 'link')}
+              onSelect={() => onEdit('link')}
+            />
+            <MenuItem
+              icon={Unlink}
+              label={t('link.remove')}
+              disabled={!view.link}
+              onSelect={() => view.removeLink()}
+            />
+          </>
+        )}
         {lines && (
           <>
             <ContextMenu.Separator className={styles.menuSeparator} />

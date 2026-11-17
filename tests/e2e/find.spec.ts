@@ -109,7 +109,7 @@ test('the ribbon opens find and replace, in Chinese too', async ({ page }) => {
   await expect(panel(page).getByLabel('Find what')).toBeFocused();
   await button(page, 'Close').click();
 
-  await page.getByRole('tab', { name: 'View' }).click();
+  await page.getByRole('tab', { name: 'View', exact: true }).click();
   await page.getByRole('button', { name: '中文' }).click();
   await page.getByRole('tab', { name: '开始' }).click();
   await page.getByRole('button', { name: '替换', exact: true }).click();

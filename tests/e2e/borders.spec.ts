@@ -141,7 +141,7 @@ test('paints the formats of a range onto the next one selected', async ({
 
 test('translates the border, merge and painter controls', async ({ page }) => {
   await openApp(page);
-  await page.getByRole('tab', { name: 'View' }).click();
+  await page.getByRole('tab', { name: 'View', exact: true }).click();
   await page.getByRole('button', { name: '中文' }).click();
   await page.getByRole('tab', { name: '开始' }).click();
   for (const name of ['边框', '合并单元格', '取消合并单元格', '格式刷']) {

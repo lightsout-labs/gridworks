@@ -105,7 +105,7 @@ test('filters by a text condition, and clears one column from its dropdown', asy
 
 test('translates the filter controls', async ({ page }) => {
   await openApp(page);
-  await page.getByRole('tab', { name: 'View' }).click();
+  await page.getByRole('tab', { name: 'View', exact: true }).click();
   await page.getByRole('button', { name: '中文' }).click();
   await page.getByRole('tab', { name: '数据' }).click();
   for (const name of ['筛选', '清除']) {

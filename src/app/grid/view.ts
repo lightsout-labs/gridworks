@@ -44,6 +44,14 @@ import {
 } from './selection';
 import { TEXT_PADDING } from './text';
 
+/**
+ * Where a hyperlink goes: a web address, or a reference on a sheet of the
+ * workbook (R29).
+ */
+export type LinkTarget =
+  | { readonly address: string }
+  | { readonly sheet: string; readonly reference: string };
+
 export const ZOOM_MIN = 0.5;
 export const ZOOM_MAX = 2;
 
@@ -367,16 +375,7 @@ export class View {
     const { sheet, selection } = this.current;
     const place = this.workbook.locate(text, sheet);
     if (place) {
-      const { top, left } = place.range;
-      this.change({
-        sheet: place.sheet,
-        selection: overMerges(
-          covering([place.range]),
-          this.workbook.merges(place.sheet),
-        ),
-        endMode: false,
-        reveal: { row: top, col: left },
-      });
+      this.reveal(place);
       return null;
     }
     const name = text.trim();
@@ -435,6 +434,120 @@ export class View {
       type: 'setNames',
       names: this.workbook.names.filter((each) => each.name !== name),
     });
+  }
+
+  /** Selects a range of a sheet, and scrolls its top-left cell into view. */
+  private reveal({ sheet, range }: { sheet: string; range: Range }): void {
+    this.change({
+      sheet,
+      selection: overMerges(covering([range]), this.workbook.merges(sheet)),
+      endMode: false,
+      reveal: { row: range.top, col: range.left },
+    });
+  }
+
+  /**
+   * Gives the active cell a note, after committing an entry; an empty one
+   * deletes it (R28).
+   */
+  setNote(text: string): void {
+    if (!this.commit()) return;
+    const { sheet, selection } = this.current;
+    const { row, col } = selection.active;
+    const note = text === '' ? null : text;
+    this.workbook.execute({ type: 'setNote', sheet, row, col, note });
+  }
+
+  /** The note of the active cell, or `''` for none (R28). */
+  get note(): string {
+    const { sheet, selection } = this.current;
+    const { row, col } = selection.active;
+    return this.workbook.cell(sheet, row, col).note ?? '';
+  }
+
+  /** Where the hyperlink of the active cell goes, or `null` (R29). */
+  get link(): LinkTarget | null {
+    const { sheet, selection } = this.current;
+    const { row, col } = selection.active;
+    const { link } = this.workbook.cell(sheet, row, col);
+    if (link === undefined) return null;
+    if (!link.startsWith('#')) return { address: link };
+    const place = this.workbook.locate(link.slice(1), sheet);
+    return place
+      ? { sheet: place.sheet, reference: rangeName(place.range) }
+      : { sheet, reference: link.slice(1) };
+  }
+
+  /**
+   * Links the active cell, after committing an entry, and shows `text` in
+   * it, or the address or reference when it is empty and so is the cell.
+   * A web address without a scheme takes `https://`, and only `http:`,
+   * `https:` and `mailto:` are allowed, so that no link runs script.
+   * Gives why it cannot:
+   * the `address` or the `reference` being wrong, or the `entry` rejected
+   * by data validation.
+   */
+  setLink(
+    target: LinkTarget,
+    text: string,
+  ): 'address' | 'reference' | 'entry' | null {
+    let link: string;
+    let shown: string;
+    if ('address' in target) {
+      const address = target.address.trim();
+      if (address === '') return 'address';
+      link = /^[a-z][a-z\d+.-]*:/i.test(address)
+        ? address
+        : `https://${address}`;
+      if (!safeLink(link)) return 'address';
+      shown = link;
+    } else {
+      const place = this.workbook.locate(target.reference, target.sheet);
+      if (!place || /!/.test(target.reference)) return 'reference';
+      const name = this.workbook.sheets.find(
+        (each) => each.id === place.sheet,
+      )!.name;
+      shown = `${quoteSheetName(name)}!${rangeName(place.range)}`;
+      link = `#${shown}`;
+    }
+    if (!this.commit()) return 'entry';
+    const { sheet, selection } = this.current;
+    const { row, col } = selection.active;
+    const { display } = this.workbook.cell(sheet, row, col);
+    const typed = text === '' && display === '' ? shown : text;
+    this.workbook.execute({
+      type: 'setLink',
+      sheet,
+      row,
+      col,
+      link,
+      ...(typed !== '' && typed !== display && { text: typed }),
+    });
+    return null;
+  }
+
+  /** Removes the link of the active cell, keeping its text. */
+  removeLink(): void {
+    if (!this.commit()) return;
+    const { sheet, selection } = this.current;
+    const { row, col } = selection.active;
+    this.workbook.execute({ type: 'setLink', sheet, row, col, link: null });
+  }
+
+  /**
+   * Follows the hyperlink of a cell clicked: selects the cells it refers
+   * to in the workbook, or gives the web address to open.
+   */
+  follow({ row, col }: CellPosition): string | null {
+    const { sheet, entry } = this.current;
+    if (entry) return null;
+    const { link } = this.workbook.cell(sheet, row, col);
+    if (link === undefined) return null;
+    // A link from elsewhere, such as a stored change, is checked again.
+    if (!link.startsWith('#')) return safeLink(link) ? link : null;
+    const place = this.workbook.locate(link.slice(1), sheet);
+    if (place) this.reveal(place);
+    return null;
   }
 
   /** A range as a defined name refers to it, as in `Sheet1!$A$1:$B$2`. */
@@ -1471,4 +1584,17 @@ function sameRange(a: Range, b: Range): boolean {
     a.bottom === b.bottom &&
     a.right === b.right
   );
+}
+
+/** Whether a web address is one a link may open: no script runs. */
+function safeLink(address: string): boolean {
+  return /^(https?:\/\/|mailto:)/i.test(address);
+}
+
+/** The name of a range, as in `A1` or `A1:B2`. */
+function rangeName({ top, left, bottom, right }: Range): string {
+  const start = cellName(top, left);
+  return top === bottom && left === right
+    ? start
+    : `${start}:${cellName(bottom, right)}`;
 }
