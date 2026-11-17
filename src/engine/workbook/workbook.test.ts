@@ -7,6 +7,7 @@ import {
   Workbook,
   type ColumnFilter,
   type Command,
+  type Criterion,
   type Rule,
   type Search,
   type StyleChange,
@@ -2922,5 +2923,207 @@ describe('find and replace', () => {
     workbook.redo();
     expect(show(0, 0)).toBe('1/2 pie');
     expect(workbook.cell(other, 3, 0).value).toEqual(expect.any(Number));
+  });
+});
+
+describe('data validation', () => {
+  const range = (top: number, left: number, bottom = top, right = left) => ({
+    top,
+    left,
+    bottom,
+    right,
+  });
+  function validated(criterion: Criterion, ranges = [range(0, 0, 9, 0)]) {
+    const { workbook, sheet, set } = setup();
+    workbook.execute({ type: 'validate', sheet, ranges, criterion });
+    const allows = (input: string, row = 0, col = 0) =>
+      workbook.allows(sheet, row, col, input);
+    return { workbook, sheet, set, allows };
+  }
+
+  it('gives the rule of the cells of its ranges, and none elsewhere', () => {
+    const criterion: Criterion = { type: 'number', min: 1, max: 10 };
+    const { workbook, sheet } = validated(criterion);
+    expect(workbook.validation(sheet, 9, 0)).toEqual(criterion);
+    expect(workbook.validation(sheet, 10, 0)).toBeNull();
+    expect(workbook.validation(sheet, 0, 1)).toBeNull();
+    expect(workbook.allows(sheet, 0, 1, 'anything')).toBe(true);
+  });
+
+  it('allows the items of a typed list in any case, and nothing else', () => {
+    const { workbook, sheet, allows } = validated({
+      type: 'list',
+      source: 'Red, Green ,Blue',
+    });
+    expect(workbook.listItems(sheet, 0, 0)).toEqual(['Red', 'Green', 'Blue']);
+    expect(allows('Green')).toBe(true);
+    expect(allows('blue')).toBe(true);
+    expect(allows('Yellow')).toBe(false);
+    expect(allows('')).toBe(true);
+    expect(workbook.listItems(sheet, 0, 1)).toEqual([]);
+  });
+
+  it('takes a list from the shown texts of a range, of this sheet or another', () => {
+    const { workbook, sheet, set } = setup();
+    set(0, 2, '1');
+    set(2, 2, '=C1*2');
+    set(1, 3, 'x');
+    workbook.execute({
+      type: 'validate',
+      sheet,
+      ranges: [range(0, 0)],
+      criterion: { type: 'list', source: '=$C$1:$D$3' },
+    });
+    expect(workbook.listItems(sheet, 0, 0)).toEqual(['1', 'x', '2']);
+    expect(workbook.allows(sheet, 0, 0, '2')).toBe(true);
+    expect(workbook.allows(sheet, 0, 0, '3')).toBe(false);
+    workbook.execute({ type: 'addSheet', index: 1, name: 'Lists' });
+    const lists = workbook.sheets[1]!.id;
+    workbook.execute({
+      type: 'setCell',
+      sheet: lists,
+      row: 0,
+      col: 0,
+      input: 'North',
+    });
+    workbook.execute({
+      type: 'validate',
+      sheet,
+      ranges: [range(0, 0)],
+      criterion: { type: 'list', source: '=Lists!A1:A5' },
+    });
+    expect(workbook.listItems(sheet, 0, 0)).toEqual(['North']);
+  });
+
+  it('allows numbers and dates within bounds, either of which may be absent', () => {
+    const { allows, workbook, sheet } = validated({
+      type: 'number',
+      min: 1,
+      max: 10,
+    });
+    expect(['1', '10', '5.5'].map((input) => allows(input))).toEqual([
+      true,
+      true,
+      true,
+    ]);
+    expect(['0', '11', 'five', 'TRUE'].map((input) => allows(input))).toEqual([
+      false,
+      false,
+      false,
+      false,
+    ]);
+    workbook.execute({
+      type: 'validate',
+      sheet,
+      ranges: [range(0, 0)],
+      criterion: { type: 'date', min: 45658 },
+    });
+    expect(allows('1/1/2025')).toBe(true);
+    expect(allows('12/31/2024')).toBe(false);
+  });
+
+  it('allows text of a length within bounds', () => {
+    const { allows } = validated({ type: 'length', max: 3 });
+    expect(allows('abc')).toBe(true);
+    expect(allows('abcd')).toBe(false);
+    expect(allows('1234')).toBe(false);
+  });
+
+  it('checks the result of a formula', () => {
+    const { allows, set } = validated({ type: 'number', min: 1, max: 10 });
+    set(0, 1, '20');
+    expect(allows('=2+3')).toBe(true);
+    expect(allows('=B1')).toBe(false);
+    expect(allows('=1/0')).toBe(false);
+  });
+
+  it('gives cells a new rule in place of the one they had, and removes it', () => {
+    const { workbook, sheet } = validated({ type: 'length', max: 3 });
+    const number: Criterion = { type: 'number', min: 0 };
+    workbook.execute({
+      type: 'validate',
+      sheet,
+      ranges: [range(2, 0, 3, 1)],
+      criterion: number,
+    });
+    expect(workbook.validation(sheet, 1, 0)?.type).toBe('length');
+    expect(workbook.validation(sheet, 2, 0)).toEqual(number);
+    expect(workbook.validation(sheet, 3, 1)).toEqual(number);
+    expect(workbook.validation(sheet, 4, 0)?.type).toBe('length');
+    workbook.execute({
+      type: 'validate',
+      sheet,
+      ranges: [range(0, 0, 2, 0)],
+      criterion: null,
+    });
+    expect(workbook.validation(sheet, 0, 0)).toBeNull();
+    expect(workbook.validation(sheet, 2, 0)).toBeNull();
+    expect(workbook.validation(sheet, 3, 0)).toEqual(number);
+    expect(workbook.validation(sheet, 9, 0)?.type).toBe('length');
+  });
+
+  it('undoes and redoes a rule, keeps it in snapshots and copies, and tells listeners', () => {
+    const { workbook, sheet } = setup();
+    const heard: Command[] = [];
+    workbook.subscribe((command) => heard.push(command));
+    const command: Command = {
+      type: 'validate',
+      sheet,
+      ranges: [range(0, 0, 1, 0)],
+      criterion: { type: 'number', max: 5 },
+    };
+    expect(workbook.execute(command)).toEqual({
+      sheet,
+      ranges: [range(0, 0, 1, 0)],
+    });
+    expect(heard).toEqual([command]);
+    const replayed = Workbook.fromSnapshot(createWorkbook().toSnapshot(), [
+      command,
+    ]);
+    expect(replayed.validation(sheet, 1, 0)).toEqual({
+      type: 'number',
+      max: 5,
+    });
+    expect(
+      Workbook.fromSnapshot(workbook.toSnapshot()).validation(sheet, 1, 0),
+    ).toEqual({ type: 'number', max: 5 });
+    workbook.execute({ type: 'addSheet', index: 1, copyOf: sheet });
+    expect(workbook.validation(workbook.sheets[1]!.id, 0, 0)).not.toBeNull();
+    workbook.undo();
+    expect(workbook.undo()).toEqual({ sheet, ranges: [range(0, 0, 1, 0)] });
+    expect(workbook.validation(sheet, 0, 0)).toBeNull();
+    workbook.redo();
+    expect(workbook.validation(sheet, 0, 0)).toEqual({
+      type: 'number',
+      max: 5,
+    });
+  });
+
+  it('leaves the check to whoever types: a command sets what breaks the rule', () => {
+    const { workbook, sheet, set } = validated({ type: 'number', max: 5 });
+    set(0, 0, 'text');
+    expect(workbook.cell(sheet, 0, 0).value).toBe('text');
+  });
+
+  it('moves rules with rows and columns, and drops those deleted', () => {
+    const { workbook, sheet } = validated({ type: 'number', max: 5 }, [
+      range(2, 0, 5, 0),
+    ]);
+    workbook.execute({
+      type: 'insertLines',
+      sheet,
+      direction: 'rows',
+      spans: [{ start: 0, end: 1 }],
+    });
+    expect(workbook.validation(sheet, 7, 0)).not.toBeNull();
+    expect(workbook.validation(sheet, 8, 0)).toBeNull();
+    workbook.execute({
+      type: 'deleteLines',
+      sheet,
+      direction: 'columns',
+      spans: [{ start: 0, end: 0 }],
+    });
+    expect(workbook.validation(sheet, 4, 0)).toBeNull();
+    expect(workbook.toSnapshot().sheets[0]!.validations).toBeUndefined();
   });
 });

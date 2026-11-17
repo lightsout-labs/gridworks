@@ -44,7 +44,7 @@ export function CellMenu({
 }: {
   view: View;
   /** Puts the cells copied or cut on the system clipboard. */
-  onCopy: (contents: ClipboardContents) => void;
+  onCopy: (contents: ClipboardContents | null) => void;
   /** Whether the menu is that of row or column headers. */
   lines?: Direction;
 }) {

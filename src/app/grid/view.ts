@@ -8,6 +8,7 @@ import {
   type Border,
   type BorderSides,
   type ColumnFilter,
+  type Criterion,
   type Range,
   type Search,
   type SortKey,
@@ -111,6 +112,11 @@ export interface ViewState {
    * `null`; a new object each time.
    */
   readonly reveal: CellPosition | null;
+  /**
+   * Whether the entry was rejected for breaking its cell's rule of data
+   * validation, until it is tried again or abandoned.
+   */
+  readonly rejected: boolean;
 }
 
 /** What find looks for, on the shown sheet or in the whole workbook. */
@@ -188,6 +194,7 @@ export class View {
       resizing: null,
       painter: null,
       reveal: null,
+      rejected: false,
     };
   }
 
@@ -207,7 +214,7 @@ export class View {
     // A formula typed on another sheet goes to its own cell, and the
     // selection is that of the sheet shown.
     const { sheet } = this.current;
-    this.commit();
+    if (!this.commit()) return;
     this.change({
       sheet,
       selection: overMerges(selection, this.workbook.merges(sheet)),
@@ -221,7 +228,7 @@ export class View {
       this.change({ endMode: !this.current.endMode });
       return;
     }
-    this.commit();
+    if (!this.commit()) return;
     const { selection } = this.current;
     this.select(navigate(selection, navigation, this.sheetContents()));
   }
@@ -361,16 +368,55 @@ export class View {
   }
 
   /**
-   * Writes the entry to its cell, and shows that cell's sheet again. Does
-   * nothing without an entry.
+   * Writes the entry to its cell, and shows that cell's sheet again, and
+   * gives whether there is no entry left. An entry that breaks its cell's
+   * rule of data validation stays, and is `rejected` until it is tried
+   * again or abandoned (R26).
    */
-  commit(): void {
+  commit(): boolean {
     const { selection, entry } = this.current;
-    if (entry === null) return;
+    if (entry === null) return true;
     const { sheet, text: input } = entry;
-    this.change({ entry: null, sheet });
     const { row, col } = selection.active;
+    if (!this.workbook.allows(sheet, row, col, input)) {
+      this.change({ rejected: true });
+      return false;
+    }
+    this.change({ entry: null, sheet });
     this.workbook.execute({ type: 'setCell', sheet, row, col, input });
+    return true;
+  }
+
+  /** Goes back to an entry that was rejected, in Edit mode, as Excel does. */
+  retry(): void {
+    const { entry } = this.current;
+    this.change({
+      rejected: false,
+      entry: entry && { ...entry, mode: 'edit' },
+    });
+  }
+
+  /**
+   * Gives the selected cells a rule of data validation, or none, after
+   * committing an entry (R26).
+   */
+  validate(criterion: Criterion | null): void {
+    if (!this.commit()) return;
+    const { sheet, selection } = this.current;
+    this.workbook.execute({
+      type: 'validate',
+      sheet,
+      ranges: selection.ranges,
+      criterion,
+    });
+  }
+
+  /** Sets the active cell to an item of its list, abandoning an entry. */
+  choose(item: string): void {
+    if (this.current.entry) this.cancel();
+    const { sheet, selection } = this.current;
+    const { row, col } = selection.active;
+    this.workbook.execute({ type: 'setCell', sheet, row, col, input: item });
   }
 
   /**
@@ -387,7 +433,7 @@ export class View {
       });
       return;
     }
-    this.commit();
+    if (!this.commit()) return;
     this.change({ sheet, selection: single(START), endMode: false });
   }
 
@@ -396,14 +442,14 @@ export class View {
    * committing a waiting entry, and shows a sheet it adds.
    */
   execute(command: SheetCommand): void {
-    this.commit();
+    if (!this.commit()) return;
     const change = this.workbook.execute(command);
     if (command.type === 'addSheet') this.showSheet(change.sheet);
   }
 
   /** Changes the style of the selected cells, after committing an entry. */
   format(style: StyleChange): void {
-    this.commit();
+    if (!this.commit()) return;
     const { sheet, selection } = this.current;
     this.workbook.execute({
       type: 'setStyle',
@@ -419,7 +465,7 @@ export class View {
    * as Excel does; nothing changes when that of the active cell would not.
    */
   adjustFormat(change: FormatChange): void {
-    this.commit();
+    if (!this.commit()) return;
     const { sheet, selection } = this.current;
     const { row, col } = selection.active;
     const { value, style } = this.workbook.cell(sheet, row, col);
@@ -434,7 +480,7 @@ export class View {
    * cell has it, as Excel does.
    */
   toggle(property: 'bold' | 'italic' | 'underline' | 'strike' | 'wrap'): void {
-    this.commit();
+    if (!this.commit()) return;
     const { sheet, selection } = this.current;
     const { row, col } = selection.active;
     const on = this.workbook.cell(sheet, row, col).style[property] === true;
@@ -443,7 +489,7 @@ export class View {
 
   /** Puts a border on sides of the selected ranges, or takes it off. */
   setBorders(sides: BorderSides, border: Border | null): void {
-    this.commit();
+    if (!this.commit()) return;
     const { sheet, selection } = this.current;
     this.workbook.execute({
       type: 'setBorders',
@@ -557,7 +603,7 @@ export class View {
    * place when it holds `headers`, after committing an entry.
    */
   sort(keys: readonly SortKey[], headers = false): void {
-    this.commit();
+    if (!this.commit()) return;
     const range = this.sortRange;
     if (!range) return;
     const { sheet } = this.current;
@@ -591,7 +637,7 @@ export class View {
    * filtered yet, after committing an entry.
    */
   toggleFilter(): void {
-    this.commit();
+    if (!this.commit()) return;
     const { sheet } = this.current;
     const range = this.filterRange();
     if (this.workbook.filter(sheet)) {
@@ -619,7 +665,7 @@ export class View {
   }
 
   private refilter(col: number, column: ColumnFilter | null): void {
-    this.commit();
+    if (!this.commit()) return;
     const { sheet } = this.current;
     const filter = this.workbook.filter(sheet);
     if (!filter) return;
@@ -639,7 +685,7 @@ export class View {
 
   /** Shows every row of the sheet's filter again, keeping the filter. */
   clearFilter(): void {
-    this.commit();
+    if (!this.commit()) return;
     const { sheet } = this.current;
     const filter = this.workbook.filter(sheet);
     if (!filter || filter.columns.length === 0) return;
@@ -665,7 +711,7 @@ export class View {
    * puts it away when it is taken up.
    */
   startPainter(): void {
-    this.commit();
+    if (!this.commit()) return;
     const { sheet, painter } = this.current;
     this.change({
       painter: painter ? null : { sheet, range: this.lastRange() },
@@ -700,14 +746,14 @@ export class View {
   /**
    * Copies the selected range, the last one, to paste, after committing a
    * waiting entry, and gives its cells as they are shown, for the system
-   * clipboard.
+   * clipboard; `null` when the entry is rejected.
    */
-  copy(): ClipboardContents {
+  copy(): ClipboardContents | null {
     return this.copyRange(false);
   }
 
   /** Cuts the selected range, to move it with the next paste, as `copy`. */
-  cut(): ClipboardContents {
+  cut(): ClipboardContents | null {
     return this.copyRange(true);
   }
 
@@ -719,7 +765,7 @@ export class View {
   paste(only?: 'values' | 'formulas' | 'formats'): void {
     const { copied } = this.current;
     if (!copied) return;
-    this.commit();
+    if (!this.commit()) return;
     const { sheet, selection } = this.current;
     const target = selection.ranges[selection.ranges.length - 1]!;
     this.pasting = true;
@@ -756,7 +802,7 @@ export class View {
       return;
     }
     if (text === '') return;
-    this.commit();
+    if (!this.commit()) return;
     const { sheet, selection } = this.current;
     const { top: row, left: col } =
       selection.ranges[selection.ranges.length - 1]!;
@@ -873,7 +919,7 @@ export class View {
    * spans, after committing a waiting entry, and selects them.
    */
   insertLines(direction: Direction): void {
-    this.commit();
+    if (!this.commit()) return;
     const { sheet } = this.current;
     const spans = this.selectedSpans(direction);
     const change = this.workbook.execute({
@@ -887,7 +933,7 @@ export class View {
 
   /** Deletes the rows or columns of the selection, after committing. */
   deleteLines(direction: Direction): void {
-    this.commit();
+    if (!this.commit()) return;
     const { sheet } = this.current;
     const spans = this.selectedSpans(direction);
     this.workbook.execute({ type: 'deleteLines', sheet, direction, spans });
@@ -960,7 +1006,7 @@ export class View {
    * sheet by sheet, or back to the first; `null` when there is none (R25).
    */
   findNext(finding: Finding): Found | null {
-    this.commit();
+    if (!this.commit()) return null;
     const found = this.workbook.find(this.search(finding));
     if (found.length === 0) return null;
     const order = this.workbook.sheets.map((sheet) => sheet.id);
@@ -994,7 +1040,7 @@ export class View {
    * formulas, and goes to the next match.
    */
   replace(finding: Finding, replacement: string): Found | null {
-    this.commit();
+    if (!this.commit()) return null;
     const inFormulas = { ...finding, lookIn: 'formulas' } as const;
     const { sheet, selection } = this.current;
     const search = {
@@ -1009,7 +1055,7 @@ export class View {
 
   /** Replaces every match, looking in formulas, and gives how many cells. */
   replaceAll(finding: Finding, replacement: string): number {
-    this.commit();
+    if (!this.commit()) return 0;
     const search = this.search({ ...finding, lookIn: 'formulas' });
     const count = this.workbook.find(search).length;
     if (count > 0)
@@ -1046,7 +1092,7 @@ export class View {
     const { entry, sheet } = this.current;
     this.change(
       entry
-        ? { entry: null, sheet: entry.sheet }
+        ? { entry: null, sheet: entry.sheet, rejected: false }
         : { entry: null, sheet, copied: null, painter: null },
     );
   }
@@ -1060,7 +1106,7 @@ export class View {
   }
 
   private setLines(direction: Direction, spans: LineSpan[]): void {
-    this.commit();
+    if (!this.commit()) return;
     const { sheet } = this.current;
     this.workbook.execute({ type: 'setLines', sheet, direction, spans });
   }
@@ -1117,13 +1163,13 @@ export class View {
   }
 
   private setFrozen({ rows, cols }: { rows: number; cols: number }): void {
-    this.commit();
+    if (!this.commit()) return;
     const { sheet } = this.current;
     this.workbook.execute({ type: 'freeze', sheet, rows, cols });
   }
 
   private mergeCommand(type: 'merge' | 'unmerge'): void {
-    this.commit();
+    if (!this.commit()) return;
     const { sheet, selection } = this.current;
     this.workbook.execute({ type, sheet, ranges: selection.ranges });
   }
@@ -1134,7 +1180,7 @@ export class View {
   }
 
   private fillFrom(source: Range, target: Range, how?: FillHow): void {
-    this.commit();
+    if (!this.commit()) return;
     const { sheet } = this.current;
     const command = { type: 'fill', sheet, source, target } as const;
     this.filling = true;
@@ -1162,8 +1208,8 @@ export class View {
     });
   }
 
-  private copyRange(cut: boolean): ClipboardContents {
-    this.commit();
+  private copyRange(cut: boolean): ClipboardContents | null {
+    if (!this.commit()) return null;
     const { sheet, selection } = this.current;
     const range = selection.ranges[selection.ranges.length - 1]!;
     const copied = { sheet, range, cut };

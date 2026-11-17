@@ -84,8 +84,9 @@ const MARCH = 100;
  * or double-clicking a header border resizes its row or column.
  * Right-clicking a cell, or a row or column header, opens `menu` for it,
  * the content of a context menu. `fillOptions` is shown at the corner of
- * the last fill, and `filterButton` in each header cell of the sheet's
- * filter.
+ * the last fill, `filterButton` in each header cell of the sheet's
+ * filter, and `listButton` beside the active cell when it has a list to
+ * choose from.
  */
 export function Grid({
   workbook,
@@ -93,12 +94,14 @@ export function Grid({
   menu,
   fillOptions,
   filterButton,
+  listButton,
 }: {
   workbook: Workbook;
   view: View;
   menu: (lines?: Direction) => ReactNode;
   fillOptions: (filled: Filled) => ReactNode;
   filterButton: (col: number) => ReactNode;
+  listButton: ReactNode;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -125,6 +128,10 @@ export function Grid({
   );
   const filter = useSyncExternalStore(workbook.subscribe.bind(workbook), () =>
     workbook.filter(sheet),
+  );
+  const hasList = useSyncExternalStore(
+    workbook.subscribe.bind(workbook),
+    () => workbook.validation(sheet, active.row, active.col)?.type === 'list',
   );
   const activeDisplay = useSyncExternalStore(
     workbook.subscribe.bind(workbook),
@@ -190,11 +197,11 @@ export function Grid({
     // `size` and `viewport` read the elements and the view when called.
   }, [workbook, view]);
 
-  // The editor of a frozen cell, and the filter buttons of frozen cells,
-  // move with the scroll, to stay on them.
+  // The editor of a frozen cell, and the filter and list buttons of frozen
+  // cells, move with the scroll, to stay on them.
   const [, setScroll] = useState(0);
   const followsScroll =
-    (entry !== null &&
+    ((entry !== null || hasList) &&
       (active.row < layout.frozen.rows || active.col < layout.frozen.cols)) ||
     (filter !== null &&
       (filter.range.top < layout.frozen.rows ||
@@ -238,13 +245,20 @@ export function Grid({
   // grid, which shows the cell it moved to.
   useEffect(() => {
     let previous: Entry | null = view.state.entry;
+    let wasRejected = view.state.rejected;
     return view.subscribe(() => {
       const { entry, selection } = view.state;
       if (previous?.place === 'formulaBar' && entry === null) {
         scroller.current!.focus();
         show(selection.active);
       }
+      // An entry abandoned after it was rejected: the keyboard comes back
+      // to the grid once the message has closed and let it go.
+      if (wasRejected && entry === null) {
+        window.setTimeout(() => scroller.current?.focus());
+      }
       previous = entry;
+      wasRejected = view.state.rejected;
     });
     // `show` reads the elements and the view when called.
   }, [view]);
@@ -632,6 +646,20 @@ export function Grid({
                   </div>
                 );
               })}
+          {hasList && entry === null && (
+            // The button's keys and clicks are not the grid's.
+            <div
+              className={styles.filterButton}
+              style={{
+                left: editor.x + editor.width + 2,
+                top: editor.y + Math.max(0, editor.height - 18),
+              }}
+              onKeyDown={(event) => event.stopPropagation()}
+              onContextMenu={(event) => event.stopPropagation()}
+            >
+              {listButton}
+            </div>
+          )}
           <div role="status" className={styles.announcement}>
             {`${cellName(active.row, active.col)} ${activeDisplay}`.trim()}
           </div>

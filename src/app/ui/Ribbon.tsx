@@ -43,6 +43,7 @@ import type { Language } from './i18n';
 import { RuleControls } from './Rules';
 import { FilterControls } from './Filter';
 import { SortControls } from './Sort';
+import { ValidationControls } from './Validation';
 import styles from './Shell.module.css';
 import type { Theme } from './theme';
 
@@ -77,7 +78,7 @@ export function Ribbon({
   onOpen: () => void;
   onSave: () => void;
   /** Puts the cells copied or cut on the system clipboard. */
-  onCopy: (contents: ClipboardContents) => void;
+  onCopy: (contents: ClipboardContents | null) => void;
   /** Opens the find panel, alone or with replace. */
   onFind: (mode: FindMode) => void;
 }) {
@@ -197,6 +198,9 @@ export function Ribbon({
         </Group>
         <Group label={t('filter.group')}>
           <FilterControls workbook={workbook} view={view} />
+        </Group>
+        <Group label={t('validation.group')}>
+          <ValidationControls workbook={workbook} view={view} />
         </Group>
       </Tabs.Content>
       <Tabs.Content className={styles.ribbonPanel} value="view">
@@ -351,7 +355,7 @@ function Clipboard({
   onCopy,
 }: {
   view: View;
-  onCopy: (contents: ClipboardContents) => void;
+  onCopy: (contents: ClipboardContents | null) => void;
 }) {
   const t = useTranslation();
   const copied = useCopied(view);

@@ -10,6 +10,7 @@ import {
   columnName,
   parse,
   print,
+  references,
   shift,
   SHEET_COLUMNS,
   SHEET_ROWS,
@@ -34,6 +35,13 @@ import { Rules, type DataBar, type Rule, type RuleFormat } from './rules';
 import { series } from './series';
 import { compare, sortOrder, type SortKey } from './sort';
 import {
+  meetsCriterion,
+  typedItems,
+  without,
+  type Criterion,
+  type Validation,
+} from './validation';
+import {
   cellHeight,
   changedStyle,
   estimatedWidth,
@@ -52,6 +60,7 @@ export type { Frozen, Lines, SheetLayout } from './calc';
 export type { ColumnFilter, Filter, NumberTest, TextTest } from './filter';
 export type { Condition, DataBar, Rule, RuleFormat } from './rules';
 export type { SortKey } from './sort';
+export type { Criterion, Validation } from './validation';
 export {
   BORDER_LINES,
   DEFAULT_FONT_SIZE,
@@ -242,6 +251,19 @@ export type Command =
       readonly type: 'setRules';
       readonly sheet: string;
       readonly rules: readonly Rule[];
+    }
+  | {
+      /**
+       * Gives the cells of ranges a rule of data validation in place of
+       * the one they had, or none when `null` (R26). `validations`
+       * replaces every rule of the sheet instead: how the workbook undoes
+       * one.
+       */
+      readonly type: 'validate';
+      readonly sheet: string;
+      readonly ranges: readonly Range[];
+      readonly criterion: Criterion | null;
+      readonly validations?: readonly Validation[];
     }
   | {
       /**
@@ -487,6 +509,8 @@ export interface SheetSnapshot extends SheetInfo {
   readonly conditionalFormats?: Rule[];
   /** The filter, whose rows it hides are among `hiddenRows`; absent for none. */
   readonly filter?: Filter;
+  /** The rules of data validation; absent for none. */
+  readonly validations?: Validation[];
 }
 
 /**
@@ -829,6 +853,82 @@ export class Workbook {
     return this.sheet(sheetId).rules;
   }
 
+  /** The rule of data validation of a cell, or `null` (R26). */
+  validation(sheetId: string, row: number, col: number): Criterion | null {
+    const found = this.sheet(sheetId).validations.find(({ ranges }) =>
+      ranges.some((range) => overlap(range, cellArea(row, col))),
+    );
+    return found?.criterion ?? null;
+  }
+
+  /**
+   * The items of a cell's list, in order: those typed, or the shown texts
+   * of the cells of its range that are not empty, row by row; none when it
+   * has no list, or its range cannot be read.
+   */
+  listItems(sheetId: string, row: number, col: number): string[] {
+    const criterion = this.validation(sheetId, row, col);
+    if (criterion?.type !== 'list') return [];
+    const typed = typedItems(criterion.source);
+    if (typed) return typed;
+    const ast = parse(criterion.source.slice(1));
+    const found = ast?.type === 'range' ? references(ast) : [];
+    const items: string[] = [];
+    for (const reference of found) {
+      const name = reference.sheet?.toLowerCase();
+      const sheet =
+        name === undefined
+          ? this.sheet(sheetId)
+          : this.sheetList.find((each) => each.name.toLowerCase() === name);
+      if (!sheet) continue;
+      const { rows, cols } = this.extent(sheet.id);
+      const { top, left } = reference.area;
+      const bottom = Math.min(reference.area.bottom, rows - 1);
+      const right = Math.min(reference.area.right, cols - 1);
+      for (let each = top; each <= bottom; each++) {
+        for (let at = left; at <= right; at++) {
+          const display = this.display(sheet, each, at);
+          if (display !== '') items.push(display);
+        }
+      }
+    }
+    return items;
+  }
+
+  /**
+   * Whether typing `input` in a cell meets its rule of data validation:
+   * always for a cell without one, or for empty input, as Excel ignores
+   * blanks. A formula is checked by its result.
+   */
+  allows(sheetId: string, row: number, col: number, input: string): boolean {
+    const criterion = this.validation(sheetId, row, col);
+    if (!criterion || input === '') return true;
+    const sheet = this.sheet(sheetId);
+    const code =
+      this.styles[sheet.styleIds[col]?.[row] ?? 0]!.numberFormat ?? GENERAL;
+    let value: Value;
+    let shown = code;
+    const ast =
+      input.startsWith('=') && !isTextFormat(code)
+        ? parse(input.slice(1))
+        : null;
+    if (isTextFormat(code)) {
+      value = input;
+    } else if (ast) {
+      value = this.calc.evaluate(sheet, row, col, ast);
+    } else {
+      const parsed = parseInput(input);
+      value = parsed.value;
+      if (parsed.format !== undefined) shown = parsed.format;
+    }
+    return meetsCriterion(
+      criterion,
+      value,
+      formatValue(value, shown),
+      this.listItems(sheetId, row, col),
+    );
+  }
+
   /** The filter of a sheet, or `null`. */
   filter(sheetId: string): Filter | null {
     return this.sheet(sheetId).filter;
@@ -1023,6 +1123,8 @@ export class Workbook {
       applied = this.setRules(command);
     } else if (command.type === 'filter') {
       applied = this.setFilter(command);
+    } else if (command.type === 'validate') {
+      applied = this.validate(command);
     } else if (command.type === 'setLines') {
       applied = this.setLines(command);
       // Wrapped text takes more or fewer lines in another width.
@@ -1361,6 +1463,23 @@ export class Workbook {
         sheet: sheet.id,
         ranges: [...old, ...command.rules].flatMap((rule) => rule.ranges),
       },
+    };
+  }
+
+  /** Gives cells a rule of data validation, or none. */
+  private validate(command: Extract<Command, { type: 'validate' }>): Applied {
+    const sheet = this.sheet(command.sheet);
+    const old = sheet.validations;
+    const { ranges, criterion } = command;
+    sheet.validations =
+      command.validations ??
+      (criterion
+        ? [...without(old, ranges), { ranges, criterion }]
+        : without(old, ranges));
+    return {
+      executed: command,
+      reverse: { ...command, validations: old },
+      change: { sheet: sheet.id, ranges },
     };
   }
 
@@ -2377,22 +2496,28 @@ function movedLines(
       ? []
       : [result];
   });
-  // A rule keeps the lines of its ranges that stay, and is dropped with them.
-  const conditionalFormats = snapshot.conditionalFormats?.flatMap((rule) => {
-    const ranges = rule.ranges.flatMap((range) => {
-      const lines = rows
-        ? span(range.top, range.bottom)
-        : span(range.left, range.right);
-      if (!lines) return [];
-      const [start, end] = lines;
-      return [
-        rows
-          ? { ...range, top: start, bottom: end }
-          : { ...range, left: start, right: end },
-      ];
+  // A rule of either kind keeps the lines of its ranges that stay, and is
+  // dropped with them.
+  const movedRules = <T extends { readonly ranges: readonly Range[] }>(
+    list: T[] | undefined,
+  ): T[] | undefined =>
+    list?.flatMap((rule) => {
+      const ranges = rule.ranges.flatMap((range) => {
+        const lines = rows
+          ? span(range.top, range.bottom)
+          : span(range.left, range.right);
+        if (!lines) return [];
+        const [start, end] = lines;
+        return [
+          rows
+            ? { ...range, top: start, bottom: end }
+            : { ...range, left: start, right: end },
+        ];
+      });
+      return ranges.length === 0 ? [] : [{ ...rule, ranges }];
     });
-    return ranges.length === 0 ? [] : [{ ...rule, ranges }];
-  });
+  const conditionalFormats = movedRules(snapshot.conditionalFormats);
+  const validations = movedRules(snapshot.validations);
   // A filter keeps the lines of its range that stay, and the columns; it
   // is dropped with its header row.
   const { filter: old, ...rest } = snapshot;
@@ -2416,11 +2541,13 @@ function movedLines(
               }),
         }
       : undefined;
+  delete rest.validations;
   return {
     ...rest,
     ...(filter && { filter }),
     ...(merges && { merges }),
     ...(conditionalFormats && { conditionalFormats }),
+    ...(validations?.length && { validations }),
     columns: cells(snapshot.columns, null),
     ...(snapshot.styleIds && { styleIds: cells(snapshot.styleIds, 0) }),
     ...(rows
@@ -2464,6 +2591,7 @@ function sheetOf(snapshot: SheetSnapshot): Sheet {
     sheet.rules = snapshot.conditionalFormats.map((rule) => ({ ...rule }));
   }
   if (snapshot.filter) sheet.filter = snapshot.filter;
+  if (snapshot.validations) sheet.validations = snapshot.validations;
   for (const [row, col, text] of snapshot.formulas) {
     const ast = parse(text.slice(1));
     if (!ast) throw new Error(`Invalid formula in snapshot: ${text}`);
@@ -2496,5 +2624,8 @@ function snapshotOf(sheet: Sheet): SheetSnapshot {
     ...(frozen && { frozen: { ...frozen } }),
     ...(sheet.rules.length > 0 && { conditionalFormats: [...sheet.rules] }),
     ...(sheet.filter && { filter: sheet.filter }),
+    ...(sheet.validations.length > 0 && {
+      validations: [...sheet.validations],
+    }),
   };
 }
