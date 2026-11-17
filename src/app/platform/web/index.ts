@@ -1,5 +1,6 @@
 import type {
   Command,
+  NamedRange,
   SheetSnapshot,
   Snapshot,
   Style,
@@ -28,6 +29,8 @@ interface WorkbookRecord {
   sheetIds: string[];
   /** Absent in records saved before cells had styles. */
   styles?: Style[];
+  /** The defined names, when there are any. */
+  names?: NamedRange[];
 }
 
 type SheetRecord = SheetSnapshot & { workbook: string };
@@ -104,6 +107,7 @@ async function load(id: string): Promise<Stored | null> {
         version: workbook.version,
         name: workbook.name,
         styles: workbook.styles,
+        ...(workbook.names && { names: workbook.names }),
         sheets: await Promise.all(
           workbook.sheetIds.map(async (sheetId) => {
             const record: Partial<SheetRecord> = await result<SheetRecord>(
@@ -142,6 +146,7 @@ async function save(id: string, snapshot: Snapshot): Promise<void> {
     version: snapshot.version,
     sheetIds: snapshot.sheets.map((sheet) => sheet.id),
     styles: snapshot.styles,
+    ...(snapshot.names && { names: snapshot.names }),
   };
   transaction.objectStore(WORKBOOKS).put(workbook);
   // Deleted sheets go too: every sheet of the workbook is written again.

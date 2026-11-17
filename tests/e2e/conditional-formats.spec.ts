@@ -204,7 +204,7 @@ test('draws data bars as long as their share of the highest, and edits and delet
   expect(await columnBackgrounds(page, 2)).toEqual([SCALE_RED, SCALE_GREEN]);
   await page.keyboard.press('ControlOrMeta+z');
   // The active cell of a selection shows its bar too.
-  await expect(page.getByLabel('Name box')).toHaveText('A1');
+  await expect(page.getByLabel('Name box')).toHaveValue('A1');
   expect(await pixelAt(page, 0, 0, 0.1)).toEqual(BAR_GREEN);
   await clickCell(page, 10, 5);
   expect(await pixelAt(page, 1, 0, 0.9)).toEqual(BAR_GREEN);

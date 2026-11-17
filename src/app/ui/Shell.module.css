@@ -187,7 +187,7 @@
   background: var(--surface);
 }
 
-.nameBox,
+.nameBoxInput,
 .formulaBar {
   box-sizing: border-box;
   height: 24px;
@@ -201,8 +201,20 @@
 }
 
 .nameBox {
+  display: flex;
   flex: none;
+  align-items: center;
+  gap: 2px;
+}
+
+.nameBoxInput {
   width: 96px;
+  margin: 0;
+  color: var(--text);
+  font: inherit;
+  text-overflow: ellipsis;
+  outline: none;
+  transition: border-color var(--transition);
 }
 
 .formulaBox {
@@ -224,10 +236,12 @@
   transition: border-color var(--transition);
 }
 
+.nameBoxInput:hover,
 .formulaBar:hover {
   border-color: var(--muted);
 }
 
+.nameBoxInput:focus,
 .formulaBar:focus {
   border-color: var(--accent);
 }

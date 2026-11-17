@@ -3127,3 +3127,230 @@ describe('data validation', () => {
     expect(workbook.toSnapshot().sheets[0]!.validations).toBeUndefined();
   });
 });
+
+describe('named ranges', () => {
+  const names = (...pairs: [string, string][]): Command => ({
+    type: 'setNames',
+    names: pairs.map(([name, refersTo]) => ({ name, refersTo })),
+  });
+
+  it('uses a name in a formula in place of its range, and follows its cells', () => {
+    const { workbook, set, show } = setup();
+    set(0, 0, '2');
+    set(1, 0, '3');
+    set(0, 2, '=SUM(Sales)');
+    // A name not defined gives #NAME? until it is.
+    expect(show(0, 2)).toBe('#NAME?');
+    workbook.execute(names(['Sales', 'Sheet1!$A$1:$A$2']));
+    expect(show(0, 2)).toBe('5');
+    set(1, 0, '10');
+    expect(show(0, 2)).toBe('12');
+    // A name of one cell gives its value where one value is expected.
+    workbook.execute(
+      names(['Rate', 'Sheet1!$A$1'], ['Sales', 'Sheet1!$A$1:$A$2']),
+    );
+    set(0, 3, '=rate*10');
+    expect(show(0, 3)).toBe('20');
+  });
+
+  it('lists the names in alphabetical order, and undoes and redoes each change', () => {
+    const { workbook, set, show } = setup();
+    set(0, 0, '7');
+    set(0, 1, '=Total');
+    workbook.execute(names(['total', 'Sheet1!$A$1'], ['Items', 'Sheet1!$B$1']));
+    expect(workbook.names).toEqual([
+      { name: 'Items', refersTo: 'Sheet1!$B$1' },
+      { name: 'total', refersTo: 'Sheet1!$A$1' },
+    ]);
+    expect(show(0, 1)).toBe('7');
+    // A deleted name gives #NAME?, until the deletion is undone.
+    workbook.execute(names(['Items', 'Sheet1!$B$1']));
+    expect(show(0, 1)).toBe('#NAME?');
+    workbook.undo();
+    expect(show(0, 1)).toBe('7');
+    workbook.undo();
+    expect(workbook.names).toEqual([]);
+    expect(show(0, 1)).toBe('#NAME?');
+    workbook.redo();
+    expect(show(0, 1)).toBe('7');
+  });
+
+  it('rewrites the formulas that use a renamed name, and back on undo', () => {
+    const { workbook, sheet, set, show } = setup();
+    set(0, 0, '4');
+    workbook.execute(names(['Old', 'Sheet1!$A$1']));
+    set(0, 1, '=old+1');
+    workbook.execute({
+      ...names(['New', 'Sheet1!$A$1']),
+      renamed: { from: 'Old', to: 'New' },
+    } as Command);
+    expect(workbook.cell(sheet, 0, 1).formula).toBe('=New+1');
+    expect(show(0, 1)).toBe('5');
+    workbook.undo();
+    expect(workbook.cell(sheet, 0, 1).formula).toBe('=old+1');
+    expect(show(0, 1)).toBe('5');
+    workbook.redo();
+    expect(workbook.cell(sheet, 0, 1).formula).toBe('=New+1');
+  });
+
+  it('puts back on undo only the formulas a rename rewrote', () => {
+    const { workbook, sheet, set, show } = setup();
+    set(0, 0, '4');
+    workbook.execute(names(['Old', 'Sheet1!$A$1']));
+    set(0, 1, '=New');
+    workbook.execute({
+      ...names(['New', 'Sheet1!$A$1']),
+      renamed: { from: 'Old', to: 'New' },
+    } as Command);
+    expect(show(0, 1)).toBe('4');
+    workbook.undo();
+    expect(workbook.cell(sheet, 0, 1).formula).toBe('=New');
+    expect(show(0, 1)).toBe('#NAME?');
+  });
+
+  it('moves names with rows and columns inserted and deleted, and back on undo', () => {
+    const { workbook, sheet, set, show } = setup();
+    set(1, 1, '6');
+    workbook.execute(
+      names(['Cell', 'Sheet1!$B$2'], ['Block', 'Sheet1!$A$1:$C$3']),
+    );
+    set(9, 9, '=Cell+COUNT(Block)');
+    workbook.execute({
+      type: 'insertLines',
+      sheet,
+      direction: 'rows',
+      spans: [{ start: 0, end: 1 }],
+    });
+    workbook.execute({
+      type: 'insertLines',
+      sheet,
+      direction: 'columns',
+      spans: [{ start: 1, end: 1 }],
+    });
+    expect(workbook.names).toEqual([
+      { name: 'Block', refersTo: 'Sheet1!$A$3:$D$5' },
+      { name: 'Cell', refersTo: 'Sheet1!$C$4' },
+    ]);
+    // A name whose cells are all deleted refers to #REF!.
+    workbook.execute({
+      type: 'deleteLines',
+      sheet,
+      direction: 'rows',
+      spans: [{ start: 3, end: 3 }],
+    });
+    expect(workbook.names).toEqual([
+      { name: 'Block', refersTo: 'Sheet1!$A$3:$D$4' },
+      { name: 'Cell', refersTo: '#REF!' },
+    ]);
+    expect(show(10, 10)).toBe('#REF!');
+    workbook.undo();
+    expect(workbook.names[1]).toEqual({
+      name: 'Cell',
+      refersTo: 'Sheet1!$C$4',
+    });
+    expect(show(11, 10)).toBe('7');
+  });
+
+  it('follows a renamed sheet, and gives #REF! for a deleted one', () => {
+    const { workbook, set, show } = setup();
+    const { sheet: other } = workbook.execute({ type: 'addSheet', index: 1 });
+    workbook.execute({
+      type: 'setCell',
+      sheet: other,
+      row: 0,
+      col: 0,
+      input: '3',
+    });
+    workbook.execute(names(['There', 'Sheet2!$A$1']));
+    set(0, 0, '=There*2');
+    workbook.execute({ type: 'setSheet', sheet: other, name: 'Data 2' });
+    expect(workbook.names).toEqual([
+      { name: 'There', refersTo: "'Data 2'!$A$1" },
+    ]);
+    expect(show(0, 0)).toBe('6');
+    workbook.execute({ type: 'deleteSheet', sheet: other });
+    expect(show(0, 0)).toBe('#REF!');
+    workbook.undo();
+    expect(show(0, 0)).toBe('6');
+  });
+
+  it('tells why a text cannot be a new name', () => {
+    const { workbook } = setup();
+    workbook.execute(names(['Sales', 'Sheet1!$A$1']));
+    for (const name of [
+      '',
+      'A1',
+      'tax1',
+      'TRUE',
+      '1st',
+      'two words',
+      'R',
+      'c',
+      'R1C1',
+      'SUM(',
+      'x'.repeat(256),
+    ]) {
+      expect([name, workbook.nameProblem(name)]).toEqual([name, 'invalid']);
+    }
+    expect(workbook.nameProblem('SALES')).toBe('taken');
+    // A name being edited can keep its own name, in another case too.
+    expect(workbook.nameProblem('SALES', 'Sales')).toBeNull();
+    for (const name of ['Sales2', '_total', 'Tax.Rate', 'Ab1c', '税率']) {
+      expect([name, workbook.nameProblem(name)]).toEqual([name, null]);
+    }
+    expect(() => workbook.execute(names(['A1', 'Sheet1!$A$1']))).toThrow();
+    expect(() => workbook.execute(names(['Here', 'A1']))).toThrow();
+  });
+
+  it('locates a cell address, a range or a name', () => {
+    const { workbook, sheet } = setup();
+    const { sheet: other } = workbook.execute({ type: 'addSheet', index: 1 });
+    workbook.execute(names(['Prices', 'Sheet2!$B$2:$C$5']));
+    expect(workbook.locate('c3', sheet)).toEqual({
+      sheet,
+      range: { top: 2, left: 2, bottom: 2, right: 2 },
+    });
+    expect(workbook.locate(' A1:B2 ', other)).toEqual({
+      sheet: other,
+      range: { top: 0, left: 0, bottom: 1, right: 1 },
+    });
+    expect(workbook.locate('Sheet2!D4', sheet)).toEqual({
+      sheet: other,
+      range: { top: 3, left: 3, bottom: 3, right: 3 },
+    });
+    expect(workbook.locate('prices', sheet)).toEqual({
+      sheet: other,
+      range: { top: 1, left: 1, bottom: 4, right: 2 },
+    });
+    expect(workbook.locate('B:B', sheet)?.range).toEqual({
+      top: 0,
+      left: 1,
+      bottom: SHEET_ROWS - 1,
+      right: 1,
+    });
+    for (const text of ['Unknown', 'Nowhere!A1', 'A1+1', '', 'ZZ1']) {
+      expect([text, workbook.locate(text, sheet)]).toEqual([text, null]);
+    }
+  });
+
+  it('keeps names in its snapshot', () => {
+    const { workbook } = setup();
+    workbook.execute(names(['Sales', 'Sheet1!$A$1:$A$9']));
+    const copy = Workbook.fromSnapshot(workbook.toSnapshot());
+    expect(copy.names).toEqual(workbook.names);
+  });
+
+  it('reads the items of a list from a named range', () => {
+    const { workbook, sheet, set } = setup();
+    set(0, 1, 'Red');
+    set(1, 1, 'Blue');
+    workbook.execute(names(['Colors', 'Sheet1!$B$1:$B$2']));
+    workbook.execute({
+      type: 'validate',
+      sheet,
+      ranges: [{ top: 0, left: 0, bottom: 0, right: 0 }],
+      criterion: { type: 'list', source: '=Colors' },
+    });
+    expect(workbook.listItems(sheet, 0, 0)).toEqual(['Red', 'Blue']);
+  });
+});

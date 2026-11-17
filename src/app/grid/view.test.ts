@@ -1522,3 +1522,120 @@ describe('find and replace', () => {
     });
   });
 });
+
+describe('named ranges', () => {
+  const range = (top: number, left: number, bottom = top, right = left) => ({
+    top,
+    left,
+    bottom,
+    right,
+  });
+
+  it('goes to a cell address, a range or a name typed in the name box', () => {
+    const { workbook, view, sheet } = setup();
+    const { sheet: other } = workbook.execute({ type: 'addSheet', index: 1 });
+    expect(view.goTo('c5')).toBeNull();
+    expect(view.state.selection).toEqual(covering([range(4, 2)]));
+    expect(view.state.reveal).toEqual({ row: 4, col: 2 });
+    expect(view.goTo('B2:D3')).toBeNull();
+    expect(view.state.selection).toEqual(covering([range(1, 1, 2, 3)]));
+    workbook.execute({
+      type: 'setNames',
+      names: [{ name: 'There', refersTo: 'Sheet2!$E$1:$E$4' }],
+    });
+    expect(view.goTo('there')).toBeNull();
+    expect(view.state.sheet).toBe(other);
+    expect(view.state.selection).toEqual(covering([range(0, 4, 3, 4)]));
+    expect(view.goTo('Sheet1!A2')).toBeNull();
+    expect(view.state.sheet).toBe(sheet);
+    expect(view.state.selection).toEqual(covering([range(1, 0)]));
+  });
+
+  it('names the selected range with a new name typed in the name box', () => {
+    const { workbook, view } = setup();
+    view.select(covering([range(0, 0, 4, 1)]));
+    expect(view.goTo('Prices')).toBeNull();
+    expect(workbook.names).toEqual([
+      { name: 'Prices', refersTo: 'Sheet1!$A$1:$B$5' },
+    ]);
+    expect(view.selectionName).toBe('Prices');
+    view.select(covering([range(0, 0, 4, 1), range(0, 3, SHEET_ROWS - 1, 3)]));
+    expect(view.goTo('Whole')).toBeNull();
+    expect(workbook.names[1]).toEqual({
+      name: 'Whole',
+      refersTo: 'Sheet1!$D:$D',
+    });
+    // Neither a reference nor a name that can be defined.
+    expect(view.goTo('1st')).toBe('invalid');
+    expect(view.goTo('ZZ1')).toBe('invalid');
+    expect(workbook.names).toHaveLength(2);
+    view.select(single({ row: 2, col: 2 }));
+    expect(view.selectionName).toBe('C3');
+  });
+
+  it('edits and deletes a name, refusing a name or a range it cannot take', () => {
+    const { workbook, view } = setup();
+    workbook.execute({ type: 'addSheet', index: 1 });
+    view.select(covering([range(0, 0)]));
+    view.goTo('First');
+    view.select(covering([range(1, 0)]));
+    view.goTo('Second');
+    view.select(single({ row: 2, col: 0 }));
+    view.type('=First');
+    view.commit();
+    expect(view.setName('First', 'Second', '=A1')).toBe('taken');
+    expect(view.setName('First', 'A1', '=A1')).toBe('invalid');
+    expect(view.setName('First', 'Start', 'nowhere')).toBe('reference');
+    expect(workbook.names[0]!.name).toBe('First');
+    expect(view.setName('First', 'Start', "='sheet2'!b2:c3")).toBeNull();
+    expect(workbook.names).toEqual([
+      { name: 'Second', refersTo: 'Sheet1!$A$2' },
+      { name: 'Start', refersTo: 'Sheet2!$B$2:$C$3' },
+    ]);
+    // Formulas follow a renamed name.
+    expect(workbook.cell(workbook.sheets[0]!.id, 2, 0).formula).toBe('=Start');
+    view.deleteName('Second');
+    expect(workbook.names.map((each) => each.name)).toEqual(['Start']);
+    view.undo();
+    expect(workbook.names.map((each) => each.name)).toEqual([
+      'Second',
+      'Start',
+    ]);
+  });
+
+  it('lists the defined names for formula completion', () => {
+    const { workbook, view } = setup();
+    workbook.execute({
+      type: 'setNames',
+      names: [{ name: 'Sales', refersTo: 'Sheet1!$A$1' }],
+    });
+    expect(view.definedNames).toEqual(['Sales']);
+  });
+
+  it('tells that a name typed in the name box refers to deleted cells', () => {
+    const { workbook, view } = setup();
+    workbook.execute({
+      type: 'setNames',
+      names: [{ name: 'Gone', refersTo: '#REF!' }],
+    });
+    expect(view.goTo('gone')).toBe('deleted');
+    expect(workbook.names).toHaveLength(1);
+  });
+
+  it('does not change a name while an entry waits, rejected', () => {
+    const { workbook, view, sheet } = setup();
+    workbook.execute({
+      type: 'setNames',
+      names: [{ name: 'Here', refersTo: 'Sheet1!$B$1' }],
+    });
+    workbook.execute({
+      type: 'validate',
+      sheet,
+      ranges: [{ top: 0, left: 0, bottom: 0, right: 0 }],
+      criterion: { type: 'list', source: 'a' },
+    });
+    view.type('zz');
+    expect(view.setName('Here', 'There', '=B1')).toBe('entry');
+    expect(workbook.names[0]!.name).toBe('Here');
+  });
+});

@@ -147,7 +147,14 @@ export class Calculation {
   /** Formulas set since the last `settle`. */
   private readonly fresh: Formula[] = [];
 
-  constructor(private readonly sheets: () => readonly Sheet[]) {}
+  /**
+   * `names` gives what a defined name refers to, a reference with its
+   * sheet or an error, or `undefined` for a name not defined.
+   */
+  constructor(
+    private readonly sheets: () => readonly Sheet[],
+    private readonly names: (name: string) => Ast | undefined,
+  ) {}
 
   /** Sets a formula in a cell, in place of what the cell had. */
   put(sheet: Sheet, row: number, col: number, text: string, ast: Ast): void {
@@ -189,8 +196,8 @@ export class Calculation {
   }
 
   /**
-   * Finds again what every formula reads, after a change to the sheets,
-   * and calculates them all.
+   * Finds again what every formula reads, after a change to the sheets or
+   * the names, and calculates them all.
    */
   rebuild(): void {
     const sheets = this.sheets();
@@ -307,6 +314,7 @@ export class Calculation {
         this.cells(sheet, area, visit);
         return undefined;
       },
+      name: this.names,
     };
   }
 
@@ -396,7 +404,7 @@ export class Calculation {
 
   /** Enters what a formula reads in the readers of the sheets. */
   private enter(formula: Formula): void {
-    for (const { sheet: name, area } of references(formula.ast)) {
+    for (const { sheet: name, area } of references(formula.ast, this.names)) {
       const sheet = name === undefined ? formula.sheet : this.find(name);
       // A sheet that does not exist gives #REF!; a later one rebuilds.
       if (!sheet) continue;

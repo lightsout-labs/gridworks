@@ -97,6 +97,11 @@ export interface Context {
     area: Area,
     visit: (value: Value, row: number, col: number) => void,
   ): ErrorValue | undefined;
+  /**
+   * What a defined name refers to: a reference with its sheet, or an
+   * error; `undefined` for a name not defined, which gives `#NAME?`.
+   */
+  name?(name: string): Ast | undefined;
 }
 
 /**
@@ -111,6 +116,12 @@ export type Move =
       readonly to: string;
     }
   | { readonly type: 'offset'; readonly rows: number; readonly cols: number }
+  /** A defined name renamed, in any case. */
+  | {
+      readonly type: 'renameName';
+      readonly from: string;
+      readonly to: string;
+    }
   | {
       /**
        * The cells of `range` on the sheet named `sheet` moved by `rows` and
@@ -644,11 +655,19 @@ export function shift(ast: Ast, move: Move): Ast {
         ? movedCells(move)
         : move.type === 'lines'
           ? movedLines(move)
-          : renamed(move.from, move.to);
+          : move.type === 'renameSheet'
+            ? renamed(move.from, move.to)
+            : (node: ReferenceAst): Ast => node;
+  const renaming = move.type === 'renameName' ? move : null;
+  const from = renaming?.from.toLowerCase();
   const visit = (node: Ast): Ast => {
     switch (node.type) {
       case 'range':
         return range(node);
+      case 'name':
+        return renaming && node.name.toLowerCase() === from
+          ? { ...node, name: renaming.to }
+          : node;
       case 'unary':
       case 'percent': {
         const operand = visit(node.operand);
@@ -815,9 +834,13 @@ export function calculable(ast: Ast): boolean {
   }
 }
 
-/** The areas a formula reads, with the sheet named for each, in order. */
+/**
+ * The areas a formula reads, with the sheet named for each, in order; with
+ * `names`, those of the defined names it uses too.
+ */
 export function references(
   ast: Ast,
+  names?: (name: string) => Ast | undefined,
 ): { readonly sheet?: string; readonly area: Area }[] {
   const found: { sheet?: string; area: Area }[] = [];
   const visit = (node: Ast): void => {
@@ -838,6 +861,10 @@ export function references(
         return visit(node.right);
       case 'call':
         return node.args.forEach(visit);
+      case 'name': {
+        const target = names?.(node.name);
+        return target && visit(target);
+      }
       default:
         return;
     }

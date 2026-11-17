@@ -1,8 +1,16 @@
-import { Minus, Plus, X } from 'lucide-react';
-import { useEffect, useMemo, useReducer, useSyncExternalStore } from 'react';
-import { cellName, type Workbook } from '../../engine/workbook';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import { ChevronDown, Minus, Plus, X } from 'lucide-react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useState,
+  useSyncExternalStore,
+} from 'react';
+import type { Workbook } from '../../engine/workbook';
 import { FormulaEditor } from '../grid/FormulaEditor';
-import { MAC } from '../grid/Grid';
+import { focusGrid, MAC } from '../grid/Grid';
 import { keyAction } from '../grid/keys';
 import { ZOOM_MAX, ZOOM_MIN, type View } from '../grid/view';
 import { Tooltip, useTranslation } from './controls';
@@ -14,15 +22,20 @@ const ZOOM_STEP = 0.1;
 const ONE_CELL = { rows: 1, cols: 1 };
 
 /**
- * The name of the active cell and, beside it, what the cell holds, where
- * it can be edited.
+ * The name box, which names the active cell or the range selected and
+ * goes to a range or a name typed or chosen in it, and, beside it, what
+ * the active cell holds, where it can be edited. `onInvalid` tells that a
+ * text typed in the name box is neither a reference nor a new name, or a
+ * name whose cells were deleted.
  */
 export function FormulaBar({
   workbook,
   view,
+  onInvalid,
 }: {
   workbook: Workbook;
   view: View;
+  onInvalid: (text: string, problem: 'invalid' | 'deleted') => void;
 }) {
   const t = useTranslation();
   const { sheet, selection } = useSyncExternalStore(
@@ -36,9 +49,7 @@ export function FormulaBar({
   );
   return (
     <div className={styles.formulaLine}>
-      <div className={styles.nameBox} role="group" aria-label={t('nameBox')}>
-        {cellName(active.row, active.col)}
-      </div>
+      <NameBox workbook={workbook} view={view} onInvalid={onInvalid} />
       <Tooltip text={t('formulaBar.tooltip')}>
         <FormulaEditor
           view={view}
@@ -68,6 +79,103 @@ export function FormulaBar({
           }}
         />
       </Tooltip>
+    </div>
+  );
+}
+
+/**
+ * A box that shows the name of the selection and goes where a text typed
+ * in it says, giving the keyboard back to the grid, and a list of the
+ * defined names to go to.
+ */
+function NameBox({
+  workbook,
+  view,
+  onInvalid,
+}: {
+  workbook: Workbook;
+  view: View;
+  onInvalid: (text: string, problem: 'invalid' | 'deleted') => void;
+}) {
+  const t = useTranslation();
+  const subscribe = useCallback(
+    (listener: () => void) => {
+      const unsubscribeWorkbook = workbook.subscribe(listener);
+      const unsubscribeView = view.subscribe(listener);
+      return () => {
+        unsubscribeWorkbook();
+        unsubscribeView();
+      };
+    },
+    [workbook, view],
+  );
+  const shown = useSyncExternalStore(subscribe, () => view.selectionName);
+  const names = useSyncExternalStore(subscribe, () => workbook.names);
+  // What is typed, until it is gone to or abandoned.
+  const [typed, setTyped] = useState<string | null>(null);
+  const go = (text: string) => {
+    const problem = view.goTo(text);
+    if (problem) {
+      onInvalid(text, problem);
+      return;
+    }
+    setTyped(null);
+    focusGrid();
+  };
+  return (
+    <div className={styles.nameBox}>
+      <Tooltip text={t('names.box.tooltip')}>
+        <input
+          className={styles.nameBoxInput}
+          role="combobox"
+          aria-label={t('nameBox')}
+          aria-expanded={false}
+          aria-autocomplete="none"
+          spellCheck={false}
+          value={typed ?? shown}
+          onFocus={(event) => event.target.select()}
+          onChange={(event) => setTyped(event.target.value)}
+          onBlur={() => setTyped(null)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') go(typed ?? shown);
+            else if (event.key === 'Escape') setTyped(null);
+            else return;
+            event.preventDefault();
+          }}
+        />
+      </Tooltip>
+      <DropdownMenu.Root>
+        <Tooltip text={t('names.list.tooltip')}>
+          <DropdownMenu.Trigger
+            className={styles.iconButton}
+            aria-label={t('names.list')}
+            disabled={names.length === 0}
+          >
+            <ChevronDown size={ICON_SIZE} aria-hidden />
+          </DropdownMenu.Trigger>
+        </Tooltip>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content
+            className={styles.menu}
+            align="start"
+            sideOffset={4}
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              focusGrid();
+            }}
+          >
+            {names.map(({ name }) => (
+              <DropdownMenu.Item
+                key={name}
+                className={styles.menuItem}
+                onSelect={() => go(name)}
+              >
+                {name}
+              </DropdownMenu.Item>
+            ))}
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
     </div>
   );
 }

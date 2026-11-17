@@ -51,8 +51,10 @@ function run(ast: Ast, context: Context): Result {
       return ast.value;
     case 'missing':
       return 0;
-    case 'name':
-      return error('#NAME?');
+    case 'name': {
+      const target = context.name?.(ast.name);
+      return target ? run(target, context) : error('#NAME?');
+    }
     case 'range':
       return new Reference(ast.sheet, areaOf(ast));
     case 'paren':

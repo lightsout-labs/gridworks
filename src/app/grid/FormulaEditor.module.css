@@ -55,6 +55,12 @@
   transition: background-color var(--transition);
 }
 
+.nameIcon {
+  margin-right: 4px;
+  color: var(--muted);
+  vertical-align: -1px;
+}
+
 .option:hover {
   background: var(--hover);
 }

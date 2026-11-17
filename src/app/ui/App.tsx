@@ -37,6 +37,8 @@ interface Open {
 /** What the message bar says about the last file opened. */
 type Message =
   | { readonly kind: 'invalid'; readonly name: string }
+  | { readonly kind: 'invalidName'; readonly text: string }
+  | { readonly kind: 'deletedName'; readonly text: string }
   | { readonly kind: 'saveFailed' }
   | {
       readonly kind: 'dropped';
@@ -242,15 +244,30 @@ export function App({ platform }: { platform: Platform }) {
               text={
                 message.kind === 'invalid'
                   ? t('file.invalid').replace('{name}', () => message.name)
-                  : message.kind === 'saveFailed'
-                    ? t('file.saveFailed')
-                    : droppedMessage(message.name, message.dropped, language)
+                  : message.kind === 'invalidName' ||
+                      message.kind === 'deletedName'
+                    ? t(
+                        message.kind === 'invalidName'
+                          ? 'names.invalid'
+                          : 'names.deleted',
+                      ).replace('{text}', () => message.text)
+                    : message.kind === 'saveFailed'
+                      ? t('file.saveFailed')
+                      : droppedMessage(message.name, message.dropped, language)
               }
               error={message.kind !== 'dropped'}
               onClose={() => setMessage(null)}
             />
           )}
-          <FormulaBar {...open} />
+          <FormulaBar
+            {...open}
+            onInvalid={(text, problem) =>
+              setMessage({
+                kind: problem === 'invalid' ? 'invalidName' : 'deletedName',
+                text,
+              })
+            }
+          />
           <main className={styles.grid}>
             <Grid
               {...open}

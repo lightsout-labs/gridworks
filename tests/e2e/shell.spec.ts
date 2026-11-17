@@ -62,15 +62,15 @@ test('the name box and the formula bar follow the active cell', async ({
   await enter(page, '=A1+1');
 
   await clickCell(page, 1, 0);
-  await expect(nameBox(page)).toHaveText('A2');
+  await expect(nameBox(page)).toHaveValue('A2');
   await expect(formulaBar(page)).toHaveValue('=A1+1');
   await clickCell(page, 0, 0);
-  await expect(nameBox(page)).toHaveText('A1');
+  await expect(nameBox(page)).toHaveValue('A1');
   await expect(formulaBar(page)).toHaveValue('2');
 
   // An entry shows in the formula bar while it is typed.
   await clickCell(page, 2, 1);
-  await expect(nameBox(page)).toHaveText('B3');
+  await expect(nameBox(page)).toHaveValue('B3');
   await expect(formulaBar(page)).toHaveValue('');
   await page.keyboard.type('45');
   await expect(formulaBar(page)).toHaveValue('45');
@@ -243,6 +243,9 @@ test.describe('the controls', () => {
 
   test('each have a tooltip', async ({ page }) => {
     await openApp(page);
+    // A defined name enables the list of names.
+    await nameBox(page).fill('Start');
+    await nameBox(page).press('Enter');
     // A merged cell in a larger selection enables Merge and Unmerge, two
     // changes and an undo both Undo and Redo, and a copy Paste.
     await clickCell(page, 4, 0);
@@ -259,7 +262,7 @@ test.describe('the controls', () => {
     await page.keyboard.press('ControlOrMeta+c');
     const check = async (
       tooltips: readonly (readonly [
-        'tab' | 'button' | 'slider' | 'textbox',
+        'tab' | 'button' | 'slider' | 'textbox' | 'combobox',
         string,
         string | RegExp,
       ])[],
@@ -283,6 +286,12 @@ test.describe('the controls', () => {
       ['button', 'Zoom in', 'Zoom in by 10%'],
       ['slider', 'Zoom', 'Size of the grid'],
       ['textbox', 'Formula bar', 'Contents of the active cell'],
+      [
+        'combobox',
+        'Name box',
+        /^The active cell, or the name of the range selected/,
+      ],
+      ['button', 'Defined names', 'Go to a name of the workbook'],
     ] as const;
     await check(
       [
@@ -381,7 +390,7 @@ test.describe('the controls', () => {
         ],
         ...statusBar,
       ],
-      35,
+      36,
     );
     await page.getByRole('tab', { name: 'View' }).click();
     await clickCell(page, 5, 5); // Away from the tab and its tooltip.
@@ -398,7 +407,7 @@ test.describe('the controls', () => {
         ['button', '中文', 'Show the interface in Simplified Chinese'],
         ...statusBar,
       ],
-      8,
+      9,
     );
     // Two cells in use, selected, enable sorting.
     await clickCell(page, 0, 1);
@@ -436,7 +445,7 @@ test.describe('the controls', () => {
         ...statusBar,
       ],
       // Clear, disabled until a column is filtered, is checked below.
-      9,
+      10,
     );
     // A filtered column enables Clear.
     await page.getByRole('button', { name: 'Filter', exact: true }).click();
@@ -453,7 +462,7 @@ test.describe('the controls', () => {
         ['button', 'Filter column B', 'Filter column B'],
         ...statusBar,
       ],
-      11,
+      12,
     );
     await page.getByRole('button', { name: 'Filter', exact: true }).click();
     await page.getByRole('tab', { name: 'Formulas' }).click();
@@ -461,9 +470,14 @@ test.describe('the controls', () => {
     await check(
       [
         ['button', 'Insert function', 'Choose a function to insert'],
+        [
+          'button',
+          'Name manager',
+          /^View, edit and delete the names of the workbook/,
+        ],
         ...statusBar,
       ],
-      4,
+      6,
     );
     await page.getByRole('tab', { name: 'File' }).click();
     await clickCell(page, 5, 5);
@@ -477,7 +491,7 @@ test.describe('the controls', () => {
         ],
         ...statusBar,
       ],
-      5,
+      6,
     );
     await expect(page.getByRole('slider')).toHaveCount(1);
     await expect(page.getByRole('textbox')).toHaveCount(1);
