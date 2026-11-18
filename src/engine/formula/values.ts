@@ -95,6 +95,8 @@ export interface Spec {
   readonly range?: (index: number) => boolean;
   /** Whether files write it with `_xlfn.`, as a function newer than 2007. */
   readonly prefixed?: boolean;
+  /** The format code Excel gives a cell for its result, as a date's. */
+  readonly format?: string;
   call(args: Args): Result;
 }
 

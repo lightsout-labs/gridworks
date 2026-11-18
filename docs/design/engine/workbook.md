@@ -43,8 +43,12 @@ and the decisions that span modules, are in the
   records its own reverse for redo. The workbook keeps the last 100
   changes, Excel's number, and a new change forgets what could be redone.
 - **Typing sets a cell's format.** A typed date, time, percentage or
-  number with separators sets the number format of its cell's style; a
-  plain number keeps the format the cell has, and Delete clears values
+  number with separators sets the number format of its cell's style, and
+  so does a formula that is a call to a function whose result Excel shows
+  as a date or time (`DATE`, `TODAY`, `NOW`, `TIME`, `EDATE`, `EOMONTH`,
+  `WORKDAY` and `WORKDAY.INTL`) in a cell with the General format; unlike
+  Excel, arithmetic on such a call (`=TODAY()+7`) leaves the format
+  alone. A plain number keeps the format the cell has, and Delete clears values
   and formulas but not formats, as in Excel. The formula bar and the
   editor start from `editText`, which reads back as the same value.
 - **A paste works out its cells.** `paste` names the source range and the

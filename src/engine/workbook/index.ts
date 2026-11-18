@@ -11,6 +11,7 @@ import {
   parse,
   print,
   references,
+  resultFormat,
   shift,
   SHEET_COLUMNS,
   SHEET_ROWS,
@@ -2462,17 +2463,25 @@ export class Workbook {
       );
       this.calc.put(sheet, row, col, `=${print(ast)}`, ast);
       column[row] = null;
+      // A date function gives a cell without a format its own, as in Excel.
+      const format = resultFormat(ast);
+      if (format && (code === undefined || code === GENERAL)) {
+        this.setFormat(sheet, row, col, format);
+      }
       return undefined;
     }
     this.calc.remove(sheet, row, col);
     const { value, format, year } = parseInput(input, command.year);
     column[row] = value;
-    if (format === undefined) return year;
     // The way the value was typed sets the cell's format, as in Excel.
+    if (format !== undefined) this.setFormat(sheet, row, col, format);
+    return year;
+  }
+
+  private setFormat(sheet: Sheet, row: number, col: number, format: string) {
     const ids = (sheet.styleIds[col] ??= []);
     const style = { ...this.styles[ids[row] ?? 0], numberFormat: format };
     ids[row] = this.styleId(style);
-    return year;
   }
 
   /**

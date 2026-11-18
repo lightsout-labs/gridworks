@@ -1199,7 +1199,7 @@ Notes:
 
 ## S35: Fix dates and times shown as serial numbers
 
-Status: Todo
+Status: In progress
 Fixes: #40
 
 Acceptance criteria:

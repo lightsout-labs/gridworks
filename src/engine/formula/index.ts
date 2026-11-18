@@ -840,6 +840,15 @@ export function calculable(
 }
 
 /**
+ * The format code Excel gives a cell without one for the result of a
+ * formula, when that result comes from a function shown as a date or time.
+ */
+export function resultFormat(ast: Ast): string | undefined {
+  if (ast.type === 'paren') return resultFormat(ast.inner);
+  return ast.type === 'call' ? LIBRARY[ast.name]?.format : undefined;
+}
+
+/**
  * The areas a formula reads, with the sheet named for each, in order; with
  * `names`, those of the defined names it uses too.
  */
