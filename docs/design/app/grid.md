@@ -116,6 +116,18 @@ in the [architecture document](../../architecture.md).
   of the innermost function call whose parentheses hold the caret.
   Argument names are Excel's English ones in both languages, as function
   names are.
+- **Argument values come before names.** In an argument for which
+  `argumentHint` gives values, the list offers those that start with the
+  text from the argument's start to the caret, compared without case, and
+  then the names; the text, not the tokens, decides, since `-1` is an
+  operator and a number. A value is put in place of that text, without a
+  parenthesis. A value typed in full is not offered, nor a function of the
+  same name, so that Enter commits it, as a defined name typed in full.
+- **Descriptions are translations.** The list shows the description of a
+  value in its item (`FALSE - Exact match`), and that of the highlighted
+  function beside the list; the editor looks both up through `t`, under
+  `function.<NAME>` and `value.<NAME>.<argument>.<value>`, so the
+  dictionaries' completeness test covers them. Defined names have none.
 
 ## Drawing
 

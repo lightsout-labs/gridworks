@@ -1,6 +1,6 @@
 # Requirements
 
-Status: Approved
+Status: Draft
 
 ## Goal
 
@@ -80,7 +80,29 @@ applications.
     autocomplete with an argument hint, lets the user insert references by
     clicking or dragging on the grid, and highlights each referenced range
     in a distinct color. F4 cycles a reference through absolute and
-    relative forms. Picking references works as in Excel's Point mode:
+    relative forms. The help while typing works as in Excel:
+    - The function list shows a one-line description of the highlighted
+      function, as Excel's does (`SUM`: "Adds all the numbers in a range of
+      cells"), in the interface language.
+    - In an argument for which Excel offers a list of values, the list
+      offers those values first, each with its description in the
+      interface language, as `FALSE - Exact match` and
+      `TRUE - Approximate match` for `range_lookup` of `VLOOKUP`; then
+      the defined names and functions that match. These arguments are
+      `range_lookup` of `VLOOKUP` and `HLOOKUP`, `match_type` of `MATCH`,
+      `match_mode` and `search_mode` of `XLOOKUP` and `XMATCH`, `order` of
+      `RANK`, `RANK.EQ` and `RANK.AVG`, `return_type` of `WEEKDAY` and
+      `WEEKNUM`, `method` of `DAYS360`, `basis` of `YEARFRAC`, `abs_num`
+      and `a1` of `ADDRESS`, and `weekend` of `NETWORKDAYS.INTL` and
+      `WORKDAY.INTL`. The values show as soon as the argument starts, and
+      typing narrows them to those that start with what is typed.
+    - Choosing a value inserts only the value: `FALSE`, not `FALSE(`.
+      Choosing the function `TRUE` or `FALSE` from the list still inserts
+      `TRUE(` or `FALSE(`, as Excel does.
+    - A value typed in full is not offered, nor is a function of the same
+      name in that argument, so that Enter commits the formula.
+
+    Picking references works as in Excel's Point mode:
     - Shift+click on the grid turns the reference just before the caret
       into the range from that reference's first cell (the cell clicked, or
       where its drag started) to the clicked cell; `=SUM(` then a click on
@@ -276,3 +298,9 @@ requirement above.
 - **Fill handle**: the Ctrl (Option on macOS) toggle between copy and
   series, the Auto Fill Options menu, and counting on text that ends in a
   number all work as in Excel.
+- **Argument values (#42)**: every argument of the library for which Excel
+  offers a list of values gets one; the values come first, then the
+  matching defined names and functions; choosing a value inserts only the
+  value, while choosing the function `TRUE` or `FALSE` still inserts its
+  parenthesis. The function list also shows each function's description,
+  and values and descriptions are translated into both languages.
