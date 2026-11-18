@@ -9,7 +9,7 @@ check:
 	python3 scripts/check-docs.py
 
 e2e:
-	npx playwright test
+	npx playwright test $(E2E_ARGS)
 
 perf:
 	npx vitest run --config vitest.perf.config.ts

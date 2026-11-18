@@ -22,8 +22,14 @@ jobs:
       - run: npm ci
       - run: make check
 
-  e2e:
+  # The end-to-end tests, split over machines of their own: one machine runs
+  # them in two workers, which takes several minutes.
+  e2e-shard:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -32,7 +38,15 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps
-      - run: make e2e
+      - run: make e2e E2E_ARGS=--shard=${{ matrix.shard }}/4
+
+  # The required check, which passes when every shard has passed.
+  e2e:
+    needs: e2e-shard
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ needs.e2e-shard.result }}" = success
 
   # Not a required check: a shared CI machine is slower, and varies more,
   # than the laptop the time limits are set for. A failure here asks for a
