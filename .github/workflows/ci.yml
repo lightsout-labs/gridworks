@@ -72,6 +72,5 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      # The commands of `make perf`: the image has no make.
-      - run: npx vitest run --config vitest.perf.config.ts
-      - run: npx playwright test --config playwright.perf.config.ts
+      # What `make perf` runs: the image has no make.
+      - run: npm run perf
