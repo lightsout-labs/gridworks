@@ -27,19 +27,24 @@ export interface Autosave {
 /**
  * Keeps every change to the workbook as it is made, so that none is lost
  * when the browser closes, and saves the whole workbook half a second after
- * the last change.
+ * the last change. `onFailure` is called when the store refuses a change or
+ * a save, as when it is full.
  */
-export function startAutosave(workbook: Workbook, store: Store): Autosave {
+export function startAutosave(
+  workbook: Workbook,
+  store: Store,
+  onFailure: (error: unknown) => void,
+): Autosave {
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   const flush = () => {
     if (timer === undefined) return;
     clearTimeout(timer);
     timer = undefined;
-    void store.save(workbook.toSnapshot());
+    store.save(workbook.toSnapshot()).catch(onFailure);
   };
   const unsubscribe = workbook.subscribe((command) => {
-    void store.record(command);
+    store.record(command).catch(onFailure);
     clearTimeout(timer);
     timer = setTimeout(flush, DELAY_MS);
   });

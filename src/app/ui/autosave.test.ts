@@ -9,10 +9,11 @@ function setup() {
     record: vi.fn<(command: Command) => Promise<void>>(() => Promise.resolve()),
     save: vi.fn(() => Promise.resolve()),
   };
-  const autosave = startAutosave(workbook, store);
+  const onFailure = vi.fn();
+  const autosave = startAutosave(workbook, store, onFailure);
   const edit = (input: string) =>
     workbook.execute({ type: 'setCell', sheet, row: 0, col: 0, input });
-  return { workbook, sheet, store, autosave, edit };
+  return { workbook, sheet, store, autosave, edit, onFailure };
 }
 
 describe('autosave', () => {
@@ -74,6 +75,20 @@ describe('autosave', () => {
     vi.advanceTimersByTime(1000);
     expect(store.save).toHaveBeenCalledTimes(1);
     expect(store.record).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells when a change or a save cannot be stored', async () => {
+    const { store, autosave, edit, onFailure } = setup();
+    edit('1');
+    await vi.runAllTimersAsync();
+    expect(onFailure).not.toHaveBeenCalled();
+    const full = new Error('QuotaExceededError');
+    store.record.mockRejectedValueOnce(full);
+    store.save.mockRejectedValueOnce(full);
+    edit('2');
+    autosave.flush();
+    await vi.runAllTimersAsync();
+    expect(onFailure).toHaveBeenCalledTimes(2);
   });
 });
 

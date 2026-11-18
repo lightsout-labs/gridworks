@@ -1164,7 +1164,7 @@ Notes:
 
 ## S30: The start screen and stored workbooks
 
-Status: Todo
+Status: In progress
 
 Acceptance criteria:
 - Opening the app shows a start screen that lists the workbooks stored in the

@@ -11,6 +11,7 @@ import type {
   ClipboardListener,
   Platform,
   Stored,
+  StoredInfo,
 } from '..';
 
 // The IndexedDB database `gridworks`. `workbooks` has one record for each
@@ -161,6 +162,27 @@ async function save(id: string, snapshot: Snapshot): Promise<void> {
   await completion(transaction);
 }
 
+async function list(): Promise<StoredInfo[]> {
+  const transaction = (await database()).transaction(WORKBOOKS);
+  const records = await result<WorkbookRecord[]>(
+    transaction.objectStore(WORKBOOKS).getAll(),
+  );
+  return records
+    .map(({ id, name, modified }) => ({ id, name, modified }))
+    .sort((a, b) => b.modified - a.modified);
+}
+
+async function remove(id: string): Promise<void> {
+  const transaction = (await database()).transaction(
+    [WORKBOOKS, SHEETS, CHANGES],
+    'readwrite',
+  );
+  transaction.objectStore(WORKBOOKS).delete(id);
+  transaction.objectStore(SHEETS).delete(IDBKeyRange.bound([id], [id, []]));
+  transaction.objectStore(CHANGES).delete(changesOf(id));
+  await completion(transaction);
+}
+
 // A file input works in every browser; the File System Access API does not.
 function openFile(): Promise<ChosenFile | null> {
   return new Promise((resolve, reject) => {
@@ -271,7 +293,7 @@ function writeClipboard({ text, html }: ClipboardContents): void {
 export const webPlatform: Platform = {
   openFile,
   saveFile,
-  workbooks: { load, record, save },
+  workbooks: { list, load, record, save, delete: remove },
   listenToClipboard,
   writeClipboard,
   // A browser that blocks storage throws; the choice is then not remembered.

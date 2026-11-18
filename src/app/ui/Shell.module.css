@@ -990,3 +990,109 @@
   display: flex;
   gap: 16px;
 }
+
+/* The workbook's name, in the line of the ribbon's tabs. */
+
+.titleBox {
+  width: 160px;
+  height: 26px;
+  margin-right: 16px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-overflow: ellipsis;
+  transition:
+    background-color var(--transition),
+    border-color var(--transition);
+}
+
+.titleBox:hover {
+  background: var(--hover);
+}
+
+.titleBox:focus-visible {
+  border-color: var(--accent);
+  outline: 1px solid var(--accent);
+  background: var(--background);
+}
+
+/* The start screen: the stored workbooks and how to start another. */
+
+.start {
+  flex: 1;
+  box-sizing: border-box;
+  min-height: 0;
+  overflow: auto;
+  padding: 32px max(16px, calc((100% - 720px) / 2));
+  background: var(--background);
+  color: var(--text);
+}
+
+.startHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 32px;
+}
+
+.startBrand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 auto 0 0;
+  color: var(--accent);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.startHeading {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.startItems {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.startItem {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.startOpen {
+  flex: 1;
+  justify-content: space-between;
+  min-width: 0;
+  height: 40px;
+}
+
+.startName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.startTime {
+  flex: none;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.danger:not(:disabled),
+.danger:not(:disabled):hover {
+  background: var(--danger);
+  color: var(--background);
+}
+
+.danger:not(:disabled):hover {
+  filter: brightness(1.1);
+}

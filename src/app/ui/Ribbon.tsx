@@ -7,6 +7,7 @@ import {
   Download,
   FileText,
   FolderOpen,
+  House,
   SquareFunction,
   Moon,
   Paintbrush,
@@ -22,7 +23,9 @@ import {
 } from 'lucide-react';
 import {
   useCallback,
+  useEffect,
   useId,
+  useState,
   useSyncExternalStore,
   type ReactNode,
 } from 'react';
@@ -65,6 +68,7 @@ export function Ribbon({
   theme,
   onTheme,
   busy,
+  onHome,
   onOpen,
   onSave,
   onExportCsv,
@@ -80,6 +84,8 @@ export function Ribbon({
   onTheme: (theme: Theme) => void;
   /** Whether a file is being opened or saved, when neither can start. */
   busy: boolean;
+  /** Goes to the start screen. */
+  onHome: () => void;
   onOpen: () => void;
   onSave: () => void;
   /** Saves the active sheet as a `.csv` file. */
@@ -100,6 +106,7 @@ export function Ribbon({
           <Table2 size={ICON_SIZE} aria-hidden />
           Gridworks
         </span>
+        <TitleBox workbook={workbook} />
         <Tabs.List aria-label={t('ribbon')}>
           <Tooltip text={t('tab.file.tooltip')}>
             <Tabs.Trigger className={styles.ribbonTab} value="file">
@@ -140,6 +147,14 @@ export function Ribbon({
       </div>
       <Tabs.Content className={styles.ribbonPanel} value="file">
         <Group label={t('file.group')}>
+          <Command
+            icon={House}
+            label={t('file.home')}
+            tooltip={t('file.home.tooltip')}
+            disabled={false}
+            onRun={onHome}
+            labeled
+          />
           <Command
             icon={FolderOpen}
             label={t('file.open')}
@@ -292,6 +307,49 @@ function Group({ label, children }: { label: string; children: ReactNode }) {
       </span>
       {children}
     </div>
+  );
+}
+
+/**
+ * The workbook's name, in the title area, where typing renames it; the
+ * page's title follows it. Enter or leaving the box keeps the name typed,
+ * Escape or an empty name the one before.
+ */
+function TitleBox({ workbook }: { workbook: Workbook }) {
+  const t = useTranslation();
+  const subscribe = useCallback(
+    (listener: () => void) => workbook.subscribe(listener),
+    [workbook],
+  );
+  const name = useSyncExternalStore(subscribe, () => workbook.name);
+  const [typed, setTyped] = useState(name);
+  useEffect(() => {
+    setTyped(name);
+    document.title = `${name} - Gridworks`;
+  }, [name]);
+  const keep = () => {
+    const trimmed = typed.trim();
+    if (trimmed === '' || trimmed === name) setTyped(name);
+    else workbook.execute({ type: 'renameWorkbook', name: trimmed });
+  };
+  return (
+    <Tooltip text={t('title.name.tooltip')}>
+      <input
+        className={styles.titleBox}
+        aria-label={t('title.name')}
+        value={typed}
+        spellCheck={false}
+        onChange={(event) => setTyped(event.target.value)}
+        onBlur={keep}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            keep();
+          } else if (event.key === 'Escape') {
+            setTyped(name);
+          }
+        }}
+      />
+    </Tooltip>
   );
 }
 

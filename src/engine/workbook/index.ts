@@ -88,6 +88,14 @@ export {
 /** An edit to the workbook. Rows and columns count from zero. */
 export type Command =
   | {
+      /**
+       * Renames the workbook. Undo leaves it alone, as the name is the
+       * file's, not part of its contents.
+       */
+      readonly type: 'renameWorkbook';
+      readonly name: string;
+    }
+  | {
       readonly type: 'setCell';
       readonly sheet: string;
       readonly row: number;
@@ -747,8 +755,7 @@ export class Workbook {
   private readonly conditions = new Rules();
 
   private constructor(
-    /** The workbook's name, which names the files saved from it. */
-    readonly name: string,
+    private currentName: string,
     private readonly sheetList: Sheet[],
     private readonly styles: Style[],
     private readonly measure: TextWidth,
@@ -783,6 +790,11 @@ export class Workbook {
     workbook.fitNewSheets();
     for (const command of changes) workbook.apply(command);
     return workbook;
+  }
+
+  /** The workbook's name, which names the files saved from it. */
+  get name(): string {
+    return this.currentName;
   }
 
   toSnapshot(): Snapshot {
@@ -863,9 +875,11 @@ export class Workbook {
 
   /**
    * Makes a change, which can then be undone, and gives what it changed;
-   * what could be redone is forgotten.
+   * what could be redone is forgotten. A rename of the workbook is neither
+   * undone nor forgets anything.
    */
   execute(command: Command): Change {
+    if (command.type === 'renameWorkbook') return this.apply(command);
     this.redoList.length = 0;
     return this.apply(command, this.undoList);
   }
@@ -1199,7 +1213,11 @@ export class Workbook {
    */
   private apply(command: Command, history?: Command[]): Change {
     let applied: Applied;
-    if (
+    if (command.type === 'renameWorkbook') {
+      this.currentName = command.name;
+      const change = { sheet: this.sheetList[0]!.id, ranges: [] };
+      applied = { executed: command, reverse: command, change };
+    } else if (
       command.type === 'setCell' ||
       command.type === 'setCells' ||
       command.type === 'setNote' ||
