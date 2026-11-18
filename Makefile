@@ -12,5 +12,4 @@ e2e:
 	npx playwright test
 
 perf:
-	npx vitest run --config vitest.perf.config.ts
-	npx playwright test --config playwright.perf.config.ts
+	npm run perf

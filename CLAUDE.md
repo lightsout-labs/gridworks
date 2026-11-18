@@ -3,8 +3,8 @@
 Gridworks is a spreadsheet application that provides the main features of
 Microsoft Excel in the browser, as a static TypeScript app on GitHub Pages.
 It is built with the `nightshift` workflow. What it must do is in
-`docs/requirements.md`, how it is built is in `docs/architecture.md`, and
-progress is in `docs/backlog.md`.
+`docs/requirements.md`, how it is built is in `docs/architecture.md` and,
+inside each module, in `docs/design/`, and progress is in `docs/backlog.md`.
 
 ## Commands
 
@@ -15,7 +15,7 @@ progress is in `docs/backlog.md`.
   runs the Playwright tests on Chromium, Firefox and WebKit. Run it before a
   pull request. It needs `npx playwright install` once, and again after an
   upgrade of `@playwright/test`, whose version is also the tag of the
-  Playwright image in `.github/workflows/ci.yml`.
+  Playwright images in `.github/workflows/ci.yml`.
 - `make perf`: the time limits of R45–R47, the engine's with Vitest and the
   app's with Playwright on Chromium. CI runs it without blocking a merge;
   run it on a laptop to confirm a failure.

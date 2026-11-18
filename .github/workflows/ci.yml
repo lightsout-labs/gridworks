@@ -61,6 +61,10 @@ jobs:
   # measurement with `make perf` on such a laptop.
   perf:
     runs-on: ubuntu-latest
+    # The same image as the end-to-end shards, so Chromium is not downloaded.
+    container:
+      image: mcr.microsoft.com/playwright:v1.65.0
+      options: --user 1001
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -68,5 +72,5 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
-      - run: make perf
+      # What `make perf` runs: the image has no make.
+      - run: npm run perf
