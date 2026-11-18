@@ -247,6 +247,9 @@ test.describe('the controls', () => {
   test.use({ locale: 'en-US', colorScheme: 'light' });
 
   test('each have a tooltip', async ({ page }) => {
+    // It hovers every control of every tab, which takes WebKit on CI longer
+    // than the default 30 seconds.
+    test.setTimeout(60_000);
     await openApp(page);
     // A defined name enables the list of names.
     await nameBox(page).fill('Start');

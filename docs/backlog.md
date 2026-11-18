@@ -1193,6 +1193,9 @@ Notes:
   screen, and `openStoredSheet` stores under the identifier `stored` and opens
   `#stored`; S32 and later perf tests should use them.
 - `renameWorkbook` is a command that undo leaves alone and the view ignores.
+- CI failure: `shell.spec.ts` "each have a tooltip" timed out on WebKit at
+  30 s, at a different control each attempt, once the title box was added;
+  fixed by giving that test 60 s.
 
 ## S31: Working offline
 
