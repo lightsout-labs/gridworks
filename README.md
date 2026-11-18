@@ -22,6 +22,7 @@ Gridworks needs the Node.js version in [.nvmrc](.nvmrc) and `make`.
 | Run locally | `npm run dev`, then open <http://localhost:5173/gridworks/> |
 | Test | `make check` (format, lint, types, unit tests with coverage, documents) `make e2e` (the built app in Chromium, Firefox and WebKit), and `make perf` (the time limits for scrolling, recalculation and opening files) |
 | Build | `npm run build`, which writes the static site to `dist/` |
+| Upgrade Playwright | Change the version of `@playwright/test`, the tag of the `mcr.microsoft.com/playwright` image in [.github/workflows/ci.yml](.github/workflows/ci.yml) to the same version, and run `npx playwright install` again |
 
 Every merge to `main` is deployed to the address above by
 [a GitHub Actions workflow](.github/workflows/deploy.yml), which then runs a
