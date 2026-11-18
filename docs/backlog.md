@@ -1218,6 +1218,9 @@ Notes:
   `engine/formula`). Arithmetic on such a call, as `=TODAY()+7`, leaves the
   format alone, unlike Excel; a later slice that needs it extends
   `resultFormat`.
+- CI failed `make check` once on the time limit of totalling a whole sheet
+  (648 ms for 500 ms), which a rerun passed; the two time limits in the
+  unit tests then moved to `tests/perf`, which does not block a merge.
 
 ## S31: Working offline
 
