@@ -26,8 +26,14 @@ jobs:
   # them in two workers, which takes several minutes.
   e2e-shard:
     runs-on: ubuntu-latest
-    # A shard takes about four minutes; a stalled download fails it instead of
-    # holding it for the default six hours.
+    # The browsers and their system libraries come installed, rather than
+    # downloaded from mirrors that can stall. The version is the one of
+    # @playwright/test in package-lock.json.
+    container:
+      image: mcr.microsoft.com/playwright:v1.65.0
+      options: --user 1001
+    # A shard takes a few minutes; a stalled one fails instead of holding the
+    # machine for the default six hours.
     timeout-minutes: 10
     strategy:
       fail-fast: false
@@ -40,8 +46,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps
-      - run: make e2e E2E_ARGS=--shard=${{ matrix.shard }}/4
+      - run: npx playwright test --shard=${{ matrix.shard }}/4
 
   # The required check, which passes when every shard has passed.
   e2e:

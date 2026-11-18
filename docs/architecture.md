@@ -824,7 +824,7 @@ unit tested, and counts toward the coverage floor.
 | Target | Contents |
 |---|---|
 | `make check` | `prettier --check`, `eslint`, `tsc --noEmit` for both the engine and the app configuration, `vitest run --coverage` with a floor of 90% of lines in `src/engine` and in the parts of `src/app` that have no DOM, `scripts/check-docs.py` |
-| `make e2e` | Builds the production bundle, serves it with `vite preview` under `/gridworks/`, and runs the Playwright tests against it; `E2E_ARGS` passes options to Playwright, such as the `--shard` that CI gives |
+| `make e2e` | Builds the production bundle, serves it with `vite preview` under `/gridworks/`, and runs the Playwright tests against it |
 | `make perf` | The time limits of R45–R47 in `tests/perf`: the engine's with Vitest, then the app's with Playwright on Chromium against the production bundle, one test at a time |
 
 CI runs all three on every pull request: `check` and `e2e` as required
@@ -832,7 +832,10 @@ checks, and `perf` as a check that does not block a merge, because a shared
 CI machine is slower, and varies more, than the laptop the time limits are
 set for. A `perf` failure is confirmed or dismissed by running `make perf`
 on such a laptop. The `e2e` check passes when each of four shards of the
-end-to-end tests, run on machines of their own in parallel, has passed.
+end-to-end tests, run on machines of their own in parallel, has passed. The
+shards run in Playwright's container image, whose browsers and their system
+libraries come installed, at the version of `@playwright/test` in the lock
+file; a change to that version changes the image too.
 
 ## Testing
 
