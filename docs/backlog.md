@@ -1197,6 +1197,21 @@ Notes:
   30 s, at a different control each attempt, once the title box was added;
   fixed by giving that test 60 s.
 
+## S35: Fix dates and times shown as serial numbers
+
+Status: Todo
+Fixes: #40
+
+Acceptance criteria:
+- A formula whose result comes from a date or time function shows that
+  result as Excel does, in a cell with no number format of its own:
+  `=DATE(2026,11,18)` and `=TODAY()` (on that day) show `11/18/2026`,
+  `=NOW()` shows `11/18/2026 11:34` at that time, `=TIME(14,30,0)` shows
+  `2:30 PM`, `=EOMONTH(DATE(2026,11,18),0)` shows `11/30/2026`, and
+  `=WORKDAY("2026-11-18",5)` shows `11/25/2026`. (R12)
+- The other date and time functions whose result Excel shows as a date or
+  time do the same. (R12)
+
 ## S31: Working offline
 
 Status: Todo
