@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readXlsx } from '../../src/engine/io';
-import { Workbook } from '../../src/engine/workbook';
+import { SHEET_COLUMNS, SHEET_ROWS, Workbook } from '../../src/engine/workbook';
 import { xlsxFile } from '../xlsx';
 
 describe('the engine', () => {
@@ -33,6 +33,55 @@ describe('the engine', () => {
       input: '2',
     });
     expect(workbook.cell('s', 99_999, 1).value).toBe(100_002);
+    expect(performance.now() - start).toBeLessThan(1000);
+  });
+
+  it('totals a whole sheet of 100,000 by 100 cells within half a second (R45)', () => {
+    const columns = Array.from({ length: SHEET_COLUMNS }, () =>
+      Array.from({ length: SHEET_ROWS }, () => 1),
+    );
+    const workbook = Workbook.fromSnapshot({
+      version: 1,
+      name: 'Big',
+      sheets: [{ id: 's', name: 'S', columns, formulas: [] }],
+    });
+    const whole = {
+      top: 0,
+      left: 0,
+      bottom: SHEET_ROWS - 1,
+      right: SHEET_COLUMNS - 1,
+    };
+    const start = performance.now();
+    expect(workbook.aggregate('s', [whole]).sum).toBe(
+      SHEET_ROWS * SHEET_COLUMNS,
+    );
+    expect(performance.now() - start).toBeLessThan(500);
+  });
+
+  it('formats whole columns and rows within a second (R45)', () => {
+    const workbook = Workbook.fromSnapshot({
+      version: 1,
+      name: 'Formats',
+      sheets: [
+        { id: 's', name: 'S', columns: [[null, null, 'x']], formulas: [] },
+      ],
+    });
+    const start = performance.now();
+    workbook.execute({
+      type: 'setStyle',
+      sheet: 's',
+      ranges: [{ top: 0, left: 0, bottom: SHEET_ROWS - 1, right: 0 }],
+      style: { bold: true },
+    });
+    workbook.execute({
+      type: 'setStyle',
+      sheet: 's',
+      ranges: [
+        { top: 0, left: 0, bottom: SHEET_ROWS - 1, right: SHEET_COLUMNS - 1 },
+      ],
+      style: { italic: true },
+    });
+    // Not the 10 million cells of the sheet, which would take seconds.
     expect(performance.now() - start).toBeLessThan(1000);
   });
 
