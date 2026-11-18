@@ -111,3 +111,20 @@ test('text, date, lookup and information functions give their results', async ({
   await expectCell(page, 2, 2, 'C3 #N/A');
   await expectCell(page, 3, 2, 'C4 TRUE');
 });
+
+test('shows the results of date and time functions as dates and times', async ({
+  page,
+}) => {
+  await page.clock.setFixedTime(new Date(2026, 10, 18, 11, 34));
+  await openApp(page);
+  await clickCell(page, 0, 0);
+  await enter(page, '=DATE(2026,11,18)');
+  await enter(page, '=NOW()');
+  await enter(page, '=TIME(14,30,0)');
+  await enter(page, '=WORKDAY("2026-11-18",5)');
+
+  await expectCell(page, 0, 0, 'A1 11/18/2026');
+  await expectCell(page, 1, 0, 'A2 11/18/2026 11:34');
+  await expectCell(page, 2, 0, 'A3 2:30 PM');
+  await expectCell(page, 3, 0, 'A4 11/25/2026');
+});

@@ -275,6 +275,37 @@ describe('workbook', () => {
     });
   });
 
+  it('shows the result of a date or time function as Excel does in a cell with no format of its own', () => {
+    vi.useFakeTimers({ now: new Date(2026, 10, 18, 11, 34, 20) });
+    try {
+      const { set, show } = setup();
+      let row = 10;
+      const shown = (input: string) => {
+        set(++row, 0, input);
+        return show(row, 0);
+      };
+      expect(shown('=DATE(2026,11,18)')).toBe('11/18/2026');
+      expect(shown('=TODAY()')).toBe('11/18/2026');
+      expect(shown('=NOW()')).toBe('11/18/2026 11:34');
+      expect(shown('=TIME(14,30,0)')).toBe('2:30 PM');
+      expect(shown('=EOMONTH(DATE(2026,11,18),0)')).toBe('11/30/2026');
+      expect(shown('=WORKDAY("2026-11-18",5)')).toBe('11/25/2026');
+      expect(shown('=(EDATE("2026-11-18",1))')).toBe('12/18/2026');
+      expect(shown('=WORKDAY.INTL("2026-11-18",1,11)')).toBe('11/19/2026');
+      // Only a cell without a format gets one.
+      set(1, 0, '50%');
+      set(1, 0, '=DATE(2026,11,18)');
+      expect(show(1, 0)).toBe('4634400%');
+      // A number from a date stays a number.
+      set(2, 0, '=YEAR(DATE(2026,11,18))');
+      expect(show(2, 0)).toBe('2026');
+      set(3, 0, '=DATEVALUE("2026-11-18")');
+      expect(show(3, 0)).toBe('46344');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('adds booleans as numbers in formulas', () => {
     const { set, show } = setup();
     set(0, 0, 'TRUE');

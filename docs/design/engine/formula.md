@@ -13,8 +13,9 @@ and the decisions that span modules, are in the
 - **Functions are specifications in a library**, one table for each
   family (math, statistics, logic, conditional totals, text, dates,
   lookup and reference, information), each giving its number of
-  arguments, whether files prefix its name with `_xlfn.`, and its
-  implementation. The parser refuses a call with the wrong number of
+  arguments, whether files prefix its name with `_xlfn.`, the format
+  Excel gives a cell for its result if it is a date or time (which
+  `resultFormat` reads), and its implementation. The parser refuses a call with the wrong number of
   arguments, or with a constant where it needs a range (as the first
   argument of `SUMIF`), as Excel does, so it stays text. An implementation
   receives its arguments unevaluated and asks for each as a value, a

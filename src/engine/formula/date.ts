@@ -1,4 +1,4 @@
-import { dateParts, dateSerial, parseDate } from '../format';
+import { builtinFormat, dateParts, dateSerial, parseDate } from '../format';
 import { isError, type ErrorValue } from '../value';
 import {
   fail,
@@ -190,13 +190,27 @@ function actualYears(start: number, end: number): number {
   return days / (leap ? 366 : 365);
 }
 
+/** A function whose result Excel shows in a built-in format, by its id. */
+const shown = (id: number, spec: Spec): Spec => ({
+  ...spec,
+  format: builtinFormat(id)!,
+});
+
+/** The ids of the built-in formats of a date, a time, and both. */
+const DAY_FORMAT = 14;
+const TIME_FORMAT = 18;
+const MOMENT_FORMAT = 22;
+
 export const DATE_FUNCTIONS: Record<string, Spec> = {
-  DATE: typed(3, 3, (read) => {
-    let year = read.integer(0);
-    if (year >= 0 && year < 1900) year += 1900;
-    if (year < 1900 || year > 9999) return NUM;
-    return dated(dateSerial(year, read.integer(1), read.integer(2)));
-  }),
+  DATE: shown(
+    DAY_FORMAT,
+    typed(3, 3, (read) => {
+      let year = read.integer(0);
+      if (year >= 0 && year < 1900) year += 1900;
+      if (year < 1900 || year > 9999) return NUM;
+      return dated(dateSerial(year, read.integer(1), read.integer(2)));
+    }),
+  ),
   DATEDIF: typed(3, 3, (read) => {
     const start = date(read, 0);
     const end = date(read, 1);
@@ -231,35 +245,47 @@ export const DATE_FUNCTIONS: Record<string, Spec> = {
     const end = dateParts(date(read, 1));
     return days360(start, end, read.boolean(2, false));
   }),
-  EDATE: typed(2, 2, (read) => {
-    const [year, month, day] = dateParts(date(read, 0));
-    const target = month + read.integer(1);
-    return dated(
-      dateSerial(year, target, Math.min(day, lastDay(year, target))),
-    );
-  }),
-  EOMONTH: typed(2, 2, (read) => {
-    const [year, month] = dateParts(date(read, 0));
-    return dated(dateSerial(year, month + read.integer(1) + 1, 0));
-  }),
+  EDATE: shown(
+    DAY_FORMAT,
+    typed(2, 2, (read) => {
+      const [year, month, day] = dateParts(date(read, 0));
+      const target = month + read.integer(1);
+      return dated(
+        dateSerial(year, target, Math.min(day, lastDay(year, target))),
+      );
+    }),
+  ),
+  EOMONTH: shown(
+    DAY_FORMAT,
+    typed(2, 2, (read) => {
+      const [year, month] = dateParts(date(read, 0));
+      return dated(dateSerial(year, month + read.integer(1) + 1, 0));
+    }),
+  ),
   HOUR: typed(1, 1, (read) => Math.floor(seconds(read) / 3600)),
   ISOWEEKNUM: typed(1, 1, (read) => isoWeek(date(read, 0)), true),
   MINUTE: typed(1, 1, (read) => Math.floor(seconds(read) / 60) % 60),
   MONTH: typed(1, 1, (read) => dateParts(date(read, 0))[1]),
   NETWORKDAYS: typed(2, 3, (read) => working(read, false)),
   'NETWORKDAYS.INTL': typed(2, 4, (read) => working(read, true), true),
-  NOW: typed(0, 0, now),
+  NOW: shown(MOMENT_FORMAT, typed(0, 0, now)),
   SECOND: typed(1, 1, (read) => seconds(read) % 60),
-  TIME: typed(3, 3, (read) => {
-    const total =
-      read.integer(0) * 3600 + read.integer(1) * 60 + read.integer(2);
-    return total < 0 ? NUM : (total % 86_400) / 86_400;
-  }),
+  TIME: shown(
+    TIME_FORMAT,
+    typed(3, 3, (read) => {
+      const total =
+        read.integer(0) * 3600 + read.integer(1) * 60 + read.integer(2);
+      return total < 0 ? NUM : (total % 86_400) / 86_400;
+    }),
+  ),
   TIMEVALUE: typed(1, 1, (read) => {
     const n = textDate(read);
     return n - Math.floor(n);
   }),
-  TODAY: typed(0, 0, () => Math.floor(now())),
+  TODAY: shown(
+    DAY_FORMAT,
+    typed(0, 0, () => Math.floor(now())),
+  ),
   WEEKDAY: typed(1, 2, (read) => {
     const day = weekday(date(read, 0));
     const type = read.integer(1, 1);
@@ -277,8 +303,14 @@ export const DATE_FUNCTIONS: Record<string, Spec> = {
     const offset = (weekday(january1) - first + 7) % 7;
     return Math.floor((day - january1 + offset) / 7) + 1;
   }),
-  WORKDAY: typed(2, 3, (read) => workday(read, false)),
-  'WORKDAY.INTL': typed(2, 4, (read) => workday(read, true), true),
+  WORKDAY: shown(
+    DAY_FORMAT,
+    typed(2, 3, (read) => workday(read, false)),
+  ),
+  'WORKDAY.INTL': shown(
+    DAY_FORMAT,
+    typed(2, 4, (read) => workday(read, true), true),
+  ),
   YEAR: typed(1, 1, (read) => dateParts(date(read, 0))[0]),
   YEARFRAC: typed(2, 3, (read) => {
     let start = date(read, 0);
