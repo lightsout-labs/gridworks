@@ -246,10 +246,40 @@ for (const system of ['light', 'dark'] as const) {
 test.describe('the controls', () => {
   test.use({ locale: 'en-US', colorScheme: 'light' });
 
-  test('each have a tooltip', async ({ page }) => {
-    // It hovers every control of every tab, which takes WebKit on CI longer
-    // than the default 30 seconds.
-    test.setTimeout(60_000);
+  type Tooltips = readonly (readonly [
+    'tab' | 'button' | 'slider' | 'textbox' | 'combobox',
+    string,
+    string | RegExp,
+  ])[];
+
+  /**
+   * Hovers each control, expecting its tooltip, and that the page has as
+   * many buttons as given, so that no control is left out of the list.
+   */
+  async function expectTooltips(
+    page: Page,
+    tooltips: Tooltips,
+    buttons: number,
+  ) {
+    for (const [role, name, tooltip] of tooltips) {
+      await page.getByRole(role, { name, exact: true }).hover();
+      // By name, as the tooltip before may still be fading out.
+      await expect(page.getByRole('tooltip', { name: tooltip })).toBeVisible();
+    }
+    await expect(page.getByRole('button')).toHaveCount(buttons);
+  }
+
+  /** Opens a tab of the ribbon, and moves away from its tooltip. */
+  async function openTab(page: Page, name: string) {
+    await page.getByRole('tab', { name, exact: true }).click();
+    await clickCell(page, 5, 5);
+  }
+
+  // Each tab has a test of its own, so that they run in parallel. The sheet
+  // tabs and the status bar, always there, are checked with the Home tab.
+  test('of the Home tab, the ribbon tabs and the status bar each have a tooltip', async ({
+    page,
+  }) => {
     await openApp(page);
     // A defined name enables the list of names.
     await nameBox(page).fill('Start');
@@ -268,45 +298,8 @@ test.describe('the controls', () => {
     await clickCell(page, 4, 0);
     await page.keyboard.press('Shift+ArrowRight');
     await page.keyboard.press('ControlOrMeta+c');
-    const check = async (
-      tooltips: readonly (readonly [
-        'tab' | 'button' | 'slider' | 'textbox' | 'combobox',
-        string,
-        string | RegExp,
-      ])[],
-      buttons: number,
-    ) => {
-      for (const [role, name, tooltip] of tooltips) {
-        await page.getByRole(role, { name, exact: true }).hover();
-        // By name, as the tooltip before may still be fading out.
-        await expect(
-          page.getByRole('tooltip', { name: tooltip }),
-        ).toBeVisible();
-      }
-      // No control of the tab is left out of the list.
-      await expect(page.getByRole('button')).toHaveCount(buttons);
-    };
-    // The sheet tabs and the status bar are always there.
-    const statusBar = [
-      ['tab', 'Sheet1', 'Double-click to rename, right-click for more actions'],
-      ['button', 'New sheet', 'Insert a new sheet'],
-      ['button', 'Zoom out', 'Zoom out by 10%'],
-      ['button', 'Zoom in', 'Zoom in by 10%'],
-      ['slider', 'Zoom', 'Size of the grid'],
-      ['textbox', 'Formula bar', 'Contents of the active cell'],
-      [
-        'combobox',
-        'Name box',
-        /^The active cell, or the name of the range selected/,
-      ],
-      ['button', 'Defined names', 'Go to a name of the workbook'],
-      [
-        'textbox',
-        'Workbook name',
-        'The name of the workbook: type to rename it',
-      ],
-    ] as const;
-    await check(
+    await expectTooltips(
+      page,
       [
         ['tab', 'File', 'Open and save workbooks'],
         ['tab', 'Home', 'The most used commands'],
@@ -403,13 +396,38 @@ test.describe('the controls', () => {
           'Replace',
           /^Replace text in the sheet or the workbook \((Ctrl\+|⌃)H\)$/,
         ],
-        ...statusBar,
+
+        [
+          'tab',
+          'Sheet1',
+          'Double-click to rename, right-click for more actions',
+        ],
+        ['button', 'New sheet', 'Insert a new sheet'],
+        ['button', 'Zoom out', 'Zoom out by 10%'],
+        ['button', 'Zoom in', 'Zoom in by 10%'],
+        ['slider', 'Zoom', 'Size of the grid'],
+        ['textbox', 'Formula bar', 'Contents of the active cell'],
+        [
+          'combobox',
+          'Name box',
+          /^The active cell, or the name of the range selected/,
+        ],
+        ['button', 'Defined names', 'Go to a name of the workbook'],
+        [
+          'textbox',
+          'Workbook name',
+          'The name of the workbook: type to rename it',
+        ],
       ],
       36,
     );
-    await page.getByRole('tab', { name: 'View', exact: true }).click();
-    await clickCell(page, 5, 5); // Away from the tab and its tooltip.
-    await check(
+  });
+
+  test('of the View tab each have a tooltip', async ({ page }) => {
+    await openApp(page);
+    await openTab(page, 'View');
+    await expectTooltips(
+      page,
       [
         ['button', 'Light', 'Use the light theme'],
         ['button', 'Dark', 'Use the dark theme'],
@@ -420,17 +438,23 @@ test.describe('the controls', () => {
         ],
         ['button', 'English', 'Show the interface in English'],
         ['button', '中文', 'Show the interface in Simplified Chinese'],
-        ...statusBar,
       ],
       9,
     );
+  });
+
+  test('of the Data tab each have a tooltip', async ({ page }) => {
+    await openApp(page);
     // Two cells in use, selected, enable sorting.
+    await clickCell(page, 0, 0);
+    await enter(page, '1');
     await clickCell(page, 0, 1);
     await enter(page, 'x');
     await clickCell(page, 0, 0);
     await page.keyboard.press('Shift+ArrowRight');
     await page.getByRole('tab', { name: 'Data' }).click();
-    await check(
+    await expectTooltips(
+      page,
       [
         [
           'button',
@@ -457,7 +481,6 @@ test.describe('the controls', () => {
           'Data validation',
           /^Choose what can be typed in the selected cells/,
         ],
-        ...statusBar,
       ],
       // Clear, disabled until a column is filtered, is checked below.
       10,
@@ -470,19 +493,22 @@ test.describe('the controls', () => {
     await page.getByLabel('Show rows where').selectOption('Greater than');
     await page.getByLabel('Value', { exact: true }).fill('5');
     await page.getByRole('button', { name: 'OK', exact: true }).click();
-    await check(
+    await expectTooltips(
+      page,
       [
         ['button', 'Clear', 'Show every row that the filter hides'],
         ['button', 'Filter column A (filtered)', 'Filter column A (filtered)'],
         ['button', 'Filter column B', 'Filter column B'],
-        ...statusBar,
       ],
       12,
     );
-    await page.getByRole('button', { name: 'Filter', exact: true }).click();
-    await page.getByRole('tab', { name: 'Formulas' }).click();
-    await clickCell(page, 5, 5);
-    await check(
+  });
+
+  test('of the Formulas tab each have a tooltip', async ({ page }) => {
+    await openApp(page);
+    await openTab(page, 'Formulas');
+    await expectTooltips(
+      page,
       [
         ['button', 'Insert function', 'Choose a function to insert'],
         [
@@ -490,45 +516,55 @@ test.describe('the controls', () => {
           'Name manager',
           /^View, edit and delete the names of the workbook/,
         ],
-        ...statusBar,
       ],
       6,
     );
-    await page.getByRole('tab', { name: 'Insert' }).click();
-    await clickCell(page, 5, 5);
-    await check(
+  });
+
+  test('of the Insert tab each have a tooltip', async ({ page }) => {
+    await openApp(page);
+    await openTab(page, 'Insert');
+    await expectTooltips(
+      page,
       [
         [
           'button',
           'Link',
           'Link the active cell to a web page or to a cell of the workbook',
         ],
-        ...statusBar,
       ],
       5,
     );
+  });
+
+  test('of the Review tab each have a tooltip', async ({ page }) => {
+    await openApp(page);
+    await openTab(page, 'Review');
     // Delete note, disabled until the active cell has a note, is checked
     // once it has one.
-    await page.getByRole('tab', { name: 'Review' }).click();
-    await clickCell(page, 5, 5);
-    await check(
-      [['button', 'New note', 'Add a note to the active cell'], ...statusBar],
+    await expectTooltips(
+      page,
+      [['button', 'New note', 'Add a note to the active cell']],
       6,
     );
     await page.getByRole('button', { name: 'New note', exact: true }).click();
     await page.getByLabel('Note', { exact: true }).fill('A note');
     await page.getByRole('button', { name: 'OK', exact: true }).click();
-    await check(
+    await expectTooltips(
+      page,
       [
         ['button', 'Edit note', 'Change the note of the active cell'],
         ['button', 'Delete note', 'Delete the note of the active cell'],
-        ...statusBar,
       ],
       6,
     );
-    await page.getByRole('tab', { name: 'File' }).click();
-    await clickCell(page, 5, 5);
-    await check(
+  });
+
+  test('of the File tab each have a tooltip', async ({ page }) => {
+    await openApp(page);
+    await openTab(page, 'File');
+    await expectTooltips(
+      page,
       [
         [
           'button',
@@ -550,10 +586,10 @@ test.describe('the controls', () => {
           'Export CSV',
           'Save the current sheet to your computer as a CSV file (.csv), with formulas as their results',
         ],
-        ...statusBar,
       ],
       8,
     );
+    // No other control is left out.
     await expect(page.getByRole('slider')).toHaveCount(1);
     await expect(page.getByRole('textbox')).toHaveCount(2);
     await expect(

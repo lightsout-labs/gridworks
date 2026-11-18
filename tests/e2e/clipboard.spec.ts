@@ -3,8 +3,6 @@ import { cellRect, UNIFORM } from '../../src/app/grid/geometry';
 import { clickCell, enter, expectCell, openApp } from './grid';
 
 test.use({ locale: 'en-US' });
-// The tests share the system clipboard.
-test.describe.configure({ mode: 'serial' });
 
 /** The element that scrolls the grid, which holds the canvas. */
 const grid = (page: Page) => page.locator('canvas').locator('../..');
