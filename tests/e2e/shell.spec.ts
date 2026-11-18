@@ -247,6 +247,9 @@ test.describe('the controls', () => {
   test.use({ locale: 'en-US', colorScheme: 'light' });
 
   test('each have a tooltip', async ({ page }) => {
+    // It hovers every control of every tab, which takes WebKit on CI longer
+    // than the default 30 seconds.
+    test.setTimeout(60_000);
     await openApp(page);
     // A defined name enables the list of names.
     await nameBox(page).fill('Start');
@@ -297,6 +300,11 @@ test.describe('the controls', () => {
         /^The active cell, or the name of the range selected/,
       ],
       ['button', 'Defined names', 'Go to a name of the workbook'],
+      [
+        'textbox',
+        'Workbook name',
+        'The name of the workbook: type to rename it',
+      ],
     ] as const;
     await check(
       [
@@ -524,6 +532,11 @@ test.describe('the controls', () => {
       [
         [
           'button',
+          'Start screen',
+          'Go to the start screen, to open, create and manage workbooks',
+        ],
+        [
+          'button',
           'Open',
           'Open an Excel workbook (.xlsx) or a CSV file (.csv) from your computer',
         ],
@@ -539,10 +552,10 @@ test.describe('the controls', () => {
         ],
         ...statusBar,
       ],
-      7,
+      8,
     );
     await expect(page.getByRole('slider')).toHaveCount(1);
-    await expect(page.getByRole('textbox')).toHaveCount(1);
+    await expect(page.getByRole('textbox')).toHaveCount(2);
     await expect(
       page.getByRole('tablist', { name: 'Ribbon' }).getByRole('tab'),
     ).toHaveCount(7);

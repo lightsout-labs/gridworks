@@ -186,7 +186,9 @@ export class View {
    */
   constructor(private readonly workbook: Workbook) {
     this.sheetIds = workbook.sheets.map((sheet) => sheet.id);
-    workbook.subscribe(() => {
+    workbook.subscribe((command) => {
+      // The name of the workbook is no change to its cells.
+      if (command.type === 'renameWorkbook') return;
       this.keepSheet();
       // Any other change forgets what was copied, as in Excel.
       if (!this.pasting && this.current.copied) this.change({ copied: null });

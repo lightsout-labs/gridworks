@@ -60,11 +60,11 @@ because a requirement needs it.
 
 | Module | Interface | Hides |
 |---|---|---|
-| `engine/workbook` | `execute(command)`, `undo()`, `redo()` (each giving the cells it changed), `canUndo`, `canRedo`, `cell(sheet, row, col)` (value, formula, display text, the color its format gives it, text to edit, style, what conditional formats change of it and the data bar they draw, note, link), the sheet size, queries (`find`: the cells that hold a search, `aggregate`, `extent`, `circularReference`, `fillsSeries`, sheet and name lists, `layout`: the sizes of rows and columns, those hidden and those frozen, `merges`: the merged cells, `rules`: the conditional formats, `filter` and `filterValues`: the filter and the values its checklist offers, `validation`, `listItems` and `allows`: a cell's rule of data validation, the items of its list, and whether typed input meets it, `names`, `nameProblem` and `locate`: the defined names, why a text cannot be a new one, and the sheet and range of an address or a name), `withMerges(range, merges)` (a range grown over the merged cells it overlaps), `calculations` (a count, to measure recalculation), `name`, `subscribe(listener)`, `toSnapshot()`, `fromSnapshot(snapshot, changes, measure)` (`measure` the `TextWidth` that fits rows); for drawing cells, `FONTS`, `FONT_SIZES`, `fontPixels`, `lineHeight`, `wrapText` and the standard sizes | Column-oriented cell storage; the dependency graph and on-demand recalculation; circular-reference detection; rewriting references when cells, rows, columns and sheets move; pasting cells copied or cut, all or only their values, formulas or formats; inverse patches for undo; fitting rows to wrapped text and large fonts; fill series; sort; filters; merges; data validation; conditional format evaluation; find and replace; named ranges; notes and hyperlinks (R1, R5, R6, R8–R10, R14, R15, R17, R19–R29). |
+| `engine/workbook` | `execute(command)`, `undo()`, `redo()` (each giving the cells it changed), `canUndo`, `canRedo`, `cell(sheet, row, col)` (value, formula, display text, the color its format gives it, text to edit, style, what conditional formats change of it and the data bar they draw, note, link), the sheet size, queries (`find`: the cells that hold a search, `aggregate`, `extent`, `circularReference`, `fillsSeries`, sheet and name lists, `layout`: the sizes of rows and columns, those hidden and those frozen, `merges`: the merged cells, `rules`: the conditional formats, `filter` and `filterValues`: the filter and the values its checklist offers, `validation`, `listItems` and `allows`: a cell's rule of data validation, the items of its list, and whether typed input meets it, `names`, `nameProblem` and `locate`: the defined names, why a text cannot be a new one, and the sheet and range of an address or a name), `withMerges(range, merges)` (a range grown over the merged cells it overlaps), `calculations` (a count, to measure recalculation), `name` (changed by `renameWorkbook`, which undo leaves alone), `subscribe(listener)`, `toSnapshot()`, `fromSnapshot(snapshot, changes, measure)` (`measure` the `TextWidth` that fits rows); for drawing cells, `FONTS`, `FONT_SIZES`, `fontPixels`, `lineHeight`, `wrapText` and the standard sizes | Column-oriented cell storage; the dependency graph and on-demand recalculation; circular-reference detection; rewriting references when cells, rows, columns and sheets move; pasting cells copied or cut, all or only their values, formulas or formats; inverse patches for undo; fitting rows to wrapped text and large fonts; fill series; sort; filters; merges; data validation; conditional format evaluation; find and replace; named ranges; notes and hyperlinks (R1, R5, R6, R8–R10, R14, R15, R17, R19–R29). |
 | `engine/formula` | `parse(text)`, `print(ast, { file })` (with the `_xlfn.` prefix of newer functions for a file), `evaluate(ast, context)` (the context giving what a defined name refers to), `references(ast, names)`, `shift(ast, move)` (a sheet or a defined name renamed, the formula moved by rows and columns, or cells cut and pasted), `calculable(ast, isName)`, `functions` (the names of the library), `tokenize(text)` (the tokens of a formula still being typed, with their places), `argumentHint(name, index)`, `quoteSheetName(name)` | Tokenizer and parser; operators and coercion rules; the error values; the library of at least 150 functions and the names of their arguments (R11–R13, R16). Used by `engine/workbook`, by `engine/io` to check and fill in the formulas of files, and `functions`, `tokenize` and `argumentHint` by the help while typing a formula, `parse` and `references` by the app to read the cells a conditional format applies to; the workbook re-exports `quoteSheetName` for the app. |
 | `engine/format` | `formatValue(value, code)`, `formatColor(value, code)`, `validFormat(code)`, `changedFormat(code, value, change)` (one decimal more or fewer, or the thousands separator turned over), `parseInput(text)`, `parseDate(text)`, `editText(value, code)`, `builtinFormat(id)`, `isDateFormat(code)`, `isTextFormat(code)`, `isGroupedFormat(code)`, `dateSerial(year, month, day)`, `dateParts(serial)` | Excel format codes and their sections, colors and literal text; date serial numbers; and recognition of typed numbers, dates, times, percentages and booleans, on top of `numfmt` (R4, R18). |
 | `engine/io` | `readXlsx(bytes, name)` (a snapshot and what was dropped), `writeXlsx(snapshot)`, `readCsv(text, name)` (a snapshot and the cells dropped), `writeCsv(workbook, sheet)` (the text of a sheet, formulas as their results) | Reading and writing the parts of an `.xlsx` file: cells, shared formulas, styles with theme and indexed colors, sizes, merges, panes, conditional formats, data validation, defined names, notes with their drawing, hyperlinks; the list of dropped features reported on import; CSV quoting (R30–R32). |
-| `app/platform` | The `Platform` interface: `openFile()`, `saveFile(name, bytes)`, `workbooks` (list, load, record a change, save, rename, delete), `preferences` (get, set), `listenToClipboard(listener)` (the user's copy, cut and paste outside a text box), `writeClipboard(contents)` (tab-separated text and an HTML table), `print(document)`; and `webPlatform`, its one implementation | File inputs and downloads; the IndexedDB schema; clipboard events and the copy command; the print frame (R33, R34, R51). |
+| `app/platform` | The `Platform` interface: `openFile()`, `saveFile(name, bytes)`, `workbooks` (list, load, record a change, save, delete), `preferences` (get, set), `listenToClipboard(listener)` (the user's copy, cut and paste outside a text box), `writeClipboard(contents)` (tab-separated text and an HTML table), `print(document)`; and `webPlatform`, its one implementation | File inputs and downloads; the IndexedDB schema; clipboard events and the copy command; the print frame (R33, R34, R51). |
 | `app/grid` | `<Grid workbook view menu fillOptions filterButton listButton />` and the `View` it edits (active sheet, selection, zoom, entry, End mode, the cells copied or cut, the range the fill handle is dragged over and the last fill, the range of the format painter, the cell find went to, whether the entry was rejected by data validation) and its find and replace (`findNext`, `replace`, `replaceAll`), names (`selectionName`, `goTo`, `setName`, `deleteName`, and `definedNames` and `complete(name, defined)` for formula completion), and the active cell's note and link (`note`, `setNote`, `link`, `setLink`, `removeLink`, and `follow` for a link clicked); `<FormulaEditor>` and `keyAction`, which the formula bar shares to edit the same entry | Canvas drawing and virtualization; frozen panes; hit testing; text measurement, fonts, colors, fills, alignment, wrapping and overflow; `####` for numbers too wide; borders and merged cells; selection, resize, fill-handle and reference-picking gestures; the moving border of the cells copied; the in-cell editor and its Enter and Edit modes; function and name completion, the argument hint, reference colors and F4 (`formula.ts`); keyboard navigation and editing keys as in Excel; note markers and the note shown on hover; following a link clicked (R2, R3, R4, R8, R9, R16, R21, R28, R29, R45). |
 | `app/ui` | `<App platform />` | The start screen, ribbon, formula bar and name box, sheet tabs, status bar, context menus (the cell menu is the `menu` of the grid), dialogs and side panels; shortcuts; translation dictionaries; themes; autosave timing; building the printable document (R34, R36–R44). |
 
@@ -686,11 +686,30 @@ Decisions that are cheap to reverse, with their reasons:
   a date or a boolean, such as `007`, comes back as one, an error as its
   text, and a text starting with `=` is not escaped and is a formula to a
   program that runs them.
-- **Opening a file makes a new stored workbook**, under a new identifier,
-  and the preference `workbook` names it as the one to show at the start;
-  the workbook shown before stays stored, for the start screen to list.
-  Until then, the workbook shown at the start is the one opened last, or
-  the one with the identifier `default`.
+- **The address names the workbook shown** (R33, R34): `#` and its
+  identifier, or nothing for the start screen, so that a reload, a link
+  kept or the browser's Back button shows the same again; an identifier
+  no longer stored gives the start screen. The start screen lists the
+  stored workbooks, the one saved last first, with the time of that save
+  (the time alone for today), and holds New workbook, which starts an
+  empty workbook named `Book` and the first number no stored workbook has,
+  Open file, and a menu on each workbook to rename, duplicate (as `Name
+  (copy)`) and delete it, deleting after a confirmation. A rename or
+  duplicate there loads the stored workbook, replays its changes and saves
+  it under the name, so the platform needs no operation of its own for
+  them. A workbook made new or opened from a file gets a new random
+  identifier and is saved at once, so that the start screen lists it.
+  The File tab's Start screen button goes back to it. The workbook's name
+  is a text box beside the brand in the ribbon, as in Excel for the web;
+  Enter or leaving it renames the workbook with `renameWorkbook`, an
+  empty name keeps the one before, and the page's title is the name and
+  ` - Gridworks`. The rename is recorded and saved like any change, but
+  not undone, as the name is the file's rather than its contents. When
+  storage refuses a change or a save, as when it is full, autosave tells
+  the app, and the message bar asks the user to save the workbook to
+  their computer; storage that cannot be read gives the start screen with
+  a message. Renaming the workbook is no change to its cells, so the view
+  keeps what was copied and the last fill.
 - **A file opened is read as far as Gridworks supports it.** A formula
   that does not parse, or calls a function or name that Gridworks does not
   have, is replaced by its last result; a defined name the file keeps is
@@ -768,8 +787,7 @@ workbook leaves the engine.
   [ADR 0005](adr/0005-record-each-change-then-save-snapshots.md).
 - **Preferences** (language, theme): through `Platform.preferences`, stored
   in `localStorage` by the web implementation, under `gridworks.language` and
-  `gridworks.theme`; `gridworks.workbook` names the workbook to show at the
-  start. Without a stored choice the language is that of the
+  `gridworks.theme`. Without a stored choice the language is that of the
   browser and the theme that of the system.
 - **Files**: `.xlsx` and `.csv`, converted to and from a snapshot by
   `engine/io`. Undo history is not stored.

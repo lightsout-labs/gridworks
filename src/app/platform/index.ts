@@ -8,6 +8,14 @@ export interface Stored {
   readonly changes: Command[];
 }
 
+/** What the start screen shows of a stored workbook. */
+export interface StoredInfo {
+  readonly id: string;
+  readonly name: string;
+  /** When it was last saved, in milliseconds since 1970. */
+  readonly modified: number;
+}
+
 /** A file the user chose to open. */
 export interface ChosenFile {
   readonly name: string;
@@ -48,6 +56,8 @@ export interface Platform {
   saveFile(name: string, bytes: Uint8Array): Promise<void>;
   /** The workbooks kept in the system's storage. */
   readonly workbooks: {
+    /** The workbooks saved, the one saved last first. */
+    list(): Promise<StoredInfo[]>;
     /** The stored workbook, or `null` when there is none with this identifier. */
     load(id: string): Promise<Stored | null>;
     /**
@@ -60,6 +70,8 @@ export interface Platform {
      * call.
      */
     save(id: string, snapshot: Snapshot): Promise<void>;
+    /** Forgets a workbook and the changes recorded to it. */
+    delete(id: string): Promise<void>;
   };
   /**
    * Calls `listener` when the user copies, cuts or pastes with the system

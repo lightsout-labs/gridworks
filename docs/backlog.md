@@ -1164,7 +1164,7 @@ Notes:
 
 ## S30: The start screen and stored workbooks
 
-Status: Todo
+Status: Done
 
 Acceptance criteria:
 - Opening the app shows a start screen that lists the workbooks stored in the
@@ -1181,6 +1181,21 @@ Acceptance criteria:
 - Its controls are in the ribbon or a context menu, are translated in both
   languages, look right in both themes, and have hover, focus and disabled
   states and tooltips. (R37, R41, R42, R43, R44)
+
+Notes:
+- The address names the workbook shown (`#<id>`, from `hashOf` and
+  `workbookIdOf` in `app/ui/workbooks.ts`); no `#` is the start screen. The
+  preference `workbook` and the identifier `default` are gone. S31 (offline)
+  must serve `index.html` for any `#` address, which a hash already does.
+- `Platform.workbooks` has `list()` (the saved last first) and `delete(id)`;
+  a rename or duplicate on the start screen is a load and a save.
+- `openApp` in `tests/e2e/grid.ts` starts a new workbook from the start
+  screen, and `openStoredSheet` stores under the identifier `stored` and opens
+  `#stored`; S32 and later perf tests should use them.
+- `renameWorkbook` is a command that undo leaves alone and the view ignores.
+- CI failure: `shell.spec.ts` "each have a tooltip" timed out on WebKit at
+  30 s, at a different control each attempt, once the title box was added;
+  fixed by giving that test 60 s.
 
 ## S31: Working offline
 

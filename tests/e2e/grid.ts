@@ -5,8 +5,9 @@ import { cellRect, UNIFORM } from '../../src/app/grid/geometry';
 const TOP = { scrollX: 0, scrollY: 0, zoom: 1, layout: UNIFORM };
 
 /**
- * Opens the app and waits for the grid. With GRIDWORKS_COMMIT set, first waits
- * until the address serves the build of that commit, not a cached older one.
+ * Opens the app, starts a new workbook from the start screen and waits for
+ * the grid. With GRIDWORKS_COMMIT set, first waits until the address serves
+ * the build of that commit, not a cached older one.
  */
 export async function openApp(page: Page): Promise<void> {
   const commit = process.env.GRIDWORKS_COMMIT;
@@ -21,6 +22,9 @@ export async function openApp(page: Page): Promise<void> {
     }).toPass({ timeout: 120_000 });
   }
   await page.goto('./');
+  await page
+    .getByRole('button', { name: /^(New workbook|新建工作簿)$/ })
+    .click();
   await expect(page.locator('canvas')).toBeVisible();
 }
 
@@ -124,8 +128,8 @@ export async function cellBackground(
 }
 
 /**
- * Stores a workbook of one sheet as the app stores it, and reloads the page
- * so that the app opens it. The test plays the platform here.
+ * Stores a workbook of one sheet as the app stores it, and opens it from a
+ * page loaded anew. The test plays the platform here.
  */
 export async function openStoredSheet(
   page: Page,
@@ -143,14 +147,14 @@ export async function openStoredSheet(
             'readwrite',
           );
           transaction.objectStore('workbooks').put({
-            id: 'default',
+            id: 'stored',
             name: 'Big',
             modified: Date.now(),
             version: 1,
             sheetIds: ['sheet1'],
           });
           transaction.objectStore('sheets').put({
-            workbook: 'default',
+            workbook: 'stored',
             id: 'sheet1',
             name: 'Sheet1',
             ...sheet,
@@ -161,5 +165,6 @@ export async function openStoredSheet(
       }),
     sheet,
   );
+  await page.goto('./#stored');
   await page.reload();
 }

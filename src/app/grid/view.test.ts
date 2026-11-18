@@ -596,6 +596,11 @@ describe('View', () => {
       view.undo();
       expect(view.state.copied).toBeNull();
       expect(workbook.cell(sheet, 0, 0).value).toBeNull();
+
+      // Renaming the workbook changes no cell, and keeps it.
+      view.copy();
+      workbook.execute({ type: 'renameWorkbook', name: 'Budget' });
+      expect(view.state.copied).not.toBeNull();
     });
 
     it('gives the cells copied or cut as they are shown, for the system clipboard', () => {

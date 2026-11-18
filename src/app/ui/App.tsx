@@ -1,5 +1,5 @@
 import { Provider as TooltipProvider } from '@radix-ui/react-tooltip';
-import { useEffect, useLayoutEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Dropped } from '../../engine/io';
 import { Workbook } from '../../engine/workbook';
 import { Grid, MAC, measureText } from '../grid/Grid';
@@ -18,20 +18,18 @@ import { startingLanguage, translator, type Language } from './i18n';
 import { Ribbon } from './Ribbon';
 import { FormulaBar, MessageBar, StatusBar } from './Shell';
 import { SheetTabs } from './SheetTabs';
+import { StartScreen } from './StartScreen';
 import { shortcut } from './shortcuts';
 import styles from './Shell.module.css';
 import { startingTheme, type Theme } from './theme';
-
-// The workbook shown at the start, until the start screen lists them: the
-// last one opened, kept in the preference `workbook`, or else this one.
-const FIRST_WORKBOOK_ID = 'default';
+import { hashOf, workbookIdOf } from './workbooks';
 
 /** The workbook shown, under its identifier in storage. */
 interface Open {
   readonly id: string;
   readonly workbook: Workbook;
   readonly view: View;
-  /** Whether it was just read from a file and is not stored yet. */
+  /** Whether it was just made or read from a file, and is not stored yet. */
   readonly fresh?: boolean;
 }
 
@@ -41,6 +39,8 @@ type Message =
   | { readonly kind: 'invalidName'; readonly text: string }
   | { readonly kind: 'deletedName'; readonly text: string }
   | { readonly kind: 'saveFailed' }
+  | { readonly kind: 'storageFailed' }
+  | { readonly kind: 'storageUnreadable' }
   | {
       readonly kind: 'dropped';
       readonly name: string;
@@ -58,7 +58,11 @@ export function App({ platform }: { platform: Platform }) {
       window.matchMedia('(prefers-color-scheme: dark)').matches,
     ),
   );
+  // The workbook the address names after `#`, or none for the start screen.
+  const [route, setRoute] = useState(() => workbookIdOf(location.hash));
   const [open, setOpen] = useState<Open>();
+  // The identifier of `open`, read where it must not be a dependency.
+  const shown = useRef<string | null>(null);
   const [message, setMessage] = useState<Message | null>(null);
   const [busy, setBusy] = useState(false);
   const [finding, setFinding] = useState<FindMode | null>(null);
@@ -71,32 +75,75 @@ export function App({ platform }: { platform: Platform }) {
     document.documentElement.dataset.theme = theme;
   }, [language, theme]);
 
+  const show = (next: Open | undefined) => {
+    shown.current = next?.id ?? null;
+    setOpen(next);
+  };
+
   useEffect(() => {
+    const onHashChange = () => setRoute(workbookIdOf(location.hash));
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+
+  // The address decides what is shown, so that a reload or the browser's
+  // Back button shows it again.
+  useEffect(() => {
+    if (route === shown.current) return;
+    if (route === null) {
+      show(undefined);
+      return;
+    }
     let current = true;
-    const id = platform.preferences.get('workbook') ?? FIRST_WORKBOOK_ID;
-    void platform.workbooks.load(id).then((stored) => {
-      if (!current) return;
-      const workbook = restoreWorkbook(stored, measureText);
-      setOpen({ id, workbook, view: new View(workbook) });
-    });
+    platform.workbooks
+      .load(route)
+      .then((stored) => {
+        if (!current) return;
+        if (!stored) {
+          // No longer stored: the start screen instead.
+          location.hash = '';
+          return;
+        }
+        const workbook = restoreWorkbook(stored, measureText);
+        show({ id: route, workbook, view: new View(workbook) });
+      })
+      .catch(() => {
+        if (!current) return;
+        setMessage({ kind: 'storageUnreadable' });
+        location.hash = '';
+      });
     return () => {
       current = false;
     };
-  }, [platform]);
+  }, [platform, route]);
+
+  useEffect(() => {
+    if (!open) document.title = 'Gridworks';
+  }, [open]);
+
+  /** Shows a workbook just made, which is stored at once. */
+  const showNew = (workbook: Workbook) => {
+    const id = crypto.randomUUID();
+    show({ id, workbook, view: new View(workbook), fresh: true });
+    location.hash = hashOf(id);
+  };
 
   useEffect(() => {
     if (!open) return;
     const { id, workbook, fresh } = open;
-    const autosave = startAutosave(workbook, {
-      record: (command) => platform.workbooks.record(id, command),
-      save: (snapshot) => platform.workbooks.save(id, snapshot),
-    });
-    // A workbook read from a file is stored at once, and then shown at the
-    // start in place of the one before, which stays stored.
+    const onFailure = () => setMessage({ kind: 'storageFailed' });
+    const autosave = startAutosave(
+      workbook,
+      {
+        record: (command) => platform.workbooks.record(id, command),
+        save: (snapshot) => platform.workbooks.save(id, snapshot),
+      },
+      onFailure,
+    );
+    // A workbook made or read from a file is stored at once, so that the
+    // start screen lists it.
     if (fresh) {
-      void platform.workbooks
-        .save(id, workbook.toSnapshot())
-        .then(() => platform.preferences.set('workbook', id));
+      platform.workbooks.save(id, workbook.toSnapshot()).catch(onFailure);
     }
     // A hidden tab may be discarded without warning, so it saves at once.
     const onHidden = () => {
@@ -182,13 +229,7 @@ export function App({ platform }: { platform: Platform }) {
       const { snapshot, dropped } = isCsv(file.name)
         ? readCsv(new TextDecoder().decode(file.bytes), name)
         : await readXlsx(file.bytes, name);
-      const workbook = Workbook.fromSnapshot(snapshot, [], measureText);
-      setOpen({
-        id: crypto.randomUUID(),
-        workbook,
-        view: new View(workbook),
-        fresh: true,
-      });
+      showNew(Workbook.fromSnapshot(snapshot, [], measureText));
       setMessage(
         dropped.length > 0
           ? { kind: 'dropped', name: file.name, dropped }
@@ -233,8 +274,63 @@ export function App({ platform }: { platform: Platform }) {
     }
   };
 
-  if (!open) return null;
+  // A workbook being loaded shows nothing yet.
+  if (route !== null && !open) return null;
   const t = translator(language);
+  const messageBar = message && (
+    <MessageBar
+      text={
+        message.kind === 'invalid'
+          ? t('file.invalid').replace('{name}', () => message.name)
+          : message.kind === 'invalidName' || message.kind === 'deletedName'
+            ? t(
+                message.kind === 'invalidName'
+                  ? 'names.invalid'
+                  : 'names.deleted',
+              ).replace('{text}', () => message.text)
+            : message.kind === 'saveFailed'
+              ? t('file.saveFailed')
+              : message.kind === 'storageFailed'
+                ? t('storage.failed')
+                : message.kind === 'storageUnreadable'
+                  ? t('storage.unreadable')
+                  : droppedMessage(message.name, message.dropped, language)
+      }
+      error={message.kind !== 'dropped'}
+      onClose={() => setMessage(null)}
+    />
+  );
+  if (!open) {
+    return (
+      <Translation value={t}>
+        <TooltipProvider delayDuration={400} disableHoverableContent>
+          <div className={styles.app}>
+            {messageBar}
+            <StartScreen
+              platform={platform}
+              language={language}
+              busy={busy}
+              onNew={(name) => {
+                const workbook = restoreWorkbook(null, measureText);
+                workbook.execute({ type: 'renameWorkbook', name });
+                showNew(workbook);
+              }}
+              onOpenFile={() => void openFile()}
+              onOpen={(id) => {
+                setMessage(null);
+                location.hash = hashOf(id);
+              }}
+              onFailure={(how) =>
+                setMessage({
+                  kind: how === 'read' ? 'storageUnreadable' : 'storageFailed',
+                })
+              }
+            />
+          </div>
+        </TooltipProvider>
+      </Translation>
+    );
+  }
   // A rejected entry keeps the dialogs closed, so that what they set is
   // not lost.
   const edit = (what: Editing) => {
@@ -258,6 +354,10 @@ export function App({ platform }: { platform: Platform }) {
               preferences.set('theme', theme);
             }}
             busy={busy}
+            onHome={() => {
+              setMessage(null);
+              location.hash = '';
+            }}
             onOpen={() => void openFile()}
             onSave={() => void saveFile(open.workbook)}
             onExportCsv={() => void exportCsv(open.workbook, open.view)}
@@ -265,26 +365,7 @@ export function App({ platform }: { platform: Platform }) {
             onFind={setFinding}
             onEdit={edit}
           />
-          {message && (
-            <MessageBar
-              text={
-                message.kind === 'invalid'
-                  ? t('file.invalid').replace('{name}', () => message.name)
-                  : message.kind === 'invalidName' ||
-                      message.kind === 'deletedName'
-                    ? t(
-                        message.kind === 'invalidName'
-                          ? 'names.invalid'
-                          : 'names.deleted',
-                      ).replace('{text}', () => message.text)
-                    : message.kind === 'saveFailed'
-                      ? t('file.saveFailed')
-                      : droppedMessage(message.name, message.dropped, language)
-              }
-              error={message.kind !== 'dropped'}
-              onClose={() => setMessage(null)}
-            />
-          )}
+          {messageBar}
           <FormulaBar
             {...open}
             onInvalid={(text, problem) =>

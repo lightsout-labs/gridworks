@@ -593,6 +593,28 @@ describe('sheets', () => {
     expect(names(workbook)).toEqual(['Sheet1', 'Sheet1 (2)', 'Sheet1 (3)']);
   });
 
+  it('renames the workbook, which listeners record and undo leaves alone', () => {
+    const { workbook, set } = setup();
+    const listener = vi.fn();
+    workbook.subscribe(listener);
+    set(0, 0, '1');
+    workbook.execute({ type: 'renameWorkbook', name: 'Budget' });
+    expect(workbook.name).toBe('Budget');
+    expect(workbook.toSnapshot().name).toBe('Budget');
+    expect(listener).toHaveBeenLastCalledWith({
+      type: 'renameWorkbook',
+      name: 'Budget',
+    });
+    // A name is not an edit of the contents: undo undoes the cell.
+    workbook.undo();
+    expect(workbook.name).toBe('Budget');
+    expect(workbook.cell(workbook.sheets[0]!.id, 0, 0).value).toBe(null);
+    const replayed = Workbook.fromSnapshot(createWorkbook().toSnapshot(), [
+      { type: 'renameWorkbook', name: 'Plan' },
+    ]);
+    expect(replayed.name).toBe('Plan');
+  });
+
   it('renames, recolors and moves a sheet', () => {
     const { workbook, sheet } = setup();
     workbook.execute({ type: 'addSheet', index: 1 });

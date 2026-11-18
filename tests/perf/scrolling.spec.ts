@@ -13,7 +13,7 @@ test('a sheet of 100,000 by 100 populated cells scrolls within the frame budget'
   test.setTimeout(120_000);
   await openApp(page);
 
-  // Stored as the app stores a workbook, so that it opens it on reload.
+  // Stored as the app stores a workbook, and opened from a page loaded anew.
   await page.evaluate(
     ({ rows, columns }) =>
       new Promise<void>((resolve, reject) => {
@@ -27,14 +27,14 @@ test('a sheet of 100,000 by 100 populated cells scrolls within the frame budget'
             'readwrite',
           );
           transaction.objectStore('workbooks').put({
-            id: 'default',
+            id: 'stored',
             name: 'Big',
             modified: Date.now(),
             version: 1,
             sheetIds: ['sheet1'],
           });
           transaction.objectStore('sheets').put({
-            workbook: 'default',
+            workbook: 'stored',
             id: 'sheet1',
             name: 'Sheet1',
             columns: Array.from({ length: columns }, (_, col) =>
@@ -48,6 +48,7 @@ test('a sheet of 100,000 by 100 populated cells scrolls within the frame budget'
       }),
     { rows: ROWS, columns: COLUMNS },
   );
+  await page.goto('./#stored');
   await page.reload();
   await expect(page.getByRole('status')).toHaveText('A1 0', {
     timeout: 30_000,
