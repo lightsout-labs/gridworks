@@ -40,6 +40,7 @@ type Message =
   | { readonly kind: 'deletedName'; readonly text: string }
   | { readonly kind: 'saveFailed' }
   | { readonly kind: 'storageFailed' }
+  | { readonly kind: 'storageUnreadable' }
   | {
       readonly kind: 'dropped';
       readonly name: string;
@@ -94,16 +95,23 @@ export function App({ platform }: { platform: Platform }) {
       return;
     }
     let current = true;
-    void platform.workbooks.load(route).then((stored) => {
-      if (!current) return;
-      if (!stored) {
-        // No longer stored: the start screen instead.
+    platform.workbooks
+      .load(route)
+      .then((stored) => {
+        if (!current) return;
+        if (!stored) {
+          // No longer stored: the start screen instead.
+          location.hash = '';
+          return;
+        }
+        const workbook = restoreWorkbook(stored, measureText);
+        show({ id: route, workbook, view: new View(workbook) });
+      })
+      .catch(() => {
+        if (!current) return;
+        setMessage({ kind: 'storageUnreadable' });
         location.hash = '';
-        return;
-      }
-      const workbook = restoreWorkbook(stored, measureText);
-      show({ id: route, workbook, view: new View(workbook) });
-    });
+      });
     return () => {
       current = false;
     };
@@ -284,7 +292,9 @@ export function App({ platform }: { platform: Platform }) {
               ? t('file.saveFailed')
               : message.kind === 'storageFailed'
                 ? t('storage.failed')
-                : droppedMessage(message.name, message.dropped, language)
+                : message.kind === 'storageUnreadable'
+                  ? t('storage.unreadable')
+                  : droppedMessage(message.name, message.dropped, language)
       }
       error={message.kind !== 'dropped'}
       onClose={() => setMessage(null)}
@@ -310,7 +320,11 @@ export function App({ platform }: { platform: Platform }) {
                 setMessage(null);
                 location.hash = hashOf(id);
               }}
-              onFailure={() => setMessage({ kind: 'storageFailed' })}
+              onFailure={(how) =>
+                setMessage({
+                  kind: how === 'read' ? 'storageUnreadable' : 'storageFailed',
+                })
+              }
             />
           </div>
         </TooltipProvider>

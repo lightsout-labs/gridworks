@@ -14,6 +14,8 @@ describe('the address of a workbook', () => {
     expect(workbookIdOf('#')).toBe(null);
     expect(workbookIdOf(hashOf('a b/c'))).toBe('a b/c');
     expect(workbookIdOf('#default')).toBe('default');
+    // An address that does not decode names no workbook.
+    expect(workbookIdOf('#%')).toBe(null);
   });
 });
 
@@ -53,5 +55,9 @@ describe('renamedSnapshot', () => {
     );
     expect(snapshot.name).toBe('Copy');
     expect(snapshot.sheets[0]!.columns[0]).toEqual([5]);
+  });
+
+  it('refuses a workbook no longer stored', () => {
+    expect(() => renamedSnapshot(null, 'Copy')).toThrow();
   });
 });

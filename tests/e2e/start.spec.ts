@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { clickCell, enter, expectCell, openApp } from './grid';
 
 const stored = (page: Page) =>
@@ -60,7 +60,7 @@ test('the start screen creates, lists, opens, renames, duplicates and deletes wo
   await goHome(page);
   await expect(listed(page)).toHaveText([/^Book1/, /^Budget/]);
   await expect(stored(page).getByRole('listitem').first()).toContainText(
-    /\d:\d\d [AP]M/,
+    /\d:\d\d\s[AP]M/,
   );
 
   await listed(page).filter({ hasText: 'Budget' }).click();
@@ -153,4 +153,75 @@ test('the start screen is translated and follows the theme', async ({
     .evaluate((node) => getComputedStyle(node).backgroundColor);
   const [red, green, blue] = background.match(/\d+/g)!.map(Number);
   expect((red! + green! + blue!) / 3).toBeLessThan(128);
+});
+
+test('the start screen controls have tooltips and show hover, keyboard focus and disabled states', async ({
+  page,
+  browserName,
+}) => {
+  const style = (control: Locator, property: string) =>
+    control.evaluate(
+      (node, property) => getComputedStyle(node).getPropertyValue(property),
+      property,
+    );
+  await openApp(page);
+  await goHome(page);
+  const controls = [
+    [
+      page.getByRole('button', { name: 'New workbook' }),
+      'Start an empty workbook',
+    ],
+    [
+      page.getByRole('button', { name: 'Open file' }),
+      'Open an Excel workbook (.xlsx) or a CSV file (.csv) from your computer',
+    ],
+    [page.getByRole('button', { name: 'Open Book1' }), 'Open this workbook'],
+    [
+      page.getByRole('button', { name: 'More actions for Book1' }),
+      'Rename, duplicate or delete this workbook',
+    ],
+  ] as const;
+  const accent = await style(
+    page.getByRole('heading', { name: 'Gridworks' }),
+    'color',
+  );
+  for (const [control, tooltip] of controls) {
+    await page.mouse.move(0, 700);
+    // The primary button brightens; the others take a background.
+    const look = async () =>
+      `${await style(control, 'background-color')} ${await style(control, 'filter')}`;
+    const resting = await look();
+    await control.hover();
+    await expect(page.getByRole('tooltip', { name: tooltip })).toBeVisible();
+    await expect.poll(look).not.toBe(resting);
+    expect(parseFloat(await style(control, 'border-radius'))).toBeGreaterThan(
+      0,
+    );
+    const duration = parseFloat(await style(control, 'transition-duration'));
+    expect(duration).toBeGreaterThan(0);
+    expect(duration).toBeLessThanOrEqual(0.2);
+  }
+  await expect(page.getByRole('button')).toHaveCount(controls.length);
+
+  // The keyboard reaches each control in turn, outlined in the accent color.
+  const key = browserName === 'webkit' ? 'Alt+Tab' : 'Tab';
+  await page.mouse.click(0, 700);
+  await page.keyboard.press(key);
+  for (const [control] of controls) {
+    await expect(control).toBeFocused();
+    expect(await style(control, 'outline-style')).toBe('solid');
+    expect(await style(control, 'outline-color')).toBe(accent);
+    await page.keyboard.press(key);
+  }
+
+  // Until the stored workbooks are listed, New workbook is disabled: faded,
+  // with the plain cursor. Here storage never answers.
+  await page.addInitScript(() => {
+    IDBObjectStore.prototype.getAll = () => ({}) as IDBRequest;
+  });
+  await page.reload();
+  const create = page.getByRole('button', { name: 'New workbook' });
+  await expect(create).toBeDisabled();
+  expect(await style(create, 'opacity')).toBe('0.5');
+  expect(await style(create, 'cursor')).toBe('default');
 });

@@ -41,8 +41,8 @@ export function StartScreen({
   onNew: (name: string) => void;
   onOpenFile: () => void;
   onOpen: (id: string) => void;
-  /** Called when storage refuses a change. */
-  onFailure: () => void;
+  /** Called when storage cannot be read, or refuses a change. */
+  onFailure: (how: 'read' | 'write') => void;
 }) {
   const t = useTranslation();
   const headingId = useId();
@@ -54,9 +54,17 @@ export function StartScreen({
 
   useEffect(() => {
     let current = true;
-    void platform.workbooks.list().then((list) => {
-      if (current) setWorkbooks(list);
-    });
+    platform.workbooks
+      .list()
+      .then((list) => {
+        if (current) setWorkbooks(list);
+      })
+      .catch(() => {
+        if (!current) return;
+        // New workbook still works, and the user is told.
+        setWorkbooks([]);
+        onFailure('read');
+      });
     return () => {
       current = false;
     };
@@ -65,7 +73,7 @@ export function StartScreen({
   /** Runs a change to the stored workbooks, then lists them again. */
   const change = (run: () => Promise<void>) => {
     run()
-      .catch(onFailure)
+      .catch(() => onFailure('write'))
       .finally(() => setListing((count) => count + 1));
   };
   const saveAs = (id: string, from: string, name: string) =>

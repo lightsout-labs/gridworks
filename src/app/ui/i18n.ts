@@ -24,6 +24,8 @@ const en = {
   'title.name.tooltip': 'The name of the workbook: type to rename it',
   'storage.failed':
     'Changes could not be saved in this browser, perhaps because its storage is full. Save the workbook to your computer to keep them.',
+  'storage.unreadable':
+    'The workbooks stored in this browser could not be read. Please reload the page.',
   'start.new': 'New workbook',
   'start.new.tooltip': 'Start an empty workbook',
   'start.open': 'Open file',
@@ -523,6 +525,7 @@ const zh: Record<Key, string> = {
   'title.name.tooltip': '工作簿的名称：键入以重命名',
   'storage.failed':
     '无法在此浏览器中保存更改，可能是存储空间已满。请将工作簿保存到计算机以保留更改。',
+  'storage.unreadable': '无法读取此浏览器中存储的工作簿，请重新加载页面。',
   'start.new': '新建工作簿',
   'start.new.tooltip': '创建一个空白工作簿',
   'start.open': '打开文件',

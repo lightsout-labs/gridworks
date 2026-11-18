@@ -8,8 +8,12 @@ import type { Language } from './i18n';
  * the start screen.
  */
 export function workbookIdOf(hash: string): string | null {
-  const id = hash.replace(/^#/, '');
-  return id === '' ? null : decodeURIComponent(id);
+  try {
+    const id = decodeURIComponent(hash.replace(/^#/, ''));
+    return id === '' ? null : id;
+  } catch {
+    return null; // Not an address the app made.
+  }
 }
 
 /** The part of the address after which a workbook is shown. */
@@ -43,8 +47,12 @@ export function modifiedText(
   });
 }
 
-/** A stored workbook, with its changes replayed, under another name. */
+/**
+ * A stored workbook, with its changes replayed, under another name; one no
+ * longer stored, as when another tab deleted it, is an error.
+ */
 export function renamedSnapshot(stored: Stored | null, name: string): Snapshot {
+  if (!stored) throw new Error(`The workbook ${name} is no longer stored`);
   const workbook = restoreWorkbook(stored);
   workbook.execute({ type: 'renameWorkbook', name });
   return workbook.toSnapshot();

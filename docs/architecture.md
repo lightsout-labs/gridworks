@@ -707,7 +707,9 @@ Decisions that are cheap to reverse, with their reasons:
   not undone, as the name is the file's rather than its contents. When
   storage refuses a change or a save, as when it is full, autosave tells
   the app, and the message bar asks the user to save the workbook to
-  their computer.
+  their computer; storage that cannot be read gives the start screen with
+  a message. Renaming the workbook is no change to its cells, so the view
+  keeps what was copied and the last fill.
 - **A file opened is read as far as Gridworks supports it.** A formula
   that does not parse, or calls a function or name that Gridworks does not
   have, is replaced by its last result; a defined name the file keeps is
