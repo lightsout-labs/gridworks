@@ -1222,6 +1222,28 @@ Notes:
   (648 ms for 500 ms), which a rerun passed; the two time limits in the
   unit tests then moved to `tests/perf`, which does not block a merge.
 
+## S36: Argument values and function descriptions in formula help
+
+Status: Todo
+Closes: #42
+
+Acceptance criteria:
+- After `=VLOOKUP("Apple",A1:B10,2,` the list offers `TRUE - Approximate
+  match` and `FALSE - Exact match` first, then the names; typing `F` leaves
+  `FALSE - Exact match` first, and choosing it gives
+  `=VLOOKUP("Apple",A1:B10,2,FALSE`, without a parenthesis. (R16)
+- With `FALSE` typed in full in that argument, neither the value nor the
+  function `FALSE` is offered, and Enter commits the formula. (R16)
+- Choosing the function `FALSE` after `=FAL` still gives `=FALSE(`. (R16)
+- After `=MATCH(A1,B1:B9,` the list offers `1 - Less than`,
+  `0 - Exact match` and `-1 - Greater than`, and typing `-` leaves only
+  `-1`. Every argument R16 names offers the values Excel offers for it,
+  with Excel's descriptions. (R16)
+- The function list shows the description of the highlighted function as
+  Excel does, for every function of the library. (R16)
+- The descriptions of functions and values are translated in both
+  languages, and the list looks right in both themes. (R41, R42, R43)
+
 ## S31: Working offline
 
 Status: Todo

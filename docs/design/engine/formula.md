@@ -31,3 +31,8 @@ and the decisions that span modules, are in the
   is calculated (on entry, on a change to what it reads, and when the
   workbook opens), and `RAND`, `OFFSET` and `INDIRECT`, whose results or
   references change without an edit, are not built.
+- **Argument values are listed beside the signatures**, by function and
+  argument, as Excel offers them (`VLOOKUP`'s `range_lookup`: `TRUE`,
+  `FALSE`; `MATCH`'s `match_type`: `1`, `0`, `-1`), and `argumentHint`
+  gives those of the current argument. Their descriptions are interface
+  text and live in the app's dictionaries.
