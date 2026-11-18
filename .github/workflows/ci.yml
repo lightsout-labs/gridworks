@@ -26,6 +26,9 @@ jobs:
   # them in two workers, which takes several minutes.
   e2e-shard:
     runs-on: ubuntu-latest
+    # A shard takes about four minutes; a stalled download fails it instead of
+    # holding it for the default six hours.
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
