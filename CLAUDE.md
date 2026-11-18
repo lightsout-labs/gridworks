@@ -13,7 +13,9 @@ progress is in `docs/backlog.md`.
   floor, and the document check. Run it after every change.
 - `make e2e`: builds the production bundle, serves it under `/gridworks/`, and
   runs the Playwright tests on Chromium, Firefox and WebKit. Run it before a
-  pull request. It needs `npx playwright install` once.
+  pull request. It needs `npx playwright install` once, and again after an
+  upgrade of `@playwright/test`, whose version is also the tag of the
+  Playwright image in `.github/workflows/ci.yml`.
 - `make perf`: the time limits of R45–R47, the engine's with Vitest and the
   app's with Playwright on Chromium. CI runs it without blocking a merge;
   run it on a laptop to confirm a failure.
