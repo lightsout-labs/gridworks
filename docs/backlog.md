@@ -1199,7 +1199,7 @@ Notes:
 
 ## S35: Fix dates and times shown as serial numbers
 
-Status: In progress
+Status: Done
 Fixes: #40
 
 Acceptance criteria:
@@ -1211,6 +1211,13 @@ Acceptance criteria:
   `=WORKDAY("2026-11-18",5)` shows `11/25/2026`. (R12)
 - The other date and time functions whose result Excel shows as a date or
   time do the same. (R12)
+
+Notes:
+- A formula entered in a General cell takes the format of its function's
+  result from the `format` of the function's spec (`resultFormat` in
+  `engine/formula`). Arithmetic on such a call, as `=TODAY()+7`, leaves the
+  format alone, unlike Excel; a later slice that needs it extends
+  `resultFormat`.
 
 ## S31: Working offline
 
