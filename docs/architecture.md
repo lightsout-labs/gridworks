@@ -4,7 +4,8 @@ Status: Approved
 
 How Gridworks is built. What it must do is in
 [requirements.md](requirements.md). Reasons for the decisions that are costly
-to reverse are in the ADRs under `docs/adr/`.
+to reverse are in the ADRs under `docs/adr/`. This document holds what spans
+modules; the decisions inside one module are in `docs/design/<module>.md`.
 
 ## Overview
 
@@ -79,581 +80,44 @@ Boundaries, enforced by the build so that R50 and R51 cannot erode:
   add a second implementation of `Platform` beside it and reuse everything
   else.
 
-Decisions that are cheap to reverse, with their reasons:
+The decisions inside one module, each with its reason, are in that module's
+design file: [engine/workbook](design/engine/workbook.md),
+[engine/formula](design/engine/formula.md),
+[engine/format](design/engine/format.md), [engine/io](design/engine/io.md),
+[app/platform](design/app/platform.md), [app/grid](design/app/grid.md) and
+[app/ui](design/app/ui.md).
 
-- **Every edit is a command.** Before it runs a command, the workbook
-  records the contents and styles of the cells the command will change as
-  a `restore` command, which puts them back, so undo covers every change by
-  construction (R5) rather than feature by feature. A change to the sheets
-  (add or duplicate, delete, rename, recolor, move) records its own
-  reverse: deleting a sheet records a `restoreSheet` command holding a
-  snapshot of it, and the others their opposite. Undo runs that
-  command and records its own reverse for redo; the listeners receive it
-  like any other, so storage records an undo as a change. The workbook
-  keeps the last 100 changes, Excel's number, and a new change forgets
-  what could be redone. A workbook opened with its recorded changes
-  replayed (`fromSnapshot(snapshot, changes)`) starts with nothing to
-  undo, as the history is not stored.
-- **A paste is one command, recorded as what it did.** `paste` names the
-  source range and the target, and the workbook works out the cells: a
-  target made of whole copies of the source is filled with them, any
-  other gets one copy at its top left. A copy moves the relative
-  references of its formulas; a cut moves the cells, and every reference
-  in the workbook to a range wholly inside them follows them, absolute or
-  not, as in Excel. Listeners get, and undo keeps, a `group` of `restore`
-  commands of different cells, so replaying a recorded paste does not read
-  the source again (a value pasted from `TODAY()` stays the same), and
-  undo needs nothing of its own. Paste special pastes values (formula
-  results, errors as their text), formulas and values, or formats, and
-  keeps the rest of the target. Unlike Excel, a copy at the edge of the
-  sheet keeps what fits and a cut moves back from the edge, where Excel
-  refuses both; and references to the cells a cut lands on keep reading
-  them, where Excel turns them into `#REF!`. A restore lists every cell
-  it fills, so pasting one cell over a whole column is 100,000 cells in
-  one recorded change; over a whole sheet it would be too many, which
-  nothing prevents yet.
-- **A fill is one command, recorded as what it did.** `fill` names the
-  source range and the target, which extends it on one side, and the
-  workbook fills each row or column of the source along the way the fill
-  goes: as a series when its cells start one (numbers by their step, a
-  least-squares line for more than two; dates by days, or by months when
-  they fall on the same day of the month; English weekday and month names,
-  in the case of the first; texts that differ only in the number they end
-  in, by its step, keeping its digits, so `A001` gives `A002`), and
-  otherwise by repeating them, formulas moved and formats kept, aligned to
-  the source so that a fill upward ends on the source's last cell. One
-  number is repeated, and one date, name or numbered text counts on by
-  one, as in Excel. Its `how` asks for another way: `copy` repeats every
-  row or column, `series` counts one number on too, and `formats` and
-  `values` fill only the formats or only the contents and keep the rest of
-  the target; `fillsSeries(fill)` tells whether a fill would extend any
-  series. Like a paste, listeners and undo get a `group` of one
-  `restore`. The fill handle is a square on the bottom
-  right corner of a single selected range; the view turns a drag of it
-  into the target, extending the selection whichever way the pointer is
-  furthest beyond it, and a double-click fills down as far as the column
-  on its left has data, or else the one on its right. Ctrl/Cmd+D and
-  Ctrl/Cmd+R copy without series, as in Excel, so they are a `paste` of
-  the first row or column of the selection into the rest of it, or of the
-  row above or column left of a selection one cell deep. A drag released
-  with Ctrl (Option on macOS, where Ctrl clicks open the menu) swaps
-  copying and counting on: `copy` when the fill would extend a series, and
-  `series` otherwise.
-- **The last fill can be redone another way.** After a drag or
-  double-click of the fill handle, the view keeps the fill as `filled`
-  (with whether `series` could extend it) until any other change to the
-  workbook, as it does what was copied; the grid shows the Auto Fill
-  Options button that the app gives it at the bottom-right corner of the
-  target. Choosing an option calls `refill(how)`, which undoes the fill
-  and runs it again with that `how`, so one undo still restores the cells
-  as they were before the fill, and the button stays.
-- **A sort is one command, recorded as what it did.** `sort` names a
-  range, the columns to sort by, each ascending or descending, and whether
-  its first row holds headers, which stay in place. The workbook orders
-  the rows by the values of those columns, formula results included, as
-  Excel does: numbers, then text in any case, then `FALSE` and `TRUE`,
-  then errors, and empty cells last in either direction; rows equal on
-  every column keep their order. Whole rows of the range move with their
-  formats, and the relative references of their formulas move with them,
-  as a copy moves them; references from elsewhere keep their cells, and
-  conditional formats stay where they are, as in Excel. Like a paste,
-  listeners and undo get a `group` of one `restore`. Ranges of whole rows
-  or columns sort the cells in use only. A range with merged cells is
-  refused, where Excel refuses only merges of different sizes. The view
-  sorts the one range selected, cut down to the cells in use (`sortRange`),
-  and none when that is one cell, so a single cell is not grown to the
-  table around it as Excel does. The Data tab holds Sort A to Z and Sort Z
-  to A by the active cell's column, and Custom sort, a dialog of levels,
-  each a column and an order, whose columns the header row names when the
-  first row holds headers. Under a filter, the rows it hides keep their
-  places and the rows shown are sorted among themselves, as in Excel;
-  rows hidden by hand outside the filter's range are sorted as before.
-- **A filter is kept by its sheet and hides rows in its layout** (R24).
-  A sheet has one filter, as in Excel: a range whose first row holds the
-  headers, and for some of its columns what the rows below must have to be
-  shown: display texts checked in a list (`''` for empty cells), a text
-  that the display text equals, contains, begins or ends with in any case,
-  or a number that the value equals, is greater or less than, or lies
-  between. Filters of several columns combine. The `filter` command
-  replaces the sheet's filter, or removes it with `null`, and sets the
-  `hidden` rows of the layout below the headers of the old and new ranges:
-  hidden where the new filter does not show them, shown otherwise; rows
-  hidden by hand there are shown, and rows elsewhere keep theirs. So the
-  grid, hit testing, the row headers' gap, navigation and snapshots need
-  nothing of their own, and rows stay as they were filtered until the
-  filter changes, as in Excel. Undo is a `filter` command with the old
-  filter and the rows that were hidden (`hidden`), which it sets in place
-  of what a filter finds. Inserting and deleting lines moves and shrinks
-  the range as a rule's, drops the filter of a column deleted, and drops
-  the whole filter with its header row, leaving its rows as they are.
-  `filterValues` lists a column's display texts in the rows the other
-  columns' filters show, as values sort. The view turns a filter on over
-  the one range selected, or the data around the active cell (Ctrl+A's
-  region) when one cell is selected, cut down to the cells in use. The
-  Data tab holds Filter, which turns it on and off, and Clear, which
-  clears every column; the grid places the button the app gives it at the
-  right of each header cell of the filter, and it opens a panel under it
-  (a Radix dialog without an overlay, placed under the button)
-  with Clear filter, a choice of the values or a condition, a search box
-  over a checklist whose search keeps only the values it finds, as
-  Excel's, and the condition's value. Excel's sort items in the dropdown,
-  its second condition joined by and or or, and its blue row numbers are
-  not built. A filter allows merged cells, and hides the rows of a merge
-  like any other, as Excel does. Keyboard navigation passes over hidden
-  rows and columns, and Ctrl+arrow treats them as absent.
-- **Find is a query, and a replace one command** (R25). `find` lists the
-  cells of the sheets given whose text holds the search, sheet by sheet
-  and row by row: the text that edits the cell (Excel's Look in Formulas,
-  the default) or the text it shows (Values), in any case unless Match
-  case, and the whole text for Match entire cell contents. Excel's
-  wildcards (`*`, `?`, `~`) are not built: the search is plain text.
-  `only` searches one cell, which the view uses to check the active cell
-  without reading the sheet. `find` reads only the text it needs of each
-  cell, as a whole sheet of R45's size is ten million cells.
-  `replace` replaces every match in the editing text of each cell found,
-  and sets the cell to the new text as if it
-  were typed, so `1,000` becomes a number and a formula is parsed again;
-  like a paste, listeners and undo get a `group` of a `restore` for each
-  sheet, so replacing across the workbook is one undo. Replacing always
-  looks in formulas, as in Excel, whose Replace offers no other choice.
-  The view's `findNext` goes to the first match after the active cell,
-  or round to the first, on the shown sheet or through the sheets in tab
-  order, and gives which match it is and how many there are; it sets
-  `reveal`, which the grid scrolls into view without taking the keyboard
-  from the panel. `replace` replaces in the active cell when it holds a
-  match, then goes to the next, and `replaceAll` gives how many cells it
-  replaced. Ctrl/Cmd+F and Ctrl/Cmd+H, and Find and Replace in the Home
-  tab's Editing group, open the find panel, a Radix dialog without an
-  overlay at the top right that stays open while the grid is used, with
-  Find what, Replace with, Within (sheet or workbook), Look in, Match case
-  and Match entire cell contents; it keeps them until the page reloads.
-  The shortcuts replace the browser's own find, even in a text box, but
-  not while an entry is typed. macOS hides the browser on Cmd+H, so Ctrl+H
-  replaces there too, as in Excel for Mac, and the tooltip names it. The
-  panel has no Radix trigger, so on closing it gives the keyboard back to
-  the element that had it when it opened, usually the grid. Excel's Find all list and its search by
-  columns are not built.
-- **Data validation is rules kept by their sheet** (R26), each the
-  ranges it applies to and a criterion: a list, of items typed with commas
-  between them or of the shown texts of a range written after `=` (on any
-  sheet, read when asked for, empty cells left out; the reference is
-  kept as typed, so unlike Excel it does not follow a renamed sheet or
-  lines inserted or deleted there); or a number, a date
-  or a text length between bounds, both included, either of which may be
-  absent, which gives Excel's between, greater or equal and less or equal.
-  The `validate` command gives the cells of ranges a criterion, taking
-  them out of the rules they were in, or takes them out with `null`; undo
-  is the same command with the sheet's rules as they were
-  (`validations`), which it puts back. A cell's rule is the first that
-  covers it. `allows` reads typed input as `setCell` would, a formula by
-  its result evaluated in place without storing it, and compares a list
-  in any case by the text the value would show, as Excel does; empty
-  input and cells without a rule are always allowed (Excel's Ignore
-  blank), and errors never are. Only typing is checked: the view's
-  `commit` asks `allows` first, and a rejected entry stays, marked
-  `rejected`, and the selection does not move, until the user tries again
-  (Retry, in Edit mode) or abandons it (Cancel or Escape), as Excel's Stop
-  message; every command that commits first stops there too, Copy and
-  Cut included, and the Data validation dialog does not open. Pastes,
-  fills, text pasted from other applications, replace (S24's `replace`
-  types each new text without asking) and choosing from a list are not
-  checked, as in Excel. Excel's whole-number and decimal kinds, its other
-  operators, input messages, the Warning and Information styles, custom
-  error messages and the formula kind are not built. A list's source may
-  be a defined name (`=Colors`), read as its range. Inserting and
-  deleting lines moves, grows and shrinks a rule's ranges as a
-  conditional format's; pasting and cutting cells neither copy nor move
-  rules, unlike Excel. The grid shows the button the app gives it to the
-  right of the active cell when its rule is a list, and it opens a menu of
-  the items, which sets the cell to the one chosen. The Data tab's Data
-  validation button opens a dialog with the rule of the active cell, to
-  give the selected cells, change or remove (Clear all, or Any value);
-  dates in it are typed and shown as `m/d/yyyy`.
-- **Defined names are a list kept by the workbook** (R27), each a name and
-  the range it refers to, written as Excel writes it with its sheet and
-  absolute (`Sheet1!$A$1:$B$2`), or `#REF!` once its cells are deleted.
-  Names are workbook-wide: Excel's names scoped to one sheet, and names of
-  constants or formulas, are not built. A name follows Excel's rules
-  (`nameProblem`): letters, digits, `_` and `.`, starting with a letter or
-  `_`, at most 255 characters, and not a reference in either style or a
-  boolean, so `TAX1` is a cell and `R1C1` is refused; names differ in more
-  than case. `setNames` replaces the list, kept in alphabetical order, as
-  `setRules` replaces a sheet's rules, so defining, editing and deleting
-  a name are each one command whose reverse is the list as it was; its
-  `renamed` rewrites the formulas that use the old name, as Excel does;
-  listeners get, and undo keeps, the formulas rewritten as `formulas`, so
-  undo puts back only those, as they were typed, and a formula that
-  already used the new name keeps it. A formula keeps a name as written;
-  the evaluator asks the context what it refers to, and a name not
-  defined gives `#NAME?`, so deleting a name, or a formula typed before
-  its name, needs nothing of its own. The dependency graph enters the
-  range of each name a formula uses, and any change to the names finds
-  again what every formula reads, as a change to the sheets does.
-  Inserting and deleting lines moves names by the same `lines` move as
-  references, and their undo, `restoreSheets`, carries the names as they
-  were; renaming a sheet renames it in names; a name on a deleted sheet
-  gives `#REF!` until the deletion is undone. Pasting, filling and
-  sorting leave names alone. The name box shows the active cell, or the
-  name whose range is exactly the one range selected; Enter there goes to
-  a cell address, a range (on another sheet too) or a name, revealing its
-  top-left cell and giving the keyboard back to the grid, or names the
-  last range selected with a new name, and anything else, or a name whose
-  cells were deleted, gives a message in the message bar. Its list, beside it, goes to a name chosen. The
-  Formulas tab's Name manager lists the names with their ranges, edits a
-  name and its range (typed with or without `=`, on the sheet shown
-  unless it names one) and deletes one; Excel's New, Filter and comment
-  of a name, and Define name, are not built, since the name box defines
-  names. Formula completion offers the names that start with the text
-  typed, before the functions, and puts one without a parenthesis; a
-  name typed in full is not offered, so that Enter commits it. Names are
-  not colored as references in the editors. `.xlsx` files keep names.
-- **Notes and hyperlinks belong to cells** (R28, R29), kept by their
-  sheet by the cell's key, apart from values and styles, and are part of
-  what `contents` reads and a `restore` puts back, as a style is. So undo
-  needs nothing of its own: `setNote` and `setLink`, each for one cell,
-  change cells like `setCell`, and their reverse is a `restore`. A paste
-  copies them and a cut and a sort move them with their cells, as in
-  Excel; pasting only values, formulas or formats, and a fill, keep the
-  target's own; typing, Delete and merging keep them, and rows and columns
-  inserted and deleted move and drop them as cells. A note is plain text;
-  Excel's author, threaded comments and a note's own size are not built.
-  A link is a web address, given `https://` when typed without a scheme,
-  or `#` and a reference in the workbook, as Excel's `HYPERLINK` writes
-  one (`#'My data'!C3`; a defined name typed is kept as its range). Only
-  `http:`, `https:` and `mailto:` addresses are taken, and only they are
-  opened, so that no link runs script in the app. `setLink` may also set the
-  cell's text as if typed, and the dialog shows the address or reference
-  in an empty cell left without one. A reference in a link is kept as
-  written, so it does not follow a renamed sheet or lines inserted, as in
-  Excel. Excel gives a link the Hyperlink cell style; Gridworks stores no
-  style but draws a link's text underlined, in the theme's `--link` color
-  unless the cell has a color of its own, so it shows in both themes. The
-  grid marks a note with a triangle in the cell's top-right corner, in
-  `--note`, and shows it beside the cell once the pointer has rested on
-  it for 300 ms. A click that selects a cell with a link and does not drag
-  follows it when released: the view selects the cells of a reference,
-  scrolling them into view, or gives a web address, which the grid opens
-  in a new tab with `noopener`; Excel's click-and-hold to select a link
-  without following it is not built, but the keyboard selects it. The
-  Review tab holds New note (Edit note when the active cell has one) and
-  Delete note, and the Insert tab Link, which inserts or edits the link of
-  the active cell in a dialog of its text, a web address or a sheet and
-  cell reference, with Remove link when it has one; the cell menu holds
-  all of these, Remove link included. `.xlsx`
-  files keep notes and links.
-- **Inserting or deleting rows or columns rebuilds the sheets it
-  changes.** `insertLines` and `deleteLines` name spans of rows or columns;
-  an insertion puts as many empty lines before each span as it has, as
-  Excel does before each selected range. The workbook makes the sheet anew
-  from its snapshot with the cells, formulas and line sizes moved, and
-  every sheet whose formulas refer to the lines with those formulas
-  rewritten by the `lines` move of `shift`: a reference follows its cells,
-  absolute or not, a range grows or shrinks with the lines inside it, and a
-  reference wholly to deleted cells becomes `#REF!` in the text, as in
-  Excel. It then finds again what every formula reads. Undo keeps a
-  `restoreSheets` command holding the snapshots of the sheets as they
-  were, as deleting a sheet does, so that the `#REF!` it wrote comes back
-  as the references they were; what an insertion pushes off the sheet,
-  which Excel refuses, comes back too. Listeners get the insertion or
-  deletion itself.
-- **Row heights and column widths are CSS pixels at 100%**, kept in each
-  sheet's `layout` with the lines hidden, and only for the lines that
-  differ from the standard 24 by 96. `setLines` sets the size, or the
-  standard one, and the visibility of spans, and records the lines as they
-  were for undo. The layout is replaced, never changed, so the grid builds
-  an `Axis` for each direction once per layout: it finds a line's place,
-  or the line at a place, by binary search over the lines that differ, so
-  that drawing a frame stays fast with thousands of them. A hidden line is
-  a line of size 0, which hit testing passes over. Dragging a header
-  border resizes its line, or every whole line selected with it, and
-  dragged to nothing hides them, as in Excel; a double-click fits a column
-  to its widest text, and gives a row back its fitted height. The context menu of the row
-  and column headers inserts, deletes, hides and shows the selected
-  lines; the ribbon has no row and column commands. `.xlsx` files keep
-  sizes and hidden lines.
-- **Frozen panes are a count of rows and columns** kept in the sheet's
-  `layout` and its snapshot: `freeze` sets the rows above and columns
-  left of a cell, the top row or the first column, and 0 and 0 unfreeze,
-  recording what was frozen for undo. They are always the first lines of
-  the sheet: unlike Excel, which freezes from the row and column scrolled
-  to the top left, Gridworks freezes from A1, so a sheet scrolled down
-  shows its first rows again when frozen, and freezing at a cell further
-  down or right than the window reaches leaves nothing to scroll in view
-  until it is unfrozen. Inserting or deleting lines
-  keeps the counts. The page still scrolls natively over the whole sheet;
-  the grid places a frozen line without the scroll and the others with
-  it, so the lines just past the frozen ones slide under them, and draws
-  the canvas in up to four panes (`panes`), each clipped and scrolled its
-  own way, with a line where the frozen lines end. A selection, a merged
-  cell or text that runs over the boundary is drawn in each pane it
-  reaches, so ranges need nothing of their own; hit testing and scrolling
-  to show a cell leave frozen lines in place, and the in-cell editor of a
-  frozen cell follows the scroll. The View tab's Freeze panes menu holds
-  the four commands, Freeze panes disabled at A1 and Unfreeze panes when
-  nothing is frozen.
-- **Rows fit their text.** The workbook keeps, beside the sizes set on
-  rows, the `fitted` height of each row whose wrapped text or font larger
-  than the default needs more than the standard 24 pixels, and a size set
-  on a row overrides it, as Excel's custom heights do. It fits the rows a
-  change of cells touches, every row of a sheet when column widths change
-  or the sheet is rebuilt, and none when no style can grow a row. Text is
-  measured by a `TextWidth` function the app gives `fromSnapshot`, which
-  measures with the canvas in the fonts the grid draws with, so the
-  engine's wrapping (`wrapText`, also used by the grid) and the drawn lines
-  agree; without one, as in Node, it guesses. Fitted heights are not
-  stored: a sheet is fitted when it is opened. A formula whose result grows
-  after a change elsewhere does not refit its row until its own row
-  changes.
-- **A format is a style change.** `setStyle` gives the cells of ranges
-  properties of their style (font, size, bold, italic, underline,
-  strikethrough, text and fill colors, horizontal and vertical alignment,
-  wrap), `null` taking one back to the default, and keeps the rest; undo
-  restores the cells like any other change. Styles are kept with their
-  properties in one order, so that cells that look the same share one.
-  Ranges of whole rows or columns change only the cells in use there, as
-  formatting the lines themselves would need row and column styles, which
-  Gridworks does not have: a cell typed later below a bold column is not
-  bold. The ribbon shows the style of the active cell, and Bold, Italic,
-  Underline, Strikethrough and Wrap text turn their property off for the
-  selection when the active cell has it and on otherwise, as in Excel.
-  Explicit colors are the same in both themes; text with no color of its
-  own on a fill is black or white, whichever shows on the fill, and
-  otherwise the theme's. Text aligned center or right, and wrapped text,
-  do not run over into other cells.
-- **A number format is a style property.** `numberFormat` holds an Excel
-  format code, set by `setStyle` like any other property, so undo needs
-  nothing of its own. The ribbon's Number format menu offers Excel's
-  General, Number, Currency, Accounting, Percentage, Scientific, Date, Time
-  and Text, with the US dollar and dates as in the United States whatever
-  the interface language, and names the format of the active cell, or
-  Custom; its last item opens a dialog for any code, previewing the active
-  cell's value in it and refusing a code `numfmt` cannot read. Increase
-  decimal, Decrease decimal and the thousands separator change the format
-  of the active cell (`changedFormat`) and give the result to the whole
-  selection, as Excel does; a General cell starts from the decimals its
-  value shows, and a date, time, fraction or text format changes nothing. A color in a code (`[Red]`) is the cell's `color` and is
-  drawn over the style's. A cell whose format is text keeps what is typed
-  as text, a formula too, as in Excel; giving the format to a number does
-  not turn it into text. The fill character of a code (`* `, as in the
-  accounting format) is left out rather than repeated across the cell.
-- **A number too wide for its column shows `####`**, as many as fit, as
-  in Excel, wrapped or not; text runs over or is cut instead. Excel first
-  rounds a General number to fit, which Gridworks does not: `numfmt`'s
-  General already keeps to 11 characters.
-- **The ribbon's panel scrolls sideways** when its controls are wider than
-  the window, so that the page and the grid never do.
-- **Borders are style properties.** A cell's style has a border for each
-  side (`borderTop`, `borderRight`, `borderBottom`, `borderLeft`), each a
-  line (thin, medium, thick, dashed, dotted or double) and a color, the
-  theme's text color when it has none, as Excel's Automatic is black on
-  white. `setBorders` puts one on a side of the selected ranges (their
-  top, right, bottom or left edge), on their outside edges, or on every
-  side of every cell, and `null` takes them off; like `setStyle`, ranges
-  of whole lines change only the cells in use there, so the bottom border
-  of a whole column goes on its last cell in use. Each cell keeps its
-  own borders, as in Excel, so the line between two cells is drawn when
-  either has it there. The Borders menu keeps the line and color last
-  chosen for the next border.
-- **Merged cells are ranges kept by their sheet.** `merge` merges each
-  range, grown over the merges and the other ranges it overlaps, keeps the value of its
-  top-left cell and empties the others, as Excel does after its warning;
-  `unmerge` removes the merges the ranges overlap. Undo is a `restore`
-  that also carries the merges of its ranges as they were. Inserting and
-  deleting lines moves a merge, grows it with lines inserted inside it,
-  shrinks it with lines deleted, and drops it when one cell is left.
-  Pasting formats, and so the format painter, gives the target the merges
-  inside the cells copied in place of its own, as in Excel; other pastes
-  and fills neither make nor remove merges.
-  The view grows every selection over the merges it overlaps and makes
-  the top-left cell active, so a click inside a merged cell selects all of
-  it, and an arrow leaves a merged cell from its far edge. The grid draws
-  a merged cell as one box with the fill and text of its top-left cell,
-  and a cell's borders on the sides on the edge of its merge only. Merged
-  cells are not fitted to their text, as in Excel.
-- **Conditional formats are rules kept by their sheet** (R20), in order of
-  priority: `setRules` replaces the list, so adding, editing, reordering
-  and deleting a rule are each one command whose reverse is the list as it
-  was. A rule has the ranges it applies to, a condition (greater than,
-  less than, between or equal to a value typed as in a cell, text that
-  contains a string in any case, duplicate values, or the top or bottom N
-  numbers, ties included) and a format of text and fill colors and bold,
-  italic, underline and strikethrough. A color scale and a data bar are
-  conditions too, with an empty format: a scale of two or three colors
-  fills each number with the color between those of the lowest number,
-  the median (Excel's 50th percentile) for three, and the highest, mixed
-  in RGB; a data bar's length is the number's share of the way from zero,
-  or the lowest number below it, to the highest, as Excel's automatic
-  bounds. Text, empty cells and errors get no color and no bar, and
-  Excel's other bounds (numbers, percents, formulas) are not offered. Values compare as Excel sorts them:
-  numbers before text before booleans, text in any case; empty cells and
-  errors match nothing, where Excel takes an empty cell as 0. Rules are
-  evaluated when a cell is read, so they follow every change of a value or
-  formula result; `cell` gives what they change as `conditional` (a
-  scale's color as its fill) and the first data bar as `bar`, apart from
-  the style, so the ribbon still shows a cell's own format. What a
-  duplicate, top/bottom, scale or bar rule needs of all its values is
-  worked out once and forgotten after every change. Where rules differ on
-  a property, the first wins, and a new rule goes first, as in Excel. The
-  grid draws `conditional` over the style and over the number format's
-  color, and a bar in a solid color over the fill, inside the cell's lines
-  and under its text; merged cells show no bar.
-  Inserting and deleting lines moves, grows and shrinks a rule's ranges
-  and drops a rule whose cells are all deleted; pasting and cutting cells
-  neither copy nor move rules, unlike Excel. The Home tab's Conditional
-  formatting menu opens a dialog for a new rule of each kind on the
-  selection, with Excel's default colors (red, yellow and green scales,
-  blue bars), and Manage rules a dialog that lists the sheet's rules.
-- **The format painter is a paste of formats.** Its button keeps the
-  range selected in the view; the next range a click or drag selects, on
-  the cells or the headers, gets its formats and merges through `paste`
-  with `only: 'formats'`, so a target is tiled
-  with whole copies, or gets one copy at its top left, as a paste is.
-  Escape, or the button again, puts it away. It paints once: Excel's
-  double-click to keep painting is not built.
-- **What was copied lives in the view**, not the workbook: a range and
-  whether it was cut. Pasting reads the source as it is then. Escape,
-  undo and any change to the workbook other than a paste forget it, as
-  Excel does, and a cut is pasted once.
+Decisions that span modules, cheap to reverse, with their reasons:
+
+- **Every edit is a command.** The app changes the workbook only through
+  `execute`, and the workbook records the reverse of each command before
+  it runs it, so undo covers every change by construction (R5) rather
+  than feature by feature. Undo and redo run a command too, and the
+  listeners receive it like any other, so storage records an undo as a
+  change. A workbook opened with its recorded changes replayed
+  (`fromSnapshot(snapshot, changes)`) starts with nothing to undo, as the
+  history is not stored.
+- **A command that reads cells is recorded as what it did.** A paste, a
+  fill, a sort and a replace reach the listeners, and undo, as a `group`
+  of `restore` commands of the cells they changed, so replaying a recorded
+  one does not read its source again (a value pasted from `TODAY()` stays
+  the same), and undo needs nothing of its own.
 - **Copy and paste go through the system clipboard.** Ctrl/Cmd+C, X and V
   are not shortcuts but the browser's clipboard events, which the
-  platform hears on the whole document, outside text boxes, in every
-  browser and without a permission; the asynchronous clipboard API would
-  ask one in Firefox and Safari to read. A copy or cut remembers the range
-  in the view and puts its cells, as they are shown, on the clipboard as
-  tab-separated text and an HTML table, as Excel does. The Cut and Copy
-  buttons and menu items do the same through `writeClipboard`, which runs
-  the browser's copy command, finished when it returns. A paste reads the
-  plain text: if it is the text of the cells copied, Gridworks pastes
-  those cells, formulas and formats and all; any other text, from another
-  application, is a `setCells` command that sets the cells from the top
-  left of the selection as if each were typed (R4), a row for each line
-  and a cell for each tab, with Excel's quoting. The HTML of other
-  applications is not read: Excel and Google Sheets put the same cells on
-  the clipboard as text. The Paste button and menu item paste only the
-  cells copied in Gridworks, since reading the clipboard from a button
-  needs that permission.
-- **The view follows the sheets.** `View` subscribes to the workbook when
-  it is made, right after the workbook and before anything else, so that
-  when the sheet it shows is deleted, by a command or an undo, it shows the
-  sheet that took its place before any other listener reads the deleted
-  one. Switching to another sheet selects A1 there; each sheet's selection
-  is not remembered.
-- **Window shortcuts are handled on the window**, not by the grid, so that
-  Ctrl/Cmd+Z, Ctrl/Cmd+Y, Ctrl/Cmd+D, Ctrl/Cmd+R, Ctrl/Cmd+B, I and U, and
-  Ctrl/Cmd+F and H work after a click on the ribbon too. During an
-  entry they are left to the editor, which undoes its own typing.
-- **Recalculation follows a dependency graph.** Each sheet keeps, for
-  each cell, the formulas that read it alone, and for each column, the
-  formulas that read a range over it (a whole row is in every column). A
-  change marks the formulas that read the changed cells, and theirs in
-  turn, as needing calculation; a formula is calculated when it is read,
-  after the ones it reads, with an explicit stack (ADR 0004). Nothing else
-  is calculated, and `calculations` counts what is, so tests check it
-  (R14). Cells that nothing reads stay uncalculated until read.
-- **Circular references give 0 and are reported**, as in Excel without
-  iteration. The workbook calculates every formula a change sets, and the
-  formulas that were in a circular reference, before it tells its
-  listeners, so `circularReference()` knows every one; the status bar
-  shows a cell of it as `Circular References: B1`, with its sheet when
-  another sheet is shown (R15). A stored workbook calculates all its
-  formulas when it opens.
-- **References to other sheets are by name**, as written. Renaming a
-  sheet rewrites the formulas that name it; a reference to a sheet that
-  no longer exists gives `#REF!` but keeps its text, so undoing the
-  deletion brings it back (Excel writes `#REF!` into the text). Any change
-  to the sheets other than a color or the order finds again what every
-  formula reads and recalculates every formula. A rename also rewrites
-  references left from a deleted sheet of the same name, which an undo of
-  the rename then does not put back.
-- **Formulas are stored as Excel writes them**: function names and
-  references in capitals, sheet names as the sheets have them, without
-  spaces other than the intersection operator.
-- **A range where one value is expected gives the cell in the formula's
-  row or column**, Excel's implicit intersection, and `#VALUE!` when there
-  is none; dynamic arrays are out of scope.
-- **Functions are specifications in a library**, one table for each
-  family (math, statistics, logic, conditional totals, text, dates,
-  lookup and reference, information), each giving its
-  number of arguments, whether files prefix its name with `_xlfn.`, and
-  its implementation. The parser refuses a call with the wrong number of
-  arguments, or with a constant where it needs a range (as the first
-  argument of `SUMIF`), as Excel does, so it stays text. An implementation receives
-  its arguments unevaluated and asks for each as a value, a number or a
-  reference, so that `IF`, `IFS` and `IFERROR` evaluate only what they
-  need; most read each argument as one type through `typed`, where a
-  read that fails gives its error as the result. A formula reads a range
-  by visiting its cells that are not empty, with their places, so that a
-  whole column costs only its cells and `SUMIF` can pair its ranges cell
-  by cell. A lookup reads only the row or column it searches. `INDEX`,
-  `CHOOSE` and `XLOOKUP` give references, as in Excel.
-- **No function is volatile.** The dependency graph only knows the cells
-  a formula names, so `TODAY` and `NOW` read the clock when their formula
-  is calculated (on entry, on a change to what it reads, and when the
-  workbook opens), and `RAND`, `OFFSET` and `INDIRECT`, whose results or
-  references change without an edit, are not built.
-- **Cells are stored by column**, as arrays of values and of style
-  identifiers, with formulas in a sparse map. Ten million populated cells
-  (R45) do not fit in memory as one object each.
-- **The grid scrolls natively.** An element that scrolls holds an element
-  the size of the whole sheet at the zoom, and the canvas inside it sticks
-  to the visible area and draws the cells under it on every scroll event.
-  Wheels, trackpads, scroll bars and momentum then behave as everywhere
-  else in the browser. The scroll position is that element's, not the
-  `View`'s. It caps the sheet height: browsers limit an element to between
-  about 17 and 33 million pixels, so a sheet has 100,000 rows of 24 pixels
-  (4.8 million at 200%) and 100 columns, the numbers R1 states. More rows
-  would need scroll bars of our own.
-- **Selection is a list of ranges** with an active cell, and an anchor and
-  focus for the last range, which Shift moves. A whole row, column or sheet
-  is a range that spans the sheet, so the engine's `aggregate` sums any
-  selection the same way.
+  platform hears. A copy or cut remembers the range in the view and puts
+  its cells, as they are shown, on the clipboard as tab-separated text and
+  an HTML table, as Excel does. The Cut and Copy buttons and menu items do
+  the same through `writeClipboard`. A paste reads the plain text: if it
+  is the text of the cells copied, Gridworks pastes those cells, formulas
+  and formats and all; any other text, from another application, is a
+  `setCells` command that sets the cells from the top left of the
+  selection as if each were typed (R4), a row for each line and a cell
+  for each tab, with Excel's quoting. The HTML of other applications is
+  not read: Excel and Google Sheets put the same cells on the clipboard as
+  text. The Paste button and menu item paste only the cells copied in
+  Gridworks, since reading the clipboard from a button needs a permission.
 - **Dates are Excel serial numbers** with a date format, as in Excel, so
   date arithmetic and `.xlsx` round trips need no conversion.
-- **Typing sets a cell's format.** A typed date, time, percentage or
-  number with separators sets the number format of its cell's style; a
-  plain number keeps the format the cell has, and Delete clears values
-  and formulas but not formats, as in Excel. The formula bar and the
-  editor start from `editText`, which reads back as the same value.
-- **Cells align by the type of their value** unless their style aligns
-  them, as Excel's General alignment does: numbers right, text left, booleans and errors centered.
-  Text that is too long runs over the empty cells to its right.
-- **An entry has two modes**, as in Excel. Typing starts Enter mode, where
-  an arrow commits and moves; F2, a double-click and the formula bar start
-  Edit mode, where the arrows move the caret. Enter and Tab commit and
-  move in both, and Tab therefore stays in the grid.
-- **An entry knows its cell's sheet and its caret.** While a formula is
-  typed, a click or drag on the grid inserts a reference instead of
-  selecting when a reference can go at the caret: after `=`, an operator,
-  `(` or `,`, or in place of a reference that ends there, which is how a
-  drag grows the reference it started. Clicking another sheet's tab then
-  keeps the entry going in the formula bar, references picked there name
-  the sheet, the grid there shows no selection, and committing or
-  cancelling shows the entry's sheet again. Elsewhere a click commits, as
-  before. The entry keeps the cells of the reference just picked as a
-  selection of its own, `point`, which Shift with a click and a drag
-  stretch from where it started; Ctrl/Cmd with a click adds a comma and a
-  new reference after it. In Enter mode the arrows point too, where an
-  operand starts or after the reference they or a click put there, but
-  not after one typed (`canPoint`): `keyAction` gives `point` in place of
-  `navigate`, and
-  the view moves `point` as navigation moves the selection, starting from
-  the cell edited. Any other change to the text or the caret forgets
-  `point`, so the next arrow after an operator starts from that cell again.
-- **The editors draw a formula's text in colors** by laying a copy of the
-  text, with each reference in a span of its color, over the input box,
-  whose own text is transparent and which still draws the caret and the
-  selection. The same reference has the same color, from six theme
-  variables `--reference-0` to `--reference-5` taken in turn, and the
-  canvas outlines each referenced range of the shown sheet in it.
-- **Function help works on tokens, not the parser**, since a formula
-  being typed is rarely complete. The list offers the functions whose
-  names start with the name before the caret; the arrows move in it, Tab
-  or Enter or a click chooses, and Escape closes it until the entry
-  changes. The hint is that of the innermost function call whose
-  parentheses hold the caret. Insert function, on the Formulas tab, opens
-  the same list with every function, starting a formula in the formula
-  bar if none is being typed. Argument names are Excel's English ones in
-  both languages, as function names are.
 - **Number and date formats do not change with the interface language.**
   R41 covers the interface only; one behavior keeps files and tests the
   same in both languages. Function names stay in English in both languages,
@@ -663,100 +127,12 @@ Decisions that are cheap to reverse, with their reasons:
   them (R42, R43). The canvas reads the same properties when it paints and
   repaints when the attribute changes, so the grid needs no theme of its
   own.
-- **The ribbon grows with the features.** A tab or control is added by the
-  slice that builds its feature, so none is ever a placeholder (R44).
-- **Files are opened with a file input and saved as a download.** It works
-  in all four browsers; the File System Access API does not. The Open
-  button takes `.xlsx` and `.csv` files, told apart by their names; Export
-  CSV saves the active sheet.
-- **A `.csv` file is UTF-8 text** (R32). Opening it decodes it in the app,
-  dropping a byte order mark, and reads it as one sheet named after the
-  file, or `Sheet1` when the name cannot name a sheet. Its fields are
-  read as RFC 4180 and Excel have them, with lines ended by CRLF, LF or
-  CR, and each is recognized as if it were typed, taking the format it
-  implies; a field starting with `=` stays text, so that a file runs no
-  formula, and an error such as `#N/A` stays text, as in `.xlsx` files.
-  Exporting writes the cells in use with a byte order mark, so that Excel
-  reads it as UTF-8, and CRLF line ends, quoting a field that holds a
-  comma, a quote or a line break. A number is written in full whatever
-  its format, and one in a date or time format as `yyyy-mm-dd hh:mm:ss`,
-  or its date or time alone, unless it has a part of a second, which
-  would not read back, so that reopening gives the same values. Text is
-  written as it is, as Excel writes it, so a text that reads as a number,
-  a date or a boolean, such as `007`, comes back as one, an error as its
-  text, and a text starting with `=` is not escaped and is a formula to a
-  program that runs them.
-- **The address names the workbook shown** (R33, R34): `#` and its
-  identifier, or nothing for the start screen, so that a reload, a link
-  kept or the browser's Back button shows the same again; an identifier
-  no longer stored gives the start screen. The start screen lists the
-  stored workbooks, the one saved last first, with the time of that save
-  (the time alone for today), and holds New workbook, which starts an
-  empty workbook named `Book` and the first number no stored workbook has,
-  Open file, and a menu on each workbook to rename, duplicate (as `Name
-  (copy)`) and delete it, deleting after a confirmation. A rename or
-  duplicate there loads the stored workbook, replays its changes and saves
-  it under the name, so the platform needs no operation of its own for
-  them. A workbook made new or opened from a file gets a new random
-  identifier and is saved at once, so that the start screen lists it.
-  The File tab's Start screen button goes back to it. The workbook's name
-  is a text box beside the brand in the ribbon, as in Excel for the web;
-  Enter or leaving it renames the workbook with `renameWorkbook`, an
-  empty name keeps the one before, and the page's title is the name and
-  ` - Gridworks`. The rename is recorded and saved like any change, but
-  not undone, as the name is the file's rather than its contents. When
-  storage refuses a change or a save, as when it is full, autosave tells
-  the app, and the message bar asks the user to save the workbook to
-  their computer; storage that cannot be read gives the start screen with
-  a message. Renaming the workbook is no change to its cells, so the view
-  keeps what was copied and the last fill.
-- **A file opened is read as far as Gridworks supports it.** A formula
-  that does not parse, or calls a function or name that Gridworks does not
-  have, is replaced by its last result; a defined name the file keeps is
-  calculated. Charts, pivot tables, pictures and Excel tables (whose
-  cells stay) are counted from the file's parts and left out, and so are
-  cells beyond the 100,000 rows and 100 columns of a sheet, and
-  conditional formats, rules of data validation, defined names and
-  hyperlinks of kinds Gridworks does not have. A message bar under the
-  ribbon lists what was left out (R31), or says that a file is not a valid
-  `.xlsx` file, which leaves the workbook shown as it was, or that a save
-  failed. Lesser differences are made without a word: what Gridworks does
-  not draw of a cell (rich text runs, rotation, indents, pattern and
-  gradient fills, diagonal borders), filters, which keep their hidden
-  rows, threaded comments, read as the notes Excel keeps beside them, and
-  sheet views other than frozen panes. A file saved by Gridworks has no
-  formula results in it, and asks to be calculated when it is opened.
-- **Files map Gridworks' formatting onto Excel's, and back** (R30). A
-  file's default font, Calibri 11 in Excel, stands for Gridworks' default
-  font and size, so a font keeps its name only when it is one of `FONTS`
-  and its size only when it differs from the default's; Gridworks writes
-  Calibri 11 as the default, so an explicit size of 11 reads back as the
-  default. Theme and indexed colors are read as the colors they show, a
-  theme's tint applied in HSL, which is within one step of a channel of
-  Excel's swatches; automatic colors, and the theme's text color, are
-  left to the theme's text color, and the Hyperlink style is not kept, as
-  the grid draws links itself. Excel's other border lines are drawn as
-  the nearest of Gridworks' six, and its other alignments as the nearest
-  of left, center and right or top and middle. Excel's row and column
-  styles are not kept; Excel writes a style on each cell in use as well,
-  so only empty cells of a formatted row or column lose it. Sizes keep
-  their proportions to the standard ones: Excel's 64 by 20 pixels are
-  Gridworks' 96 by 24, a width being Excel's characters of 7 pixels and a
-  height its points, and only heights set on rows are written or read, as
-  fitted heights are found again. A condition's value is written as a
-  number, a boolean or a quoted text, so a date typed in it reads back as
-  its serial number. Notes are written with the drawing Excel needs to
-  show them, without an author, and an author's name that starts a note
-  read is taken out; data bars are written with Excel 2010's extension,
-  so that they start from zero as Gridworks draws them.
 - **Cell fonts are a fixed list of fonts present on Windows and macOS**
   (Arial, Courier New, Georgia, Times New Roman, Trebuchet MS, Verdana),
   each with fallbacks for Linux, so that nothing is downloaded. A cell
   without a font has the interface's system font, and sizes are in points
-  with 10 as the default, drawn at 4/3 pixels a point.
-- **Printing builds a plain HTML table** of the sheet or selection with
-  print CSS for page size, orientation and margins, and rows that do not
-  break across pages (R36). The canvas itself cannot be paginated.
+  with 10 as the default, drawn at 4/3 pixels a point. The workbook gives
+  the list as `FONTS`, so that the grid, the ribbon and the files share it.
 
 ## Data
 
@@ -782,9 +158,7 @@ workbook leaves the engine.
   executed; the whole workbook is saved half a second after the last change
   and when the page is hidden, and that save deletes the changes it
   includes. Opening a workbook replays its changes over its last save.
-  A save cannot be started while the page unloads: browsers discard an
-  IndexedDB transaction that begins then. See
-  [ADR 0005](adr/0005-record-each-change-then-save-snapshots.md).
+  See [ADR 0005](adr/0005-record-each-change-then-save-snapshots.md).
 - **Preferences** (language, theme): through `Platform.preferences`, stored
   in `localStorage` by the web implementation, under `gridworks.language` and
   `gridworks.theme`. Without a stored choice the language is that of the
@@ -810,7 +184,7 @@ src/main.tsx             Entry point: creates the web platform, mounts App
 tests/e2e/               Playwright tests
 tests/boundaries.test.ts Checks that lint enforces the module boundaries
 scripts/check-docs.py    Document checker, copied from nightshift
-docs/                    Requirements, architecture, ADRs, backlog
+docs/                    Requirements, architecture, module design, ADRs, backlog
 .github/workflows/       CI and deployment
 ```
 
@@ -833,9 +207,9 @@ CI machine is slower, and varies more, than the laptop the time limits are
 set for. A `perf` failure is confirmed or dismissed by running `make perf`
 on such a laptop. The `e2e` check passes when each of four shards of the
 end-to-end tests, run on machines of their own in parallel, has passed. The
-shards run in Playwright's container image, whose browsers and their system
-libraries come installed, at the version of `@playwright/test` in the lock
-file; a change to that version changes the image too.
+shards and `perf` run in Playwright's container image, whose browsers and
+their system libraries come installed, at the version of `@playwright/test`
+in the lock file; a change to that version changes the image too.
 
 ## Testing
 

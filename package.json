@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "perf": "vitest run --config vitest.perf.config.ts && playwright test --config playwright.perf.config.ts"
   },
   "dependencies": {
     "@radix-ui/react-context-menu": "^2.4.1",
