@@ -222,6 +222,13 @@ class Arguments implements Args {
     return VALUE;
   }
 
+  formula(index: number): string | null | ErrorValue {
+    const reference = this.reference(index);
+    if (isError(reference)) return reference;
+    const { sheet, area } = reference;
+    return this.context.formula?.(sheet, area.top, area.left) ?? null;
+  }
+
   cells(
     reference: Reference,
     visit: (value: Value, row: number, col: number) => void,

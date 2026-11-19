@@ -102,6 +102,15 @@ export interface Context {
    * error; `undefined` for a name not defined, which gives `#NAME?`.
    */
   name?(name: string): Ast | undefined;
+  /**
+   * The formula of a cell as the formula bar shows it, `null` when it holds
+   * none; `#REF!` when no sheet has that name. Without it, no cell has one.
+   */
+  formula?(
+    sheet: string | undefined,
+    row: number,
+    col: number,
+  ): string | null | ErrorValue;
 }
 
 /**

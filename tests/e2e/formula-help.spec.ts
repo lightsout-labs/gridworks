@@ -110,6 +110,39 @@ test('the list describes the highlighted function', async ({ page }) => {
   await expect(description(page)).toBeHidden();
 });
 
+test('ISFORMULA and FORMULATEXT are offered, and read the formula of a cell', async ({
+  page,
+}) => {
+  await openApp(page);
+  await clickCell(page, 0, 2);
+  await enter(page, '=1+1');
+  await clickCell(page, 1, 0);
+  await page.keyboard.type('=isfo');
+  await expect(suggestions(page).getByRole('option')).toHaveText(['ISFORMULA']);
+  await expect(description(page)).toHaveText(
+    'Checks whether a reference is to a cell containing a formula, and returns TRUE or FALSE',
+  );
+  await page.keyboard.press('Tab');
+  await expect(hint(page)).toHaveText('ISFORMULA(reference)');
+  await page.keyboard.type('C1)');
+  await page.keyboard.press('Enter');
+  await expectCell(page, 1, 0, 'A2 TRUE');
+
+  await clickCell(page, 2, 0);
+  await page.keyboard.type('=formulat');
+  await expect(description(page)).toHaveText('Returns a formula as a string');
+  await page.keyboard.press('Tab');
+  await expect(hint(page)).toHaveText('FORMULATEXT(reference)');
+  await page.keyboard.type('C1)');
+  await page.keyboard.press('Enter');
+  await expectCell(page, 2, 0, 'A3 =1+1');
+
+  await clickCell(page, 0, 2);
+  await enter(page, '2');
+  await expectCell(page, 1, 0, 'A2 FALSE');
+  await expectCell(page, 2, 0, 'A3 #N/A');
+});
+
 /** Whether the highlighted entry lies wholly inside the list's visible area. */
 function highlightedInView(page: Page) {
   return suggestions(page).evaluate((list) => {
