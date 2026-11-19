@@ -32,7 +32,8 @@ the [architecture document](../../architecture.md).
   message bar under the ribbon asks the user to save the workbook to their
   computer; storage that cannot be read gives the start screen with a
   message. The same bar lists what a file opened left out, says that a
-  file is not a valid `.xlsx` file, or that a save failed.
+  file is not a valid `.xlsx` file, that a save failed, or that a new
+  version of Gridworks is ready and a reload shows it.
 - **The Open button takes `.xlsx` and `.csv` files**, told apart by their
   names; Export CSV saves the active sheet.
 - **Window shortcuts are handled on the window**, not by the grid, so that

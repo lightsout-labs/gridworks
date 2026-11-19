@@ -290,12 +290,38 @@ function writeClipboard({ text, html }: ClipboardContents): void {
 }
 
 /** The platform for browsers. */
+// The service worker that vite-plugin-pwa builds keeps the whole app, so
+// that it opens without a network; it is registered as the page loads,
+// whoever listens. A new version takes the page over as soon as it is
+// installed, while the page still runs the old one.
+const workers =
+  import.meta.env.PROD && 'serviceWorker' in navigator
+    ? navigator.serviceWorker
+    : null;
+// The worker that served this page, none on the first visit, which the
+// version the page runs takes over.
+const servedBy = workers?.controller ?? null;
+// Without a worker, the app still works online.
+workers?.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
+
+function listenToUpdates(listener: () => void): () => void {
+  if (!workers) return () => {};
+  const onChange = () => {
+    if (servedBy && workers.controller !== servedBy) listener();
+  };
+  // The new version may have taken over before this call.
+  onChange();
+  workers.addEventListener('controllerchange', onChange);
+  return () => workers.removeEventListener('controllerchange', onChange);
+}
+
 export const webPlatform: Platform = {
   openFile,
   saveFile,
   workbooks: { list, load, record, save, delete: remove },
   listenToClipboard,
   writeClipboard,
+  listenToUpdates,
   // A browser that blocks storage throws; the choice is then not remembered.
   preferences: {
     get(name) {

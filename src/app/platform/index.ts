@@ -83,6 +83,12 @@ export interface Platform {
    * Puts contents on the system clipboard, as a button that copies does.
    */
   writeClipboard(contents: ClipboardContents): void;
+  /**
+   * Calls `listener` when a newer version of the app has replaced the one
+   * this page runs, which a reload of the page shows, until the returned
+   * function is called; at once if it has already.
+   */
+  listenToUpdates(listener: () => void): () => void;
   /** The user's choices, such as the language, that outlive the page. */
   readonly preferences: {
     /** The remembered value, or `null` when there is none. */

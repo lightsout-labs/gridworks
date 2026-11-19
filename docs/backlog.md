@@ -1292,7 +1292,7 @@ Notes:
 
 ## S31: Working offline
 
-Status: Todo
+Status: Done
 
 Acceptance criteria:
 - After one visit, the app loads and opens stored workbooks with the network
@@ -1300,6 +1300,14 @@ Acceptance criteria:
 - Opening and saving `.xlsx` and `.csv` files works offline. (R35)
 - After a new version is deployed, the next visit loads it, and tells the user
   if a reload is needed. (R35, R49)
+
+Notes:
+- The service worker precaches the `js`, `css` and `html` files of the build
+  (the defaults of `vite-plugin-pwa`). A later slice that adds another kind of
+  file, such as an image or a font, must add it to `globPatterns` in
+  `vite.config.ts`; one that adds a lazily loaded chunk, such as S32's
+  printing, must start importing it as the app starts, as `App.tsx` does for
+  `engine/io`, since a new version deletes the old version's files.
 
 ## S32: Printing and saving as PDF
 
