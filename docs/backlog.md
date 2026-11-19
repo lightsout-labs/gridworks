@@ -1251,6 +1251,19 @@ Notes:
 - A formula committed without its closing parentheses is stored as text;
   Excel adds them. No slice covers this yet.
 
+## S37: Fix the completion list losing the highlighted entry
+
+Status: Todo
+Fixes: #48
+
+Acceptance criteria:
+- With `=S` typed, pressing Down past the last entry that fits in the
+  completion list scrolls the list so that the highlighted entry stays in
+  view, and its description stays shown; Up past the first visible entry
+  scrolls back the same way. (R16)
+- The same holds in a list of argument values and names, and when editing
+  in the formula bar. (R16)
+
 ## S31: Working offline
 
 Status: Todo
