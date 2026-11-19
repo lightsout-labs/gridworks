@@ -24,6 +24,11 @@ import styles from './Shell.module.css';
 import { startingTheme, type Theme } from './theme';
 import { hashOf, workbookIdOf } from './workbooks';
 
+// The file formats load after the app, but at once: a page that a new
+// version has taken over can no longer fetch the files of its own.
+const io = import('../../engine/io');
+io.catch(() => {});
+
 /** The workbook shown, under its identifier in storage. */
 interface Open {
   readonly id: string;
@@ -228,7 +233,7 @@ export function App({ platform }: { platform: Platform }) {
     if (!file) return;
     setBusy(true);
     try {
-      const { readCsv, readXlsx } = await import('../../engine/io');
+      const { readCsv, readXlsx } = await io;
       const name = workbookName(file.name);
       // The decoder drops a byte order mark and replaces bytes that are
       // not UTF-8.
@@ -252,7 +257,7 @@ export function App({ platform }: { platform: Platform }) {
   const saveFile = async (workbook: Workbook) => {
     setBusy(true);
     try {
-      const { writeXlsx } = await import('../../engine/io');
+      const { writeXlsx } = await io;
       const snapshot = workbook.toSnapshot();
       await platform.saveFile(
         `${snapshot.name}.xlsx`,
@@ -268,7 +273,7 @@ export function App({ platform }: { platform: Platform }) {
   const exportCsv = async (workbook: Workbook, view: View) => {
     setBusy(true);
     try {
-      const { writeCsv } = await import('../../engine/io');
+      const { writeCsv } = await io;
       await platform.saveFile(
         `${workbook.name}.csv`,
         new TextEncoder().encode(writeCsv(workbook, view.state.sheet)),

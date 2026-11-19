@@ -30,6 +30,9 @@ test('after one visit, the app, its stored workbooks and its files work offline'
   await page.goto('./');
   await page.getByRole('button', { name: /^Open Book1/ }).click();
   await expectCell(page, 0, 0, 'A1 42');
+  // The workbook's own address opens offline too.
+  await page.reload();
+  await expectCell(page, 0, 0, 'A1 42');
 
   await openFile(page, 'Excel.xlsx', await excelWorkbook());
   await expect(page.getByLabel('Workbook name')).toHaveValue('Excel');

@@ -86,7 +86,7 @@ export interface Platform {
   /**
    * Calls `listener` when a newer version of the app has replaced the one
    * this page runs, which a reload of the page shows, until the returned
-   * function is called. Also keeps the app for use without a network.
+   * function is called; at once if it has already.
    */
   listenToUpdates(listener: () => void): () => void;
   /** The user's choices, such as the language, that outlive the page. */

@@ -291,23 +291,27 @@ function writeClipboard({ text, html }: ClipboardContents): void {
 
 /** The platform for browsers. */
 // The service worker that vite-plugin-pwa builds keeps the whole app, so
-// that it opens without a network. A new version takes the page over as soon
-// as it is installed, while the page still runs the old one.
+// that it opens without a network; it is registered as the page loads,
+// whoever listens. A new version takes the page over as soon as it is
+// installed, while the page still runs the old one.
+const workers =
+  import.meta.env.PROD && 'serviceWorker' in navigator
+    ? navigator.serviceWorker
+    : null;
+// The worker that served this page, none on the first visit, which the
+// version the page runs takes over.
+const servedBy = workers?.controller ?? null;
+// Without a worker, the app still works online.
+workers?.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
+
 function listenToUpdates(listener: () => void): () => void {
-  if (!import.meta.env.PROD || !('serviceWorker' in navigator)) {
-    return () => {};
-  }
-  const workers = navigator.serviceWorker;
-  // A page loaded without a worker, on the first visit, is taken over by
-  // the version it runs.
-  let controller = workers.controller;
+  if (!workers) return () => {};
   const onChange = () => {
-    if (controller) listener();
-    controller = workers.controller;
+    if (servedBy && workers.controller !== servedBy) listener();
   };
+  // The new version may have taken over before this call.
+  onChange();
   workers.addEventListener('controllerchange', onChange);
-  // Without a worker, the app still works online.
-  workers.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
   return () => workers.removeEventListener('controllerchange', onChange);
 }
 

@@ -17,11 +17,14 @@ are in the [architecture document](../../architecture.md).
   the page is hidden instead.
 - **The app is kept offline by a service worker that serves it first from
   its cache** (R35), built by `vite-plugin-pwa` over the whole build and
-  registered by `listenToUpdates`. Any address under `/gridworks/` gets
+  registered as the page loads. Any address under `/gridworks/` gets
   `index.html`, so a workbook's `#` address opens offline too. A visit
   after a deploy is served the version cached, while the browser fetches
   the new worker; that worker takes the page over at once (`skipWaiting`,
   `clientsClaim`), and the change of controller of a page that already had
-  one tells the app that a reload shows the new version. Serving the page
+  one tells the app that a reload shows the new version. The controller is
+  noted as the page loads, so a takeover before the app listens is
+  reported when it does. The new worker drops the old version's files,
+  so the app imports its lazily loaded file formats as it starts. Serving the page
   from the network first would show the new version without a reload, but
   would wait for a slow network on every visit.
