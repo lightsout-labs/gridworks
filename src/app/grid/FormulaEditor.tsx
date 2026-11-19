@@ -69,6 +69,7 @@ export function FormulaEditor({
   const input = useRef<HTMLInputElement>(null);
   const listId = useId();
   const mirror = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLUListElement>(null);
   const { entry } = useSyncExternalStore(view.subscribe, () => view.state);
   const text = entry?.text ?? contents;
   const here = entry?.place === place;
@@ -114,6 +115,12 @@ export function FormulaEditor({
     }
     mirror.current?.scrollTo(box.scrollLeft, 0);
   }, [entry, here]);
+
+  // The list scrolls as little as keeps the highlighted entry in view.
+  const open = names !== null;
+  useLayoutEffect(() => {
+    if (open) scrollIntoList(list.current!, highlighted);
+  }, [open, highlighted]);
 
   const choose = ({ name, kind }: Choice) => {
     view.complete(name, kind);
@@ -191,6 +198,7 @@ export function FormulaEditor({
       {names && (
         <div className={styles.completion}>
           <ul
+            ref={list}
             id={listId}
             className={classes(styles.popup, styles.list)}
             role="listbox"
@@ -253,6 +261,23 @@ export function FormulaEditor({
 
 function choice(name: string, kind: Completion): Choice {
   return { name, kind };
+}
+
+/** Scrolls a list the least that shows the whole of its entry `index`. */
+function scrollIntoList(list: HTMLElement, index: number): void {
+  const option = list.children[index];
+  if (!option) return;
+  const box = option.getBoundingClientRect();
+  const top =
+    box.top -
+    list.getBoundingClientRect().top -
+    list.clientTop +
+    list.scrollTop;
+  const bottom = top + box.height;
+  if (top < list.scrollTop) list.scrollTop = top;
+  else if (bottom > list.scrollTop + list.clientHeight) {
+    list.scrollTop = bottom - list.clientHeight;
+  }
 }
 
 /** Where the caret is: the end of a selection that it moved. */

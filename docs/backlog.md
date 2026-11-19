@@ -1253,7 +1253,7 @@ Notes:
 
 ## S37: Fix the completion list losing the highlighted entry
 
-Status: Todo
+Status: In progress
 Fixes: #48
 
 Acceptance criteria:
