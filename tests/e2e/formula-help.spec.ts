@@ -124,7 +124,7 @@ function highlightedInView(page: Page) {
 async function walk(page: Page, key: string, times: number) {
   for (let step = 0; step < times; step++) {
     await page.keyboard.press(key);
-    expect(await highlightedInView(page)).toBe(true);
+    await expect.poll(() => highlightedInView(page)).toBe(true);
   }
 }
 

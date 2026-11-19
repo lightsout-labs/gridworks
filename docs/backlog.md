@@ -1253,7 +1253,7 @@ Notes:
 
 ## S37: Fix the completion list losing the highlighted entry
 
-Status: In progress
+Status: Done
 Fixes: #48
 
 Acceptance criteria:
@@ -1263,6 +1263,10 @@ Acceptance criteria:
   scrolls back the same way. (R16)
 - The same holds in a list of argument values and names, and when editing
   in the formula bar. (R16)
+
+Notes:
+- The editor scrolls the list itself rather than with `scrollIntoView`,
+  which would also scroll the grid or the page around it.
 
 ## S38: Fix ISFORMULA, and add FORMULATEXT
 

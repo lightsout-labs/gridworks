@@ -120,7 +120,7 @@ export function FormulaEditor({
   const open = names !== null;
   useLayoutEffect(() => {
     if (open) scrollIntoList(list.current!, highlighted);
-  }, [open, highlighted]);
+  }, [open, highlighted, text]);
 
   const choose = ({ name, kind }: Choice) => {
     view.complete(name, kind);
