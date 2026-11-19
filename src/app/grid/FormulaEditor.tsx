@@ -11,15 +11,16 @@ import {
 } from 'react';
 import { Tag } from 'lucide-react';
 import { useTranslation } from '../ui/controls';
+import type { Key } from '../ui/i18n';
 import styles from './FormulaEditor.module.css';
 import { functions } from '../../engine/formula';
-import { formulaHelp } from './formula';
+import { formulaHelp, type Completion } from './formula';
 import type { Entry, View } from './view';
 
-/** A defined name or a function offered while a formula is typed. */
+/** A value, a defined name or a function offered while a formula is typed. */
 interface Choice {
   readonly name: string;
-  readonly defined: boolean;
+  readonly kind: Completion;
 }
 
 /** The attribute that marks the editors of an entry, valued with their place. */
@@ -78,17 +79,29 @@ export function FormulaEditor({
   const [dismissed, setDismissed] = useState<Entry | null>(null);
   const [chosen, setChosen] = useState(0);
   const completion = here ? help?.completion : null;
-  // The defined names first, then the functions.
+  // The values first, then the defined names, then the functions.
   const offered: Choice[] | null = completion
     ? [
-        ...completion.definedNames.map((name) => ({ name, defined: true })),
-        ...completion.names.map((name) => ({ name, defined: false })),
+        ...completion.values.map((name) => choice(name, 'value')),
+        ...completion.definedNames.map((name) => choice(name, 'defined')),
+        ...completion.names.map((name) => choice(name, 'function')),
       ]
     : here && entry.allFunctions
-      ? functions.map((name) => ({ name, defined: false }))
+      ? functions.map((name) => choice(name, 'function'))
       : null;
   const names = entry !== dismissed ? offered : null;
   const highlighted = Math.min(chosen, (names?.length ?? 1) - 1);
+  const current = names?.[highlighted];
+  // The descriptions are in the dictionaries, under the names of the
+  // engine's functions, arguments and values.
+  const argument = help?.hint?.arguments[help.hint.current]?.replace(
+    /^\[|\]$/g,
+    '',
+  );
+  const shown = ({ name, kind }: Choice) =>
+    kind === 'value'
+      ? `${name} - ${t(`value.${help!.hint!.name}.${argument}.${name}` as Key)}`
+      : name;
 
   // The entry's text and caret, changed elsewhere, show here, and the
   // editor of the entry has the keyboard.
@@ -102,8 +115,8 @@ export function FormulaEditor({
     mirror.current?.scrollTo(box.scrollLeft, 0);
   }, [entry, here]);
 
-  const choose = ({ name, defined }: Choice) => {
-    view.complete(name, defined);
+  const choose = ({ name, kind }: Choice) => {
+    view.complete(name, kind);
     setChosen(0);
   };
 
@@ -176,30 +189,41 @@ export function FormulaEditor({
         </div>
       )}
       {names && (
-        <ul
-          id={listId}
-          className={styles.popup}
-          role="listbox"
-          aria-label={t('formula.functions')}
-        >
-          {names.map((choice, index) => (
-            <li
-              key={`${choice.defined}${choice.name}`}
-              id={`${listId}-${index}`}
-              role="option"
-              className={styles.option}
-              aria-selected={index === highlighted}
-              // The editor keeps the keyboard.
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => choose(choice)}
+        <div className={styles.completion}>
+          <ul
+            id={listId}
+            className={classes(styles.popup, styles.list)}
+            role="listbox"
+            aria-label={t('formula.functions')}
+          >
+            {names.map((choice, index) => (
+              <li
+                key={`${choice.kind}${choice.name}`}
+                id={`${listId}-${index}`}
+                role="option"
+                className={styles.option}
+                aria-selected={index === highlighted}
+                // The editor keeps the keyboard.
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => choose(choice)}
+              >
+                {choice.kind === 'defined' && (
+                  <Tag className={styles.nameIcon} size={12} aria-hidden />
+                )}
+                {shown(choice)}
+              </li>
+            ))}
+          </ul>
+          {current?.kind === 'function' && (
+            <div
+              className={classes(styles.popup, styles.description)}
+              role="note"
+              aria-label={t('formula.description')}
             >
-              {choice.defined && (
-                <Tag className={styles.nameIcon} size={12} aria-hidden />
-              )}
-              {choice.name}
-            </li>
-          ))}
-        </ul>
+              {t(`function.${current.name}` as Key)}
+            </div>
+          )}
+        </div>
       )}
       {here && !names && help?.hint && (
         <div
@@ -225,6 +249,10 @@ export function FormulaEditor({
       )}
     </div>
   );
+}
+
+function choice(name: string, kind: Completion): Choice {
+  return { name, kind };
 }
 
 /** Where the caret is: the end of a selection that it moved. */

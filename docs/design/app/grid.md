@@ -123,6 +123,9 @@ in the [architecture document](../../architecture.md).
   operator and a number. A value is put in place of that text, without a
   parenthesis. A value typed in full is not offered, nor a function of the
   same name, so that Enter commits it, as a defined name typed in full.
+  Before anything is typed in such an argument, every defined name and
+  function follows the values, as each starts with the empty text; a
+  value replaces the text after any spaces, which stay.
 - **Descriptions are translations.** The list shows the description of a
   value in its item (`FALSE - Exact match`), and that of the highlighted
   function beside the list; the editor looks both up through `t`, under

@@ -27,6 +27,7 @@ import {
   insertReference,
   pickable,
   startsOperand,
+  type Completion,
   type Edit,
 } from './formula';
 import { changedFormat, GENERAL, type FormatChange } from '../../engine/format';
@@ -336,11 +337,11 @@ export class View {
 
   /**
    * Puts a function in place of the start of its name typed at the caret,
-   * or a defined name when `defined`.
+   * a defined name, or a value in place of the text typed in an argument.
    */
-  complete(name: string, defined = false): void {
+  complete(name: string, kind: Completion = 'function'): void {
     const { entry } = this.current;
-    if (entry) this.edited(complete(entry.text, entry.caret, name, defined));
+    if (entry) this.edited(complete(entry.text, entry.caret, name, kind));
   }
 
   /** The workbook's defined names, in alphabetical order. */

@@ -9,6 +9,8 @@ const formulaBar = (page: Page) =>
 const suggestions = (page: Page) =>
   page.getByRole('listbox', { name: 'Functions' });
 const hint = (page: Page) => page.getByRole('note', { name: 'Arguments' });
+const description = (page: Page) =>
+  page.getByRole('note', { name: 'Description' });
 
 /** Where the middle of a cell is on the page, at the top of the sheet. */
 async function cellPoint(page: Page, row: number, col: number) {
@@ -91,6 +93,66 @@ test('function names are completed and their arguments shown while typing', asyn
   await page.keyboard.press('Escape');
   await expect(suggestions(page)).toBeHidden();
   await expect(formulaBar(page)).toHaveValue('=ROUNDUP(2.1,0)+ab');
+});
+
+test('the list describes the highlighted function', async ({ page }) => {
+  await openApp(page);
+  await clickCell(page, 0, 0);
+  await page.keyboard.type('=sumi');
+  await expect(description(page)).toHaveText(
+    'Adds the cells specified by a given condition or criteria',
+  );
+  await page.keyboard.press('ArrowDown');
+  await expect(description(page)).toHaveText(
+    'Adds the cells specified by a given set of conditions or criteria',
+  );
+  await page.keyboard.press('Escape');
+  await expect(description(page)).toBeHidden();
+});
+
+test('arguments offer the values Excel offers, before the names', async ({
+  page,
+}) => {
+  await openApp(page);
+  await clickCell(page, 3, 3);
+  await page.keyboard.type('=VLOOKUP("Apple",A1:B10,2,');
+  const options = suggestions(page).getByRole('option');
+  await expect(options.nth(0)).toHaveText('TRUE - Approximate match');
+  await expect(options.nth(1)).toHaveText('FALSE - Exact match');
+  await expect(options.nth(2)).toHaveText('ABS');
+  await expect(hint(page)).toBeHidden();
+  await page.keyboard.type('F');
+  await expect(options.first()).toHaveText('FALSE - Exact match');
+  await expect(options.nth(1)).toHaveText('FACT');
+  await page.keyboard.press('Enter');
+  await expect(formulaBar(page)).toHaveValue('=VLOOKUP("Apple",A1:B10,2,FALSE');
+  // Typed in full, neither the value nor the function is offered.
+  await expect(suggestions(page)).toBeHidden();
+  await page.keyboard.press('Backspace');
+  await page.keyboard.type('E');
+  await expect(suggestions(page)).toBeHidden();
+  // Enter commits the entry and moves down.
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('status')).toHaveText('D5');
+
+  // The function FALSE still takes its parenthesis.
+  await clickCell(page, 4, 3);
+  await page.keyboard.type('=FAL');
+  await expect(options).toHaveText(['FALSE']);
+  await page.keyboard.press('Tab');
+  await expect(formulaBar(page)).toHaveValue('=FALSE(');
+  await page.keyboard.press('Escape');
+
+  // Typing narrows the values by their text, signs included.
+  await page.keyboard.type('=MATCH(A1,B1:B9,');
+  await expect(options.nth(0)).toHaveText('1 - Less than');
+  await expect(options.nth(1)).toHaveText('0 - Exact match');
+  await expect(options.nth(2)).toHaveText('-1 - Greater than');
+  await page.keyboard.type('-');
+  await expect(options).toHaveText(['-1 - Greater than']);
+  await options.first().click();
+  await expect(formulaBar(page)).toHaveValue('=MATCH(A1,B1:B9,-1');
+  await page.keyboard.press('Escape');
 });
 
 test('clicking and dragging on the grid inserts references, on another sheet too', async ({
@@ -320,6 +382,10 @@ test.describe('in Chinese and the dark theme', () => {
       return (red! + green! + blue!) / 3 < 128;
     };
     expect(dark(await background('[role="listbox"]'))).toBe(true);
+    await expect(page.getByRole('note', { name: '说明' })).toHaveText(
+      '按指定的位数对数值进行四舍五入',
+    );
+    expect(dark(await background('[role="note"]'))).toBe(true);
     const option = list.getByRole('option').nth(1);
     const resting = await option.evaluate(
       (node) => getComputedStyle(node).backgroundColor,
@@ -333,6 +399,11 @@ test.describe('in Chinese and the dark theme', () => {
     await page.keyboard.press('Tab');
     await expect(page.getByRole('note', { name: '参数' })).toBeVisible();
     expect(dark(await background('[role="note"]'))).toBe(true);
+    await page.keyboard.press('Escape');
+    await page.keyboard.type('=VLOOKUP(A1,B1:C2,2,');
+    await expect(list.getByRole('option').nth(1)).toHaveText(
+      'FALSE - 精确匹配',
+    );
     await page.getByRole('tab', { name: '公式' }).click();
     await expect(page.getByRole('button', { name: '插入函数' })).toBeVisible();
   });

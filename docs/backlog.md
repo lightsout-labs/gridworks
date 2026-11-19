@@ -1224,7 +1224,7 @@ Notes:
 
 ## S36: Argument values and function descriptions in formula help
 
-Status: Todo
+Status: In progress
 Closes: #42
 
 Acceptance criteria:

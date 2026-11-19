@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { argumentHint, functions } from '../../engine/formula';
 import { dictionaries, startingLanguage, translator } from './i18n';
 
 describe('startingLanguage', () => {
@@ -28,5 +29,26 @@ describe('translator', () => {
       expect(zh[key], key).toMatch(/\p{Script=Han}/u);
       expect(en[key], key).toMatch(/^[\x20-\x7e]+$/);
     }
+  });
+});
+
+describe('descriptions of functions and argument values', () => {
+  it('describe every function and every value of the library', () => {
+    const keys = functions.flatMap((name) => {
+      const { arguments: shown } = argumentHint(name, 0)!;
+      const values = shown.flatMap((argument, index) =>
+        argumentHint(name, index)!.values.map(
+          (value) => `value.${name}.${argument.replace(/[[\]]/g, '')}.${value}`,
+        ),
+      );
+      return [`function.${name}`, ...values];
+    });
+    const described = Object.keys(dictionaries.en).filter((key) =>
+      /^(function|value)\./.test(key),
+    );
+    expect(described.sort()).toEqual(keys.sort());
+    expect(dictionaries.en['value.VLOOKUP.range_lookup.FALSE' as never]).toBe(
+      'Exact match',
+    );
   });
 });
