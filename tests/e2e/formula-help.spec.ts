@@ -134,6 +134,7 @@ test('arguments offer the values Excel offers, before the names', async ({
   // Enter commits the entry and moves down.
   await page.keyboard.press('Enter');
   await expect(page.getByRole('status')).toHaveText('D5');
+  await expectCell(page, 3, 3, 'D4 =VLOOKUP("Apple",A1:B10,2,FALSE');
 
   // The function FALSE still takes its parenthesis.
   await clickCell(page, 4, 3);

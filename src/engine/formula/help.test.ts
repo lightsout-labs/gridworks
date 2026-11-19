@@ -56,7 +56,11 @@ describe('argument hints', () => {
       current: -1,
       values: [],
     });
-    expect(argumentHint('PI', 0)).toMatchObject({ arguments: [], current: -1 });
+    expect(argumentHint('PI', 0)).toEqual({
+      arguments: [],
+      current: -1,
+      values: [],
+    });
     expect(argumentHint('NOPE', 0)).toBeNull();
   });
 
