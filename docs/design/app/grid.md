@@ -111,8 +111,9 @@ in the [architecture document](../../architecture.md).
   being typed is rarely complete. The list offers the defined names that
   start with the text typed, before the functions, and puts a name without
   a parenthesis; a name typed in full is not offered, so that Enter
-  commits it. The arrows move in the list, Tab or Enter or a click
-  chooses, and Escape closes it until the entry changes. The hint is that
+  commits it. The arrows move in the list, which scrolls the least that
+  keeps the highlighted entry in view, Tab or Enter or a click chooses,
+  and Escape closes it until the entry changes. The hint is that
   of the innermost function call whose parentheses hold the caret.
   Argument names are Excel's English ones in both languages, as function
   names are.

@@ -110,6 +110,53 @@ test('the list describes the highlighted function', async ({ page }) => {
   await expect(description(page)).toBeHidden();
 });
 
+/** Whether the highlighted entry lies wholly inside the list's visible area. */
+function highlightedInView(page: Page) {
+  return suggestions(page).evaluate((list) => {
+    const option = list.querySelector('[aria-selected="true"]')!;
+    const inner = list.getBoundingClientRect();
+    const outer = option.getBoundingClientRect();
+    return outer.top >= inner.top && outer.bottom <= inner.bottom;
+  });
+}
+
+/** Presses an arrow `times` times, the highlighted entry staying in view. */
+async function walk(page: Page, key: string, times: number) {
+  for (let step = 0; step < times; step++) {
+    await page.keyboard.press(key);
+    await expect.poll(() => highlightedInView(page)).toBe(true);
+  }
+}
+
+test('the list scrolls to keep the highlighted entry in view', async ({
+  page,
+}) => {
+  await openApp(page);
+  await clickCell(page, 0, 0);
+  await page.keyboard.type('=S');
+  const options = suggestions(page).getByRole('option');
+  await walk(page, 'ArrowDown', 12);
+  await expect(options.nth(12)).toHaveAttribute('aria-selected', 'true');
+  await expect(description(page)).toBeInViewport();
+  await expect(description(page)).not.toBeEmpty();
+  await walk(page, 'ArrowUp', 12);
+  await expect(options.first()).toHaveAttribute('aria-selected', 'true');
+  // Up from the first entry goes round to the last.
+  await walk(page, 'ArrowUp', 1);
+  await expect(options.last()).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+
+  // A list of argument values and names, typed in the formula bar.
+  await formulaBar(page).click();
+  await page.keyboard.type('=VLOOKUP("Apple",A1:B10,2,');
+  await walk(page, 'ArrowDown', 12);
+  await expect(options.nth(12)).toHaveAttribute('aria-selected', 'true');
+  await expect(description(page)).toBeInViewport();
+  await walk(page, 'ArrowUp', 12);
+  await expect(options.first()).toHaveAttribute('aria-selected', 'true');
+});
+
 test('arguments offer the values Excel offers, before the names', async ({
   page,
 }) => {
