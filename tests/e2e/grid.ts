@@ -168,3 +168,21 @@ export async function openStoredSheet(
   await page.goto('./#stored');
   await page.reload();
 }
+
+export const XLSX_TYPE =
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+/** Opens a file with the Open button of the File tab. */
+export async function openFile(
+  page: Page,
+  name: string,
+  bytes: Uint8Array,
+  mimeType = XLSX_TYPE,
+): Promise<void> {
+  await page.getByRole('tab', { name: 'File' }).click();
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Open' }).click();
+  await (
+    await chooser
+  ).setFiles({ name, mimeType, buffer: Buffer.from(bytes) });
+}

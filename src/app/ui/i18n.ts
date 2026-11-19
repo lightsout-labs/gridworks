@@ -29,6 +29,8 @@ const en = {
     'Changes could not be saved in this browser, perhaps because its storage is full. Save the workbook to your computer to keep them.',
   'storage.unreadable':
     'The workbooks stored in this browser could not be read. Please reload the page.',
+  'app.updated':
+    'A new version of Gridworks is ready. Reload the page to use it.',
   'start.new': 'New workbook',
   'start.new.tooltip': 'Start an empty workbook',
   'start.open': 'Open file',
@@ -531,6 +533,7 @@ const zh: Record<Key, string> = {
   'storage.failed':
     '无法在此浏览器中保存更改，可能是存储空间已满。请将工作簿保存到计算机以保留更改。',
   'storage.unreadable': '无法读取此浏览器中存储的工作簿，请重新加载页面。',
+  'app.updated': 'Gridworks 的新版本已就绪，请重新加载页面以使用新版本。',
   'start.new': '新建工作簿',
   'start.new.tooltip': '创建一个空白工作簿',
   'start.open': '打开文件',

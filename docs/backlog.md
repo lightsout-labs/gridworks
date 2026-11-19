@@ -1292,7 +1292,7 @@ Notes:
 
 ## S31: Working offline
 
-Status: Todo
+Status: In progress
 
 Acceptance criteria:
 - After one visit, the app loads and opens stored workbooks with the network

@@ -33,7 +33,7 @@ interface Open {
   readonly fresh?: boolean;
 }
 
-/** What the message bar says about the last file opened. */
+/** What the message bar says, about the last file opened or the app. */
 type Message =
   | { readonly kind: 'invalid'; readonly name: string }
   | { readonly kind: 'invalidName'; readonly text: string }
@@ -41,6 +41,7 @@ type Message =
   | { readonly kind: 'saveFailed' }
   | { readonly kind: 'storageFailed' }
   | { readonly kind: 'storageUnreadable' }
+  | { readonly kind: 'updated' }
   | {
       readonly kind: 'dropped';
       readonly name: string;
@@ -79,6 +80,11 @@ export function App({ platform }: { platform: Platform }) {
     shown.current = next?.id ?? null;
     setOpen(next);
   };
+
+  useEffect(
+    () => platform.listenToUpdates(() => setMessage({ kind: 'updated' })),
+    [platform],
+  );
 
   useEffect(() => {
     const onHashChange = () => setRoute(workbookIdOf(location.hash));
@@ -294,9 +300,11 @@ export function App({ platform }: { platform: Platform }) {
                 ? t('storage.failed')
                 : message.kind === 'storageUnreadable'
                   ? t('storage.unreadable')
-                  : droppedMessage(message.name, message.dropped, language)
+                  : message.kind === 'updated'
+                    ? t('app.updated')
+                    : droppedMessage(message.name, message.dropped, language)
       }
-      error={message.kind !== 'dropped'}
+      error={message.kind !== 'dropped' && message.kind !== 'updated'}
       onClose={() => setMessage(null)}
     />
   );

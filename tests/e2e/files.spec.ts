@@ -1,28 +1,18 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
 import { excelWorkbook, UNSUPPORTED_PARTS, xlsxFile } from '../xlsx';
-import { cellBackground, clickCell, enter, expectCell, openApp } from './grid';
-
-const XLSX_TYPE =
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+import {
+  cellBackground,
+  clickCell,
+  enter,
+  expectCell,
+  openApp,
+  openFile,
+  XLSX_TYPE,
+} from './grid';
 
 const sheetTabs = (page: Page) =>
   page.getByRole('tablist', { name: 'Sheets' }).getByRole('tab');
-
-/** Opens a file with the Open button of the File tab. */
-async function openFile(
-  page: Page,
-  name: string,
-  bytes: Uint8Array,
-  mimeType = XLSX_TYPE,
-): Promise<void> {
-  await page.getByRole('tab', { name: 'File' }).click();
-  const chooser = page.waitForEvent('filechooser');
-  await page.getByRole('button', { name: 'Open' }).click();
-  await (
-    await chooser
-  ).setFiles({ name, mimeType, buffer: Buffer.from(bytes) });
-}
 
 const budget = () =>
   xlsxFile({
