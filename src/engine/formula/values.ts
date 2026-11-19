@@ -64,6 +64,11 @@ export interface Args {
     reference: Reference,
     visit: (value: Value, row: number, col: number) => void,
   ): ErrorValue | undefined;
+  /**
+   * The formula of the first cell of an argument that must be a
+   * reference, `null` when it holds none, or the error the argument gives.
+   */
+  formula(index: number): string | null | ErrorValue;
   /** The value of one cell of the sheet of a reference. */
   cell(reference: Reference, row: number, col: number): Value;
   /**

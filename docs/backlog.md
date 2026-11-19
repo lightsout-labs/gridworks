@@ -1270,7 +1270,7 @@ Notes:
 
 ## S38: Fix ISFORMULA, and add FORMULATEXT
 
-Status: Todo
+Status: In progress
 Closes: #44
 
 Acceptance criteria:

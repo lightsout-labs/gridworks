@@ -902,6 +902,40 @@ describe('recalculation', () => {
     expect(show(0, 1)).toBe('12');
   });
 
+  it('tells whether a cell holds a formula, and gives its text', () => {
+    const { workbook, set, show } = setup();
+    set(1, 0, '=ISFORMULA(C1)');
+    set(1, 1, '=FORMULATEXT(C1)');
+    for (const input of ['2', 'text', '']) {
+      set(0, 2, input);
+      expect(show(1, 0)).toBe('FALSE');
+      expect(show(1, 1)).toBe('#N/A');
+    }
+    set(0, 2, '= 1 + 1');
+    expect(show(1, 0)).toBe('TRUE');
+    expect(show(1, 1)).toBe('=1+1');
+    set(2, 0, '=ISFORMULA(C1:D2)');
+    set(2, 1, '=FORMULATEXT(C1:D2)');
+    expect(show(2, 0)).toBe('TRUE');
+    expect(show(2, 1)).toBe('=1+1');
+    set(3, 0, '=ISFORMULA(1)');
+    set(3, 1, '=FORMULATEXT("C1")');
+    expect(show(3, 0)).toBe('#VALUE!');
+    expect(show(3, 1)).toBe('#VALUE!');
+    const { sheet: other } = workbook.execute({ type: 'addSheet', index: 1 });
+    workbook.execute({
+      type: 'setCell',
+      sheet: other,
+      row: 0,
+      col: 0,
+      input: '=SUM(B1:B2)',
+    });
+    set(4, 0, '=ISFORMULA(Sheet2!A1)');
+    set(4, 1, '=FORMULATEXT(Sheet2!A1)');
+    expect(show(4, 0)).toBe('TRUE');
+    expect(show(4, 1)).toBe('=SUM(B1:B2)');
+  });
+
   it('stores formulas as Excel writes them', () => {
     const { workbook, sheet, set } = setup();
     set(0, 0, '= sum( a1:b2 ) ');

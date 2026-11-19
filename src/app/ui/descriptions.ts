@@ -97,6 +97,7 @@ export const descriptionsEn = {
     'Rounds a number down to the nearest multiple of significance',
   'function.FLOOR.MATH':
     'Rounds a number down, to the nearest integer or to the nearest multiple of significance',
+  'function.FORMULATEXT': 'Returns a formula as a string',
   'function.GCD': 'Returns the greatest common divisor',
   'function.GEOMEAN':
     'Returns the geometric mean of an array or range of positive numeric data',
@@ -124,6 +125,8 @@ export const descriptionsEn = {
   'function.ISERROR':
     'Checks whether a value is an error, and returns TRUE or FALSE',
   'function.ISEVEN': 'Returns TRUE if the number is even',
+  'function.ISFORMULA':
+    'Checks whether a reference is to a cell containing a formula, and returns TRUE or FALSE',
   'function.ISLOGICAL':
     'Checks whether a value is a logical value (TRUE or FALSE), and returns TRUE or FALSE',
   'function.ISNA': 'Checks whether a value is #N/A, and returns TRUE or FALSE',
@@ -466,6 +469,7 @@ export const descriptionsZh: Record<keyof typeof descriptionsEn, string> = {
     '用定点小数格式将数值舍入成特定位数并返回带或不带逗号的文本',
   'function.FLOOR': '将参数向下舍入为最接近的指定基数的倍数',
   'function.FLOOR.MATH': '将数字向下舍入到最接近的整数或最接近的指定基数的倍数',
+  'function.FORMULATEXT': '作为字符串返回公式',
   'function.GCD': '返回最大公约数',
   'function.GEOMEAN': '返回一正数数组或数值区域的几何平均数',
   'function.HARMEAN': '返回一组正数的调和平均数：所有参数倒数平均值的倒数',
@@ -486,6 +490,7 @@ export const descriptionsZh: Record<keyof typeof descriptionsEn, string> = {
   'function.ISERR': '检测一个值是否为 #N/A 以外的错误，返回 TRUE 或 FALSE',
   'function.ISERROR': '检测一个值是否为错误，返回 TRUE 或 FALSE',
   'function.ISEVEN': '如果数字为偶数则返回 TRUE',
+  'function.ISFORMULA': '检查引用是否指向包含公式的单元格，返回 TRUE 或 FALSE',
   'function.ISLOGICAL':
     '检测一个值是否是逻辑值(TRUE 或 FALSE)，返回 TRUE 或 FALSE',
   'function.ISNA': '检测一个值是否为 #N/A，返回 TRUE 或 FALSE',

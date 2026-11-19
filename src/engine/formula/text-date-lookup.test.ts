@@ -608,10 +608,10 @@ describe('the library', () => {
 
   it('writes the prefix for files for the newer functions of these families', () => {
     const ast = parse(
-      'CONCAT(TEXTJOIN(",",TRUE,A1),XLOOKUP(1,A1:A2,B1:B2),DAYS(2,1),VLOOKUP(1,A1:B2,2))',
+      'CONCAT(TEXTJOIN(",",TRUE,A1),XLOOKUP(1,A1:A2,B1:B2),DAYS(2,1),VLOOKUP(1,A1:B2,2),ISFORMULA(A1),FORMULATEXT(A1))',
     )!;
     expect(print(ast, { file: true })).toBe(
-      '_xlfn.CONCAT(_xlfn.TEXTJOIN(",",TRUE,A1),_xlfn.XLOOKUP(1,A1:A2,B1:B2),_xlfn.DAYS(2,1),VLOOKUP(1,A1:B2,2))',
+      '_xlfn.CONCAT(_xlfn.TEXTJOIN(",",TRUE,A1),_xlfn.XLOOKUP(1,A1:A2,B1:B2),_xlfn.DAYS(2,1),VLOOKUP(1,A1:B2,2),_xlfn.ISFORMULA(A1),_xlfn.FORMULATEXT(A1))',
     );
   });
 });

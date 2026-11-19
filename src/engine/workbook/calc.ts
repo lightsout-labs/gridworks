@@ -321,6 +321,11 @@ export class Calculation {
         return undefined;
       },
       name: this.names,
+      formula: (name: string | undefined, row: number, col: number) => {
+        const sheet = resolve(name);
+        if (!sheet) return REF_ERROR;
+        return sheet.formulas.get(key(row, col))?.text ?? null;
+      },
     };
   }
 

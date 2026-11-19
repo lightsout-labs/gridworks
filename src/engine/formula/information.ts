@@ -27,10 +27,25 @@ export const INFORMATION: Record<string, Spec> = {
   'ERROR.TYPE': of((value) =>
     isError(value) ? (ERROR_TYPES[value.error] ?? NA) : NA,
   ),
+  FORMULATEXT: {
+    min: 1,
+    max: 1,
+    prefixed: true,
+    call: (args) => args.formula(0) ?? NA,
+  },
   ISBLANK: of((value) => value === null),
   ISERR: of((value) => isError(value) && value.error !== NA.error),
   ISERROR: of(isError),
   ISEVEN: parity(true),
+  ISFORMULA: {
+    min: 1,
+    max: 1,
+    prefixed: true,
+    call: (args) => {
+      const formula = args.formula(0);
+      return isError(formula) ? formula : formula !== null;
+    },
+  },
   ISLOGICAL: of((value) => typeof value === 'boolean'),
   ISNA: of((value) => isError(value) && value.error === NA.error),
   ISNONTEXT: of((value) => typeof value !== 'string'),
