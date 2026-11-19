@@ -1,6 +1,9 @@
+import { descriptionsEn, descriptionsZh } from './descriptions';
+
 export type Language = 'en' | 'zh';
 
 const en = {
+  ...descriptionsEn,
   ribbon: 'Ribbon',
   'tab.file': 'File',
   'tab.file.tooltip': 'Open and save workbooks',
@@ -224,6 +227,7 @@ const en = {
   'formulaBar.tooltip': 'Contents of the active cell',
   'formula.functions': 'Functions',
   'formula.arguments': 'Arguments',
+  'formula.description': 'Description',
   'tab.formulas': 'Formulas',
   'tab.formulas.tooltip': 'Functions to use in formulas',
   'formulas.library': 'Function library',
@@ -506,6 +510,7 @@ const en = {
 export type Key = keyof typeof en;
 
 const zh: Record<Key, string> = {
+  ...descriptionsZh,
   ribbon: '功能区',
   'tab.file': '文件',
   'tab.file.tooltip': '打开和保存工作簿',
@@ -718,6 +723,7 @@ const zh: Record<Key, string> = {
   'formulaBar.tooltip': '活动单元格的内容',
   'formula.functions': '函数',
   'formula.arguments': '参数',
+  'formula.description': '说明',
   'tab.formulas': '公式',
   'tab.formulas.tooltip': '在公式中使用的函数',
   'formulas.library': '函数库',

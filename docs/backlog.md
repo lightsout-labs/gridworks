@@ -1224,7 +1224,7 @@ Notes:
 
 ## S36: Argument values and function descriptions in formula help
 
-Status: Todo
+Status: Done
 Closes: #42
 
 Acceptance criteria:
@@ -1243,6 +1243,13 @@ Acceptance criteria:
   Excel does, for every function of the library. (R16)
 - The descriptions of functions and values are translated in both
   languages, and the list looks right in both themes. (R41, R42, R43)
+
+Notes:
+- A function added to the library later needs a `function.<NAME>`
+  description in `src/app/ui/descriptions.ts`, in both languages; the
+  dictionaries' test fails without it.
+- A formula committed without its closing parentheses is stored as text;
+  Excel adds them. No slice covers this yet.
 
 ## S31: Working offline
 

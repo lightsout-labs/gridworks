@@ -44,6 +44,7 @@ describe('argument hints', () => {
     expect(argumentHint('sum', 0)).toEqual({
       arguments: ['number1', '[number2]', '...'],
       current: 0,
+      values: [],
     });
     // Repeated arguments are those after the required ones.
     expect(argumentHint('SUM', 7)?.current).toBe(1);
@@ -53,8 +54,13 @@ describe('argument hints', () => {
     expect(argumentHint('IF', 3)).toEqual({
       arguments: ['logical_test', 'value_if_true', '[value_if_false]'],
       current: -1,
+      values: [],
     });
-    expect(argumentHint('PI', 0)).toEqual({ arguments: [], current: -1 });
+    expect(argumentHint('PI', 0)).toEqual({
+      arguments: [],
+      current: -1,
+      values: [],
+    });
     expect(argumentHint('NOPE', 0)).toBeNull();
   });
 
@@ -84,5 +90,51 @@ describe('argument hints', () => {
       }
       expect([name, facts.every(Boolean)]).toEqual([name, true]);
     }
+  });
+});
+
+describe('argument values', () => {
+  it('gives the values Excel offers for the current argument', () => {
+    expect(argumentHint('vlookup', 3)?.values).toEqual(['TRUE', 'FALSE']);
+    expect(argumentHint('MATCH', 2)?.values).toEqual(['1', '0', '-1']);
+    expect(argumentHint('XLOOKUP', 5)?.values).toEqual(['1', '-1', '2', '-2']);
+    expect(argumentHint('ADDRESS', 3)?.values).toEqual(['TRUE', 'FALSE']);
+    // Other arguments, and arguments past the last, have none.
+    expect(argumentHint('VLOOKUP', 2)?.values).toEqual([]);
+    expect(argumentHint('VLOOKUP', 4)?.values).toEqual([]);
+    expect(argumentHint('SUM', 0)?.values).toEqual([]);
+  });
+
+  it('offers values for every argument for which Excel offers them', () => {
+    const offered = functions.flatMap((name) => {
+      const { arguments: shown } = argumentHint(name, 0)!;
+      return shown.flatMap((argument, index) =>
+        argumentHint(name, index)!.values.length > 0
+          ? [`${name} ${argument.replace(/[[\]]/g, '')}`]
+          : [],
+      );
+    });
+    expect(offered.sort()).toEqual(
+      [
+        'ADDRESS a1',
+        'ADDRESS abs_num',
+        'DAYS360 method',
+        'HLOOKUP range_lookup',
+        'MATCH match_type',
+        'NETWORKDAYS.INTL weekend',
+        'RANK order',
+        'RANK.AVG order',
+        'RANK.EQ order',
+        'VLOOKUP range_lookup',
+        'WEEKDAY return_type',
+        'WEEKNUM return_type',
+        'WORKDAY.INTL weekend',
+        'XLOOKUP match_mode',
+        'XLOOKUP search_mode',
+        'XMATCH match_mode',
+        'XMATCH search_mode',
+        'YEARFRAC basis',
+      ].sort(),
+    );
   });
 });

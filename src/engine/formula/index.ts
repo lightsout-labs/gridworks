@@ -1,7 +1,7 @@
 import type { ErrorValue, Value } from '../value';
 import { areaOf, evaluate, SHEET_COLUMNS, SHEET_ROWS } from './evaluate';
 import { LIBRARY } from './library';
-import { SIGNATURES } from './signatures';
+import { ARGUMENT_VALUES, SIGNATURES } from './signatures';
 import {
   columnName,
   error,
@@ -571,14 +571,18 @@ export function tokenize(text: string): Token[] {
 
 /**
  * The arguments of a library function as Excel's hint names them, optional
- * ones in brackets and `...` when they repeat, and which of them the
- * argument at `index` is: -1 when the function takes no more. `null` for a
- * name that is not in the library.
+ * ones in brackets and `...` when they repeat, which of them the argument
+ * at `index` is (-1 when the function takes no more), and the values Excel
+ * offers for it. `null` for a name that is not in the library.
  */
 export function argumentHint(
   name: string,
   index: number,
-): { arguments: readonly string[]; current: number } | null {
+): {
+  arguments: readonly string[];
+  current: number;
+  values: readonly string[];
+} | null {
   const upper = name.toUpperCase();
   const signature = SIGNATURES[upper];
   const spec = LIBRARY[upper];
@@ -591,7 +595,9 @@ export function argumentHint(
     const repeated = named.length - spec.min;
     current = spec.min + ((index - spec.min) % repeated);
   }
-  return { arguments: shown, current };
+  const argument = shown[current]?.replace(/^\[|\]$/g, '');
+  const values = (argument && ARGUMENT_VALUES[upper]?.[argument]) || [];
+  return { arguments: shown, current, values };
 }
 
 // ---------------------------------------------------------------------------

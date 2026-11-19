@@ -192,3 +192,43 @@ export const SIGNATURES: Readonly<Record<string, string>> = {
   YEAR: 'serial_number',
   YEARFRAC: 'start_date, end_date, [basis]',
 };
+
+const LOOKUP_MODES = {
+  match_mode: ['0', '-1', '1', '2'],
+  search_mode: ['1', '-1', '2', '-2'],
+};
+const RANK_ORDER = { order: ['0', '1'] };
+const WEEKENDS = {
+  weekend: [
+    ...['1', '2', '3', '4', '5', '6', '7'],
+    ...['11', '12', '13', '14', '15', '16', '17'],
+  ],
+};
+
+/**
+ * The values Excel offers in the list for some arguments, by function and
+ * argument name, in Excel's order.
+ */
+export const ARGUMENT_VALUES: Readonly<
+  Record<string, Readonly<Record<string, readonly string[]>>>
+> = {
+  ADDRESS: { abs_num: ['1', '2', '3', '4'], a1: ['TRUE', 'FALSE'] },
+  DAYS360: { method: ['FALSE', 'TRUE'] },
+  HLOOKUP: { range_lookup: ['TRUE', 'FALSE'] },
+  MATCH: { match_type: ['1', '0', '-1'] },
+  'NETWORKDAYS.INTL': WEEKENDS,
+  RANK: RANK_ORDER,
+  'RANK.AVG': RANK_ORDER,
+  'RANK.EQ': RANK_ORDER,
+  VLOOKUP: { range_lookup: ['TRUE', 'FALSE'] },
+  WEEKDAY: {
+    return_type: ['1', '2', '3', '11', '12', '13', '14', '15', '16', '17'],
+  },
+  WEEKNUM: {
+    return_type: ['1', '2', '11', '12', '13', '14', '15', '16', '17', '21'],
+  },
+  'WORKDAY.INTL': WEEKENDS,
+  XLOOKUP: LOOKUP_MODES,
+  XMATCH: LOOKUP_MODES,
+  YEARFRAC: { basis: ['0', '1', '2', '3', '4'] },
+};

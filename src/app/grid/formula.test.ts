@@ -10,7 +10,7 @@ import {
 describe('function completion', () => {
   it('lists the functions that start with the name typed at the caret', () => {
     const { completion } = formulaHelp('=1+su', 5);
-    expect(completion).toMatchObject({ start: 3, end: 5 });
+    expect(completion!.values).toEqual([]);
     expect(completion!.names).toContain('SUM');
     expect(completion!.names).toContain('SUMIFS');
     expect(completion!.names.every((name) => name.startsWith('SU'))).toBe(true);
@@ -52,10 +52,63 @@ describe('function completion', () => {
     ]);
     // Nothing is offered for a name typed in full.
     expect(formulaHelp('=1+tax', 6, names).completion).toBeNull();
-    expect(complete('=1+sa*2', 5, 'Sales', true)).toEqual({
+    expect(complete('=1+sa*2', 5, 'Sales', 'defined')).toEqual({
       text: '=1+Sales*2',
       caret: 8,
     });
+  });
+});
+
+describe('argument value completion', () => {
+  const lookup = '=VLOOKUP("Apple",A1:B10,2,';
+
+  it('offers the values of the argument first, then every name', () => {
+    const { completion } = formulaHelp(lookup, lookup.length, ['Tax']);
+    expect(completion).toMatchObject({
+      values: ['TRUE', 'FALSE'],
+      definedNames: ['Tax'],
+    });
+    expect(completion!.names).toContain('SUM');
+  });
+
+  it('narrows the values and names to those that start with the text typed', () => {
+    const f = formulaHelp(`${lookup}f`, lookup.length + 1).completion!;
+    expect(f.values).toEqual(['FALSE']);
+    expect(f.names).toContain('FALSE');
+    expect(f.names.every((name) => name.startsWith('F'))).toBe(true);
+    // A space before the value is not part of it.
+    expect(
+      formulaHelp(`${lookup} T`, lookup.length + 2).completion!.values,
+    ).toEqual(['TRUE']);
+    const match = '=MATCH(A1,B1:B9,-';
+    expect(formulaHelp(match, match.length).completion).toEqual({
+      values: ['-1'],
+      definedNames: [],
+      names: [],
+    });
+    // Text that starts no value offers none.
+    expect(
+      formulaHelp(`${lookup}A1+T`, lookup.length + 4).completion!.values,
+    ).toEqual([]);
+  });
+
+  it('offers neither the value nor the function for a value typed in full', () => {
+    const text = `${lookup}FALSE`;
+    expect(formulaHelp(text, text.length).completion).toBeNull();
+    // Elsewhere, the function is still offered.
+    expect(formulaHelp('=FALSE', 6).completion!.names).toEqual(['FALSE']);
+  });
+
+  it('puts the value chosen in place of the text typed, without a parenthesis', () => {
+    expect(
+      complete(`${lookup} f)`, lookup.length + 2, 'FALSE', 'value'),
+    ).toEqual({ text: `${lookup} FALSE)`, caret: lookup.length + 6 });
+    expect(complete('=MATCH(A1,B1:B9,-', 17, '-1', 'value')).toEqual({
+      text: '=MATCH(A1,B1:B9,-1',
+      caret: 18,
+    });
+    // The function of the same name still takes its parenthesis.
+    expect(complete('=FAL', 4, 'FALSE')).toEqual({ text: '=FALSE(', caret: 7 });
   });
 });
 
@@ -66,6 +119,7 @@ describe('argument hint', () => {
       name: 'SUM',
       arguments: ['number1', '[number2]', '...'],
       current: 1,
+      values: [],
     });
     expect(hint('=IF(A1,SUM(1),')).toMatchObject({ name: 'IF', current: 2 });
     expect(hint('=IF(A1,SUM(1,')).toMatchObject({ name: 'SUM', current: 1 });

@@ -27,12 +27,13 @@ export interface Highlight {
 export interface FormulaHelp {
   readonly references: readonly Highlight[];
   /**
-   * The defined names, and the functions, whose names start with the name
-   * typed at the caret.
+   * The values Excel offers for the argument at the caret that start with
+   * the text typed in it, then the defined names and the functions whose
+   * names start with the name typed at the caret: every one, in an
+   * argument that offers values, before anything is typed.
    */
   readonly completion: {
-    readonly start: number;
-    readonly end: number;
+    readonly values: readonly string[];
     readonly definedNames: readonly string[];
     readonly names: readonly string[];
   } | null;
@@ -42,6 +43,8 @@ export interface FormulaHelp {
     readonly arguments: readonly string[];
     /** Which argument the caret is in, or -1 past the last one. */
     readonly current: number;
+    /** The values Excel offers for that argument. */
+    readonly values: readonly string[];
   } | null;
 }
 
@@ -157,19 +160,26 @@ export function cycleReference(text: string, caret: number): Edit | null {
   return replace(text, token.start, token.end, cycled);
 }
 
+/** What a choice of the list is: each goes in its own way. */
+export type Completion = 'function' | 'defined' | 'value';
+
 /**
  * Puts a function and its opening parenthesis in place of the name typed,
- * or a defined name, without one, when `defined`.
+ * a defined name without one, or an argument's value in place of the text
+ * typed in the argument.
  */
 export function complete(
   text: string,
   caret: number,
   name: string,
-  defined = false,
+  kind: Completion = 'function',
 ): Edit {
-  const tokens = formulaTokens(text);
-  const start = (tokens && nameStart(text, tokens, caret)) ?? caret;
-  return replace(text, start, caret, defined ? name : `${name}(`);
+  const tokens = formulaTokens(text) ?? [];
+  const start =
+    kind === 'value'
+      ? (argumentAt(text, tokens, caret)?.start ?? caret)
+      : (nameStart(text, tokens, caret) ?? caret);
+  return replace(text, start, caret, kind === 'function' ? `${name}(` : name);
 }
 
 /** The tokens of a formula, placed in the whole text, or `null`. */
@@ -214,17 +224,40 @@ function completion(
   caret: number,
   definedNames: readonly string[],
 ): FormulaHelp['completion'] {
+  const argument = argumentAt(text, tokens, caret);
+  const offered = argument?.values ?? [];
+  const typed = argument
+    ? text.slice(argument.start, caret).toUpperCase()
+    : null;
+  // A value typed in full is not offered, so that Enter commits it.
+  const values = offered.filter(
+    (value) => value.startsWith(typed!) && value !== typed,
+  );
   const start = nameStart(text, tokens, caret);
-  if (start === null) return null;
-  const prefix = text.slice(start, caret).toUpperCase();
-  // A name typed in full is not offered, so that Enter commits it.
-  const defined = definedNames.filter((name) => {
-    const upper = name.toUpperCase();
-    return upper.startsWith(prefix) && upper !== prefix;
-  });
-  const names = functions.filter((name) => name.startsWith(prefix));
-  return defined.length > 0 || names.length > 0
-    ? { start, end: caret, definedNames: defined, names }
+  const prefix =
+    start !== null
+      ? text.slice(start, caret).toUpperCase()
+      : offered.length > 0 && typed === ''
+        ? ''
+        : null;
+  // So is a name typed in full, or a function named as such a value.
+  const defined =
+    prefix === null
+      ? []
+      : definedNames.filter((name) => {
+          const upper = name.toUpperCase();
+          return upper.startsWith(prefix) && upper !== prefix;
+        });
+  const names =
+    prefix === null
+      ? []
+      : functions.filter(
+          (name) =>
+            name.startsWith(prefix) &&
+            !(name === typed && offered.includes(name)),
+        );
+  return values.length > 0 || defined.length > 0 || names.length > 0
+    ? { values, definedNames: defined, names }
     : null;
 }
 
@@ -244,7 +277,20 @@ function nameStart(
 }
 
 function hint(tokens: Token[], caret: number): FormulaHelp['hint'] {
-  const calls: { name: string | null; index: number }[] = [];
+  const call = callAt(tokens, caret);
+  const found = call && argumentHint(call.name, call.index);
+  return found ? { name: call.name.toUpperCase(), ...found } : null;
+}
+
+/**
+ * The innermost function call whose parentheses hold the caret, which of
+ * its arguments the caret is in, and where that argument starts.
+ */
+function callAt(
+  tokens: Token[],
+  caret: number,
+): { name: string; index: number; start: number } | undefined {
+  const calls: { name: string | null; index: number; start: number }[] = [];
   let previous: Token | undefined;
   for (const token of tokens) {
     if (token.end > caret) break;
@@ -252,17 +298,36 @@ function hint(tokens: Token[], caret: number): FormulaHelp['hint'] {
       calls.push({
         name: previous?.kind === 'function' ? previous.name : null,
         index: 0,
+        start: token.end,
       });
     } else if (token.kind === 'close') {
       calls.pop();
     } else if (token.kind === 'comma' && calls.length > 0) {
       calls[calls.length - 1]!.index++;
+      calls[calls.length - 1]!.start = token.end;
     }
     previous = token;
   }
-  const call = calls.findLast((each) => each.name !== null);
-  const found = call && argumentHint(call.name!, call.index);
-  return found ? { name: call.name!.toUpperCase(), ...found } : null;
+  return calls.findLast(
+    (each): each is { name: string; index: number; start: number } =>
+      each.name !== null,
+  );
+}
+
+/**
+ * The argument at the caret, where its text starts after any spaces, and
+ * the values Excel offers for it; `undefined` outside a function call.
+ */
+function argumentAt(
+  text: string,
+  tokens: Token[],
+  caret: number,
+): { start: number; values: readonly string[] } | undefined {
+  const call = callAt(tokens, caret);
+  if (!call) return undefined;
+  const spaces = /^\s*/.exec(text.slice(call.start, caret))![0].length;
+  const values = argumentHint(call.name, call.index)?.values ?? [];
+  return { start: call.start + spaces, values };
 }
 
 /** The next form of a reference, by its first corner: `[col, row]` absolute. */
