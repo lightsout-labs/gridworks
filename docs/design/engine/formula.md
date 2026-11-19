@@ -26,6 +26,8 @@ and the decisions that span modules, are in the
   that a whole column costs only its cells and `SUMIF` can pair its ranges
   cell by cell. A lookup reads only the row or column it searches.
   `INDEX`, `CHOOSE` and `XLOOKUP` give references, as in Excel.
+  `ISFORMULA` and `FORMULATEXT` read the formula of a cell, as printed for
+  the formula bar, from the context of the evaluation.
 - **No function is volatile.** The dependency graph only knows the cells
   a formula names, so `TODAY` and `NOW` read the clock when their formula
   is calculated (on entry, on a change to what it reads, and when the

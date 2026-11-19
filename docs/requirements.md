@@ -1,6 +1,6 @@
 # Requirements
 
-Status: Approved
+Status: Draft
 
 ## Goal
 
@@ -304,3 +304,5 @@ requirement above.
   value, while choosing the function `TRUE` or `FALSE` still inserts its
   parenthesis. The function list also shows each function's description,
   and values and descriptions are translated into both languages.
+- **Formula functions (#44)**: `ISFORMULA` is added, and with it
+  `FORMULATEXT`, which reads the same thing; `SHEET` and `SHEETS` are not.
