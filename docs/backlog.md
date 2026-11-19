@@ -1270,7 +1270,7 @@ Notes:
 
 ## S38: Fix ISFORMULA, and add FORMULATEXT
 
-Status: In progress
+Status: Done
 Closes: #44
 
 Acceptance criteria:
@@ -1285,6 +1285,10 @@ Acceptance criteria:
 - Both are offered while typing a formula, with their arguments and
   descriptions in both languages, and are saved to and read from `.xlsx`
   files with the `_xlfn.` prefix. (R16, R30)
+
+Notes:
+- A function that reads a cell's formula rather than its value uses
+  `Args.formula`, which the workbook fills through `Context.formula`.
 
 ## S31: Working offline
 

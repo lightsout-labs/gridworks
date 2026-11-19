@@ -918,6 +918,8 @@ describe('recalculation', () => {
     set(2, 1, '=FORMULATEXT(C1:D2)');
     expect(show(2, 0)).toBe('TRUE');
     expect(show(2, 1)).toBe('=1+1');
+    set(0, 2, '=2');
+    expect(show(1, 1)).toBe('=2');
     set(3, 0, '=ISFORMULA(1)');
     set(3, 1, '=FORMULATEXT("C1")');
     expect(show(3, 0)).toBe('#VALUE!');
