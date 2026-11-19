@@ -1264,6 +1264,24 @@ Acceptance criteria:
 - The same holds in a list of argument values and names, and when editing
   in the formula bar. (R16)
 
+## S38: Fix ISFORMULA, and add FORMULATEXT
+
+Status: Todo
+Closes: #44
+
+Acceptance criteria:
+- With `=1+1` in C1, `=ISFORMULA(C1)` gives `TRUE`; with `2`, text or
+  nothing in C1 it gives `FALSE`, and it changes when C1 does. It works on
+  another sheet (`=ISFORMULA(Sheet2!A1)`), reads the first cell of a range,
+  and gives `#VALUE!` for an argument that is not a reference, as
+  `=ISFORMULA(1)`, as Excel does. (R12, R14)
+- `=FORMULATEXT(C1)` gives `=1+1`, the formula as the formula bar shows
+  it, and `#N/A` when C1 has no formula; otherwise it reads its argument
+  as `ISFORMULA` does. (R12)
+- Both are offered while typing a formula, with their arguments and
+  descriptions in both languages, and are saved to and read from `.xlsx`
+  files with the `_xlfn.` prefix. (R16, R30)
+
 ## S31: Working offline
 
 Status: Todo
