@@ -7,7 +7,7 @@ import {
   Download,
   FileText,
   FolderOpen,
-  House,
+  Files,
   Printer,
   SquareFunction,
   Moon,
@@ -69,7 +69,7 @@ export function Ribbon({
   theme,
   onTheme,
   busy,
-  onHome,
+  onWorkbooks,
   onOpen,
   onSave,
   onExportCsv,
@@ -86,8 +86,8 @@ export function Ribbon({
   onTheme: (theme: Theme) => void;
   /** Whether a file is being opened or saved, when neither can start. */
   busy: boolean;
-  /** Goes to the start screen. */
-  onHome: () => void;
+  /** Opens the workbook dialog. */
+  onWorkbooks: () => void;
   onOpen: () => void;
   onSave: () => void;
   /** Saves the active sheet as a `.csv` file. */
@@ -152,11 +152,11 @@ export function Ribbon({
       <Tabs.Content className={styles.ribbonPanel} value="file">
         <Group label={t('file.group')}>
           <Command
-            icon={House}
-            label={t('file.home')}
-            tooltip={t('file.home.tooltip')}
+            icon={Files}
+            label={t('file.workbooks')}
+            tooltip={t('file.workbooks.tooltip')}
             disabled={false}
-            onRun={onHome}
+            onRun={onWorkbooks}
             labeled
           />
           <Command
@@ -337,7 +337,9 @@ function TitleBox({ workbook }: { workbook: Workbook }) {
   const [typed, setTyped] = useState(name);
   useEffect(() => {
     setTyped(name);
-    document.title = `${name} - Gridworks`;
+    // The empty interface behind the workbook dialog has a workbook with
+    // no name, as none is open.
+    document.title = name ? `${name} - Gridworks` : 'Gridworks';
   }, [name]);
   const keep = () => {
     const trimmed = typed.trim();

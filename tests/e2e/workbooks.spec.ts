@@ -7,10 +7,13 @@ import {
   openApp,
 } from './grid';
 
+const dialog = (page: Page) =>
+  page.getByRole('dialog', { name: 'Workbooks', exact: true });
+
 const stored = (page: Page) =>
   page.getByRole('list', { name: 'Workbooks in this browser' });
 
-/** The names of the workbooks the start screen lists, in order. */
+/** The names of the workbooks the dialog lists, in order. */
 const listed = (page: Page) =>
   stored(page)
     .getByRole('listitem')
@@ -18,9 +21,10 @@ const listed = (page: Page) =>
 
 const titleBox = (page: Page) => page.getByLabel('Workbook name');
 
-async function goHome(page: Page): Promise<void> {
+/** Opens the workbook dialog from the File tab. */
+async function openDialog(page: Page): Promise<void> {
   await page.getByRole('tab', { name: 'File' }).click();
-  await page.getByRole('button', { name: 'Start screen' }).click();
+  await page.getByRole('button', { name: 'Workbooks', exact: true }).click();
   await expect(stored(page)).toBeVisible();
 }
 
@@ -31,18 +35,32 @@ async function action(page: Page, workbook: string, item: string) {
   await page.getByRole('menuitem', { name: item }).click();
 }
 
+/** The element a click at the middle of `control` would reach. */
+const reached = (control: Locator) =>
+  control.evaluate((node) => {
+    const box = node.getBoundingClientRect();
+    const top = document.elementFromPoint(
+      box.x + box.width / 2,
+      box.y + box.height / 2,
+    );
+    return {
+      self: top === node || node.contains(top),
+      background: top ? getComputedStyle(top).backgroundColor : '',
+    };
+  });
+
 test.use({ locale: 'en-US' });
 
-test('the start screen creates, lists, opens, renames, duplicates and deletes workbooks', async ({
+test('the dialog creates, lists, opens, renames, duplicates and deletes workbooks', async ({
   page,
 }) => {
   await page.goto('./');
   await expect(page).toHaveTitle('Gridworks');
-  await expect(page.getByText('No workbooks yet')).toBeVisible();
+  await expect(dialog(page).getByText('No workbooks yet')).toBeVisible();
 
   // A new workbook, named in the title area, which the page title follows.
   await page.getByRole('button', { name: 'New workbook' }).click();
-  await expect(page.locator('canvas')).toBeVisible();
+  await expect(dialog(page)).toHaveCount(0);
   await expect(titleBox(page)).toHaveValue('Book1');
   await expect(page).toHaveTitle('Book1 - Gridworks');
   await clickCell(page, 0, 0);
@@ -55,26 +73,26 @@ test('the start screen creates, lists, opens, renames, duplicates and deletes wo
   await titleBox(page).press('Enter');
   await expect(titleBox(page)).toHaveValue('Budget');
 
-  await goHome(page);
-  await expect(page).toHaveTitle('Gridworks');
+  await openDialog(page);
   await page.getByRole('button', { name: 'New workbook' }).click();
   await expect(titleBox(page)).toHaveValue('Book1');
   await clickCell(page, 0, 0);
   await enter(page, 'two');
 
   // Most recent first, each with its modification time.
-  await goHome(page);
+  await openDialog(page);
   await expect(listed(page)).toHaveText([/^Book1/, /^Budget/]);
   await expect(stored(page).getByRole('listitem').first()).toContainText(
     /\d:\d\d\s[AP]M/,
   );
 
   await listed(page).filter({ hasText: 'Budget' }).click();
+  await expect(dialog(page)).toHaveCount(0);
   await expect(titleBox(page)).toHaveValue('Budget');
   await expectCell(page, 0, 0, 'A1 one');
 
   // Duplicate and rename, in the menu of each workbook.
-  await goHome(page);
+  await openDialog(page);
   await action(page, 'Budget', 'Duplicate');
   await expect(listed(page)).toHaveText([
     /^Budget \(copy\)/,
@@ -82,16 +100,16 @@ test('the start screen creates, lists, opens, renames, duplicates and deletes wo
     /^Budget/,
   ]);
   await action(page, 'Budget (copy)', 'Rename');
-  const dialog = page.getByRole('dialog', { name: 'Rename workbook' });
-  await dialog.getByLabel('Name').fill('Plan');
-  await dialog.getByRole('button', { name: 'Rename' }).click();
+  const rename = page.getByRole('dialog', { name: 'Rename workbook' });
+  await rename.getByLabel('Name').fill('Plan');
+  await rename.getByRole('button', { name: 'Rename' }).click();
   await expect(listed(page)).toHaveText([/^Plan/, /^Book1/, /^Budget/]);
   await listed(page).filter({ hasText: 'Plan' }).click();
   await expect(page).toHaveTitle('Plan - Gridworks');
   await expectCell(page, 0, 0, 'A1 one');
 
   // Deleting asks first.
-  await goHome(page);
+  await openDialog(page);
   await action(page, 'Book1', 'Delete');
   const confirm = page.getByRole('alertdialog', { name: 'Delete workbook' });
   await expect(confirm).toContainText('Book1');
@@ -101,16 +119,95 @@ test('the start screen creates, lists, opens, renames, duplicates and deletes wo
   await confirm.getByRole('button', { name: 'Delete' }).click();
   await expect(listed(page)).toHaveText([/^Plan/, /^Budget/]);
 
+  // The open workbook is renamed in place, and cannot be deleted.
+  await action(page, 'Plan', 'Rename');
+  await rename.getByLabel('Name').fill('Forecast');
+  await rename.getByRole('button', { name: 'Rename' }).click();
+  await expect(listed(page)).toHaveText([/^Forecast/, /^Budget/]);
+  await expect(titleBox(page)).toHaveValue('Forecast');
+  await page.getByRole('button', { name: 'More actions for Forecast' }).click();
+  const deleteItem = page.getByRole('menuitem', { name: 'Delete' });
+  await expect(deleteItem).toBeDisabled();
+  expect(
+    await deleteItem.evaluate((node) => getComputedStyle(node).opacity),
+  ).toBe('0.5');
+  await page.keyboard.press('Escape');
+
   // The list outlives a reload, and so does an open workbook.
-  await page.reload();
-  await expect(listed(page)).toHaveText([/^Plan/, /^Budget/]);
+  await page.goto('./');
+  await expect(listed(page)).toHaveText([/^Forecast/, /^Budget/]);
   await listed(page).filter({ hasText: 'Budget' }).click();
   await page.reload();
   await expectCell(page, 0, 0, 'A1 one');
   await expect(titleBox(page)).toHaveValue('Budget');
 });
 
-test('the start screen opens a file from disk as a new stored workbook', async ({
+test('with no workbook open, the dialog shows over the dimmed, inactive interface and stays open', async ({
+  page,
+}) => {
+  await page.goto('./');
+  await expect(dialog(page)).toBeVisible();
+  // The ribbon, an empty grid and the status bar are behind it, covered by
+  // a dimming layer that takes every click.
+  const fileTab = page.getByRole('tab', { name: 'File', includeHidden: true });
+  await expect(fileTab).toBeAttached();
+  await expect(page.locator('canvas')).toBeAttached();
+  await expect(
+    page.getByRole('button', { name: 'Zoom in', includeHidden: true }),
+  ).toBeAttached();
+  const covered = await reached(fileTab);
+  expect(covered.self).toBe(false);
+  expect(covered.background).toMatch(/rgba\(0, 0, 0, 0\.[1-9]/);
+  await page.mouse.click(5, 5);
+  await expect(dialog(page)).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(dialog(page)).toBeVisible();
+  await expect(dialog(page).getByRole('button', { name: 'Close' })).toHaveCount(
+    0,
+  );
+});
+
+test('the File tab opens the dialog over the workbook, which Esc, the close button or a click outside return to', async ({
+  page,
+}) => {
+  await openApp(page);
+  await clickCell(page, 0, 0);
+  await enter(page, 'kept');
+  await clickCell(page, 1, 1);
+  const closes = [
+    () => page.keyboard.press('Escape'),
+    () => dialog(page).getByRole('button', { name: 'Close' }).click(),
+    () => page.mouse.click(5, 5),
+  ];
+  for (const close of closes) {
+    await openDialog(page);
+    await expect(listed(page)).toHaveText([/^Book1/]);
+    await close();
+    await expect(dialog(page)).toHaveCount(0);
+    await expect(titleBox(page)).toHaveValue('Book1');
+    await expect(page.getByLabel('Name box')).toHaveValue('B2');
+  }
+  await expectCell(page, 0, 0, 'A1 kept');
+  // Behind the dialog the workbook takes no shortcut: no undo, no find,
+  // no print.
+  await openDialog(page);
+  for (const key of ['ControlOrMeta+z', 'ControlOrMeta+f', 'ControlOrMeta+p']) {
+    await page.keyboard.press(key);
+  }
+  await page.keyboard.press('Escape');
+  await expect(dialog(page)).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByLabel('Find what')).toHaveCount(0);
+  await expectCell(page, 0, 0, 'A1 kept');
+
+  // Opening the workbook shown returns to it too.
+  await openDialog(page);
+  await listed(page).click();
+  await expect(dialog(page)).toHaveCount(0);
+  await expectCell(page, 0, 0, 'A1 kept');
+});
+
+test('the dialog opens a file from disk as a new stored workbook', async ({
   page,
 }) => {
   await page.goto('./');
@@ -125,8 +222,24 @@ test('the start screen opens a file from disk as a new stored workbook', async (
   });
   await expect(titleBox(page)).toHaveValue('Prices');
   await expectCell(page, 0, 1, 'B1 3');
-  await goHome(page);
+  await openDialog(page);
   await expect(listed(page)).toHaveText([/^Prices/]);
+});
+
+test('a file that cannot be read is reported in the dialog', async ({
+  page,
+}) => {
+  await page.goto('./');
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Open file' }).click();
+  await (
+    await chooser
+  ).setFiles({
+    name: 'Broken.xlsx',
+    mimeType: 'application/octet-stream',
+    buffer: Buffer.from('not a zip'),
+  });
+  await expect(dialog(page).getByRole('alert')).toContainText('Broken.xlsx');
 });
 
 test('a failure to save in the browser is shown', async ({ page }) => {
@@ -144,24 +257,26 @@ test('a failure to save in the browser is shown', async ({ page }) => {
   );
 });
 
-test('the start screen is translated and follows the theme', async ({
-  page,
-}) => {
+test('the dialog is translated and follows the theme', async ({ page }) => {
   await openApp(page);
   await page.getByRole('tab', { name: 'View', exact: true }).click();
   await page.getByRole('button', { name: 'Dark' }).click();
   await page.getByRole('button', { name: '中文' }).click();
   await page.getByRole('tab', { name: '文件' }).click();
-  await page.getByRole('button', { name: '开始屏幕' }).click();
-  await expect(page.getByRole('button', { name: '新建工作簿' })).toBeVisible();
-  const background = await page
-    .getByRole('main')
-    .evaluate((node) => getComputedStyle(node).backgroundColor);
+  await page.getByRole('button', { name: '工作簿', exact: true }).click();
+  const translated = page.getByRole('dialog', { name: '工作簿' });
+  await expect(
+    translated.getByRole('button', { name: '新建工作簿' }),
+  ).toBeVisible();
+  await expect(translated.getByRole('button', { name: '关闭' })).toBeVisible();
+  const background = await translated.evaluate(
+    (node) => getComputedStyle(node).backgroundColor,
+  );
   const [red, green, blue] = background.match(/\d+/g)!.map(Number);
   expect((red! + green! + blue!) / 3).toBeLessThan(128);
 });
 
-test('the start screen controls have tooltips and show hover, keyboard focus and disabled states', async ({
+test('the dialog controls have tooltips and show hover, keyboard focus and disabled states', async ({
   page,
   browserName,
 }) => {
@@ -171,7 +286,16 @@ test('the start screen controls have tooltips and show hover, keyboard focus and
       property,
     );
   await openApp(page);
-  await goHome(page);
+  await openDialog(page);
+  // In the light theme, the dialog is light.
+  const light = (await style(dialog(page), 'background-color'))
+    .match(/\d+/g)!
+    .map(Number);
+  expect((light[0]! + light[1]! + light[2]!) / 3).toBeGreaterThan(128);
+  const accent = await style(
+    dialog(page).getByRole('heading', { name: 'Workbooks' }),
+    'color',
+  );
   const controls = [
     [
       page.getByRole('button', { name: 'New workbook' }),
@@ -181,18 +305,18 @@ test('the start screen controls have tooltips and show hover, keyboard focus and
       page.getByRole('button', { name: 'Open file' }),
       'Open an Excel workbook (.xlsx) or a CSV file (.csv) from your computer',
     ],
+    [
+      page.getByRole('button', { name: 'Close' }),
+      'Return to the open workbook',
+    ],
     [page.getByRole('button', { name: 'Open Book1' }), 'Open this workbook'],
     [
       page.getByRole('button', { name: 'More actions for Book1' }),
       'Rename, duplicate or delete this workbook',
     ],
   ] as const;
-  const accent = await style(
-    page.getByRole('heading', { name: 'Gridworks' }),
-    'color',
-  );
   for (const [control, tooltip] of controls) {
-    await page.mouse.move(0, 700);
+    await page.mouse.move(0, 0);
     // The primary button brightens; the others take a background.
     const look = async () =>
       `${await style(control, 'background-color')} ${await style(control, 'filter')}`;
@@ -207,17 +331,17 @@ test('the start screen controls have tooltips and show hover, keyboard focus and
     expect(duration).toBeGreaterThan(0);
     expect(duration).toBeLessThanOrEqual(0.2);
   }
-  await expect(page.getByRole('button')).toHaveCount(controls.length);
+  await expect(dialog(page).getByRole('button')).toHaveCount(controls.length);
 
-  // The keyboard reaches each control in turn, outlined in the accent color.
+  // From the dialog, focused when it opens, the keyboard reaches each
+  // control in turn, outlined in the accent color.
   const key = browserName === 'webkit' ? 'Alt+Tab' : 'Tab';
-  await page.mouse.click(0, 700);
-  await page.keyboard.press(key);
+  await expect(dialog(page)).toBeFocused();
   for (const [control] of controls) {
+    await page.keyboard.press(key);
     await expect(control).toBeFocused();
     expect(await style(control, 'outline-style')).toBe('solid');
     expect(await style(control, 'outline-color')).toBe(accent);
-    await page.keyboard.press(key);
   }
 
   // Until the stored workbooks are listed, New workbook is disabled: faded,
@@ -225,7 +349,7 @@ test('the start screen controls have tooltips and show hover, keyboard focus and
   await page.addInitScript(() => {
     IDBObjectStore.prototype.getAll = () => ({}) as IDBRequest;
   });
-  await page.reload();
+  await page.goto('./');
   const create = page.getByRole('button', { name: 'New workbook' });
   await expect(create).toBeDisabled();
   expect(await style(create, 'opacity')).toBe('0.5');
@@ -235,7 +359,10 @@ test('the start screen controls have tooltips and show hover, keyboard focus and
 test('dialogs open in place at the center with a short fade', async ({
   page,
 }) => {
-  await openApp(page);
+  await page.goto('./');
+  await expectOpensInPlace(dialog(page));
+  await page.getByRole('button', { name: 'New workbook' }).click();
+  await expect(page.locator('canvas')).toBeVisible();
   await clickCell(page, 0, 0);
   await enter(page, '3');
   await enter(page, '4');
@@ -265,9 +392,15 @@ test('dialogs open in place at the center with a short fade', async ({
     await button('Name manager').click();
   });
   await opens('Print', () => page.keyboard.press('ControlOrMeta+p'));
+  await opens('Workbooks', () => openDialog(page));
 
-  await goHome(page);
-  await opens('Rename workbook', () => action(page, 'Book1', 'Rename'));
+  // With no workbook open, as only a workbook not open can be deleted.
+  await page.goto('./');
+  await action(page, 'Book1', 'Rename');
+  await expectOpensInPlace(
+    page.getByRole('dialog', { name: 'Rename workbook' }),
+  );
+  await page.keyboard.press('Escape');
   await action(page, 'Book1', 'Delete');
   await expectOpensInPlace(
     page.getByRole('alertdialog', { name: 'Delete workbook' }),

@@ -5,7 +5,7 @@ import { Workbook } from '../../engine/workbook';
 import { Grid, MAC, measureText } from '../grid/Grid';
 import { View } from '../grid/view';
 import type { ClipboardContents, Platform } from '../platform';
-import { restoreWorkbook, startAutosave } from './autosave';
+import { restoreWorkbook, startAutosave, type Autosave } from './autosave';
 import { CellMenu } from './CellMenu';
 import { FillOptions } from './FillOptions';
 import { FilterButton } from './Filter';
@@ -19,10 +19,10 @@ import { startingLanguage, translator, type Language } from './i18n';
 import { Ribbon } from './Ribbon';
 import { FormulaBar, MessageBar, StatusBar } from './Shell';
 import { SheetTabs } from './SheetTabs';
-import { StartScreen } from './StartScreen';
 import { shortcut } from './shortcuts';
 import styles from './Shell.module.css';
 import { startingTheme, type Theme } from './theme';
+import { WorkbookDialog } from './WorkbookDialog';
 import { hashOf, workbookIdOf } from './workbooks';
 
 // The file formats load after the app, but at once: a page that a new
@@ -65,9 +65,24 @@ export function App({ platform }: { platform: Platform }) {
       window.matchMedia('(prefers-color-scheme: dark)').matches,
     ),
   );
-  // The workbook the address names after `#`, or none for the start screen.
+  // The workbook the address names after `#`, or none for the workbook
+  // dialog alone.
   const [route, setRoute] = useState(() => workbookIdOf(location.hash));
   const [open, setOpen] = useState<Open>();
+  // The empty interface shown behind the workbook dialog when no workbook
+  // is open: a workbook with no name, which is never stored.
+  const [blank] = useState(() => {
+    const workbook = Workbook.fromSnapshot(
+      { ...restoreWorkbook(null).toSnapshot(), name: '' },
+      [],
+      measureText,
+    );
+    return { workbook, view: new View(workbook) };
+  });
+  // Whether the workbook dialog is open over the workbook shown.
+  const [choosing, setChoosing] = useState(false);
+  // The autosave of `open`.
+  const autosave = useRef<Autosave>(undefined);
   // The identifier of `open`, read where it must not be a dependency.
   const shown = useRef<string | null>(null);
   const [message, setMessage] = useState<Message | null>(null);
@@ -86,6 +101,7 @@ export function App({ platform }: { platform: Platform }) {
   const show = (next: Open | undefined) => {
     shown.current = next?.id ?? null;
     setOpen(next);
+    setChoosing(false);
   };
 
   useEffect(
@@ -113,7 +129,7 @@ export function App({ platform }: { platform: Platform }) {
       .then((stored) => {
         if (!current) return;
         if (!stored) {
-          // No longer stored: the start screen instead.
+          // No longer stored: the workbook dialog instead.
           location.hash = '';
           return;
         }
@@ -130,10 +146,6 @@ export function App({ platform }: { platform: Platform }) {
     };
   }, [platform, route]);
 
-  useEffect(() => {
-    if (!open) document.title = 'Gridworks';
-  }, [open]);
-
   /** Shows a workbook just made, which is stored at once. */
   const showNew = (workbook: Workbook) => {
     const id = crypto.randomUUID();
@@ -145,7 +157,7 @@ export function App({ platform }: { platform: Platform }) {
     if (!open) return;
     const { id, workbook, fresh } = open;
     const onFailure = () => setMessage({ kind: 'storageFailed' });
-    const autosave = startAutosave(
+    const saving = startAutosave(
       workbook,
       {
         record: (command) => platform.workbooks.record(id, command),
@@ -153,26 +165,29 @@ export function App({ platform }: { platform: Platform }) {
       },
       onFailure,
     );
+    autosave.current = saving;
     // A workbook made or read from a file is stored at once, so that the
-    // start screen lists it.
+    // workbook dialog lists it.
     if (fresh) {
       platform.workbooks.save(id, workbook.toSnapshot()).catch(onFailure);
     }
     // A hidden tab may be discarded without warning, so it saves at once.
     const onHidden = () => {
-      if (document.visibilityState === 'hidden') autosave.flush();
+      if (document.visibilityState === 'hidden') saving.flush();
     };
     document.addEventListener('visibilitychange', onHidden);
     return () => {
       document.removeEventListener('visibilitychange', onHidden);
-      autosave.stop();
+      saving.stop();
+      autosave.current = undefined;
     };
   }, [platform, open]);
 
   // Copy, cut and paste work wherever the focus is, with the system
   // clipboard, but an entry being typed copies and pastes its own text.
+  // Behind the workbook dialog, the workbook takes none of them.
   useEffect(() => {
-    if (!open) return;
+    if (!open || choosing) return;
     const { view } = open;
     return platform.listenToClipboard({
       copy: (cut) => (view.state.entry ? null : cut ? view.cut() : view.copy()),
@@ -182,12 +197,13 @@ export function App({ platform }: { platform: Platform }) {
         return true;
       },
     });
-  }, [platform, open]);
+  }, [platform, open, choosing]);
 
   // Undo and redo work wherever the focus is, but an entry being typed
   // undoes its own typing.
   useEffect(() => {
-    if (!open) return;
+    // Behind the workbook dialog, the workbook takes no shortcut.
+    if (!open || choosing) return;
     const { view } = open;
     const onKeyDown = (event: KeyboardEvent) => {
       const command = shortcut(
@@ -231,7 +247,7 @@ export function App({ platform }: { platform: Platform }) {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [open]);
+  }, [open, choosing]);
 
   const copyToClipboard = (contents: ClipboardContents | null) => {
     if (contents) platform.writeClipboard(contents);
@@ -322,49 +338,21 @@ export function App({ platform }: { platform: Platform }) {
       onClose={() => setMessage(null)}
     />
   );
-  if (!open) {
-    return (
-      <Translation value={t}>
-        <TooltipProvider delayDuration={400} disableHoverableContent>
-          <div className={styles.app}>
-            {messageBar}
-            <StartScreen
-              platform={platform}
-              language={language}
-              busy={busy}
-              onNew={(name) => {
-                const workbook = restoreWorkbook(null, measureText);
-                workbook.execute({ type: 'renameWorkbook', name });
-                showNew(workbook);
-              }}
-              onOpenFile={() => void openFile()}
-              onOpen={(id) => {
-                setMessage(null);
-                location.hash = hashOf(id);
-              }}
-              onFailure={(how) =>
-                setMessage({
-                  kind: how === 'read' ? 'storageUnreadable' : 'storageFailed',
-                })
-              }
-            />
-          </div>
-        </TooltipProvider>
-      </Translation>
-    );
-  }
+  const choosingOpen = !open || choosing;
+  const shell = open ?? blank;
   // A rejected entry keeps the dialogs closed, so that what they set is
   // not lost.
   const edit = (what: Editing) => {
-    if (open.view.commit()) setEditing(what);
+    if (shell.view.commit()) setEditing(what);
   };
   return (
     <Translation value={t}>
       <TooltipProvider delayDuration={400} disableHoverableContent>
-        <div className={styles.app}>
+        {/* With no workbook open, the interface does not respond. */}
+        <div className={styles.app} inert={!open}>
           <Ribbon
-            workbook={open.workbook}
-            view={open.view}
+            workbook={shell.workbook}
+            view={shell.view}
             language={language}
             onLanguage={(language: Language) => {
               setLanguage(language);
@@ -376,21 +364,22 @@ export function App({ platform }: { platform: Platform }) {
               preferences.set('theme', theme);
             }}
             busy={busy}
-            onHome={() => {
-              setMessage(null);
-              location.hash = '';
+            onWorkbooks={() => {
+              // Saved first, so that the dialog lists the workbook as it is.
+              autosave.current?.flush();
+              setChoosing(true);
             }}
             onOpen={() => void openFile()}
-            onSave={() => void saveFile(open.workbook)}
-            onExportCsv={() => void exportCsv(open.workbook, open.view)}
+            onSave={() => void saveFile(shell.workbook)}
+            onExportCsv={() => void exportCsv(shell.workbook, shell.view)}
             onPrint={() => setPrinting(true)}
             onCopy={copyToClipboard}
             onFind={setFinding}
             onEdit={edit}
           />
-          {messageBar}
+          {!choosingOpen && messageBar}
           <FormulaBar
-            {...open}
+            {...shell}
             onInvalid={(text, problem) =>
               setMessage({
                 kind: problem === 'invalid' ? 'invalidName' : 'deletedName',
@@ -400,44 +389,69 @@ export function App({ platform }: { platform: Platform }) {
           />
           <main className={styles.grid}>
             <Grid
-              {...open}
+              {...shell}
               menu={(lines) => (
                 <CellMenu
-                  view={open.view}
+                  view={shell.view}
                   onCopy={copyToClipboard}
                   onEdit={edit}
                   lines={lines}
                 />
               )}
               fillOptions={(filled) => (
-                <FillOptions view={open.view} filled={filled} />
+                <FillOptions view={shell.view} filled={filled} />
               )}
               filterButton={(col) => (
                 <FilterButton
-                  workbook={open.workbook}
-                  view={open.view}
+                  workbook={shell.workbook}
+                  view={shell.view}
                   col={col}
                 />
               )}
-              listButton={<ListButton {...open} />}
+              listButton={<ListButton {...shell} />}
             />
           </main>
-          <SheetTabs {...open} />
-          <StatusBar {...open} />
-          <FindPanel view={open.view} mode={finding} onMode={setFinding} />
+          <SheetTabs {...shell} />
+          <StatusBar {...shell} />
+          <FindPanel view={shell.view} mode={finding} onMode={setFinding} />
           <PrintPanel
-            {...open}
+            {...shell}
             open={printing}
             onOpenChange={setPrinting}
             onPrint={(document) => platform.print(document)}
           />
-          <RejectedEntry view={open.view} />
+          <RejectedEntry view={shell.view} />
           <CellDialog
-            {...open}
+            {...shell}
             editing={editing}
             onClose={() => setEditing(null)}
           />
         </div>
+        <WorkbookDialog
+          platform={platform}
+          language={language}
+          open={choosingOpen}
+          current={open}
+          message={choosingOpen && messageBar}
+          busy={busy}
+          onClose={() => setChoosing(false)}
+          onNew={(name) => {
+            const workbook = restoreWorkbook(null, measureText);
+            workbook.execute({ type: 'renameWorkbook', name });
+            showNew(workbook);
+          }}
+          onOpenFile={() => void openFile()}
+          onOpen={(id) => {
+            setMessage(null);
+            if (id === shown.current) setChoosing(false);
+            else location.hash = hashOf(id);
+          }}
+          onFailure={(how) =>
+            setMessage({
+              kind: how === 'read' ? 'storageUnreadable' : 'storageFailed',
+            })
+          }
+        />
       </TooltipProvider>
     </Translation>
   );

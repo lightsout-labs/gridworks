@@ -568,8 +568,8 @@ test.describe('the controls', () => {
       [
         [
           'button',
-          'Start screen',
-          'Go to the start screen, to open, create and manage workbooks',
+          'Workbooks',
+          'Open, create and manage the workbooks in this browser',
         ],
         [
           'button',

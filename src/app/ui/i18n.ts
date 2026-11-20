@@ -20,9 +20,9 @@ const en = {
   'file.invalid':
     '"{name}" could not be opened because it is not a valid Excel workbook (.xlsx).',
   'file.saveFailed': 'The workbook could not be saved. Please try again.',
-  'file.home': 'Start screen',
-  'file.home.tooltip':
-    'Go to the start screen, to open, create and manage workbooks',
+  'file.workbooks': 'Workbooks',
+  'file.workbooks.tooltip':
+    'Open, create and manage the workbooks in this browser',
   print: 'Print',
   'print.tooltip': 'Print the sheet or the selection, or save it as a PDF file',
   'print.description':
@@ -55,6 +55,9 @@ const en = {
     'The workbooks stored in this browser could not be read. Please reload the page.',
   'app.updated':
     'A new version of Gridworks is ready. Reload the page to use it.',
+  'start.title': 'Workbooks',
+  'start.close': 'Close',
+  'start.close.tooltip': 'Return to the open workbook',
   'start.new': 'New workbook',
   'start.new.tooltip': 'Start an empty workbook',
   'start.open': 'Open file',
@@ -550,8 +553,8 @@ const zh: Record<Key, string> = {
     '将当前工作表以 CSV 文件 (.csv) 格式保存到计算机，公式保存为其结果',
   'file.invalid': '无法打开“{name}”，因为它不是有效的 Excel 工作簿 (.xlsx)。',
   'file.saveFailed': '无法保存工作簿，请重试。',
-  'file.home': '开始屏幕',
-  'file.home.tooltip': '转到开始屏幕，以打开、新建和管理工作簿',
+  'file.workbooks': '工作簿',
+  'file.workbooks.tooltip': '打开、新建和管理此浏览器中的工作簿',
   print: '打印',
   'print.tooltip': '打印工作表或所选内容，或将其另存为 PDF 文件',
   'print.description':
@@ -582,6 +585,9 @@ const zh: Record<Key, string> = {
     '无法在此浏览器中保存更改，可能是存储空间已满。请将工作簿保存到计算机以保留更改。',
   'storage.unreadable': '无法读取此浏览器中存储的工作簿，请重新加载页面。',
   'app.updated': 'Gridworks 的新版本已就绪，请重新加载页面以使用新版本。',
+  'start.title': '工作簿',
+  'start.close': '关闭',
+  'start.close.tooltip': '返回打开的工作簿',
   'start.new': '新建工作簿',
   'start.new.tooltip': '创建一个空白工作簿',
   'start.open': '打开文件',

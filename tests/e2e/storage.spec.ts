@@ -40,7 +40,7 @@ test('every edit is present after closing and reopening the browser', async ({
 
   browser = await launch();
   page = browser.pages()[0] ?? (await browser.newPage());
-  // The start screen lists the workbook, which opens as it was left.
+  // The workbook dialog lists the workbook, which opens as it was left.
   await page.goto('./');
   await page.getByRole('button', { name: /^Open Book1/ }).click();
   await expectCell(page, 0, 0, 'A1 1/2/2026');

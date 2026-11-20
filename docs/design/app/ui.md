@@ -7,10 +7,10 @@ the [architecture document](../../architecture.md).
 ## Shell
 
 - **The address names the workbook shown** (R33, R34): `#` and its
-  identifier, or nothing for the start screen, so that a reload, a link
-  kept or the browser's Back button shows the same again; an identifier
-  no longer stored gives the start screen. The start screen lists the
-  stored workbooks, the one saved last first, with the time of that save
+  identifier, or nothing for the workbook dialog alone, so that a reload,
+  a link kept or the browser's Back button shows the same again; an
+  identifier no longer stored gives the dialog alone. The workbook dialog
+  lists the stored workbooks, the one saved last first, with the time of that save
   (the time alone for today), and holds New workbook, which starts an
   empty workbook named `Book` and the first number no stored workbook has,
   Open file, and a menu on each workbook to rename, duplicate (as `Name
@@ -18,8 +18,26 @@ the [architecture document](../../architecture.md).
   duplicate there loads the stored workbook, replays its changes and saves
   it under the name, so the platform needs no operation of its own for
   them. A workbook made new or opened from a file gets a new random
-  identifier and is saved at once, so that the start screen lists it.
-  The File tab's Start screen button goes back to it.
+  identifier and is saved at once, so that the dialog lists it.
+- **The workbook dialog is modal over the whole interface** (R34). With no
+  workbook open, the app shows the ribbon, grid and status bar of an
+  empty workbook with no name, which is never stored and makes the page
+  title plain `Gridworks`; the interface is `inert` behind the dialog,
+  which ignores Esc and clicks outside and has no close button. The File
+  tab's Workbooks button opens it over the workbook shown, without
+  changing the address, so that closing it returns to that workbook as it
+  was, and picking that workbook in the list closes it too. Opening it
+  first saves a waiting change, so that the list shows the workbook shown
+  as it is. The dialog focuses itself when it opens: focus on its first
+  button would show that button's tooltip, and the first Esc would close
+  the tooltip rather than the dialog. While it is open the message bar
+  shows inside it, where it can be read and closed, and the workbook
+  behind it takes no window shortcut and no copy or paste.
+- **The workbook shown is renamed in place and cannot be deleted** from
+  the dialog. A rename goes through `renameWorkbook`, as in the title box,
+  and is saved at once; a rename through storage would be overwritten by
+  the next autosave of the workbook shown, and deleting it would leave its
+  autosave writing to a workbook that is gone.
 - **The workbook's name is a text box** beside the brand in the ribbon, as
   in Excel for the web; Enter or leaving it renames the workbook with
   `renameWorkbook`, an empty name keeps the one before, and the page's
@@ -30,7 +48,7 @@ the [architecture document](../../architecture.md).
 - **Storage problems go to the message bar.** When storage refuses a
   change or a save, as when it is full, autosave tells the app, and the
   message bar under the ribbon asks the user to save the workbook to their
-  computer; storage that cannot be read gives the start screen with a
+  computer; storage that cannot be read gives the workbook dialog with a
   message. The same bar lists what a file opened left out, says that a
   file is not a valid `.xlsx` file, that a save failed, or that a new
   version of Gridworks is ready and a reload shows it.

@@ -8,9 +8,11 @@ import {
   Pencil,
   Table2,
   Trash2,
+  X,
   type LucideIcon,
 } from 'lucide-react';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import type { Workbook } from '../../engine/workbook';
 import type { Platform, StoredInfo } from '../platform';
 import { Tooltip, useTranslation } from './controls';
 import type { Language } from './i18n';
@@ -20,14 +22,19 @@ import { modifiedText, numberedName, renamedSnapshot } from './workbooks';
 const ICON_SIZE = 16;
 
 /**
- * The screen shown when the app opens (R34): the workbooks stored in the
- * browser, the one saved last first, to open, rename, duplicate or delete,
- * and the buttons that start a new workbook or open a file.
+ * The dialog of the workbooks stored in the browser (R34), the one saved
+ * last first, to open, rename, duplicate or delete, with the buttons that
+ * start a new workbook or open a file. With no workbook open it cannot be
+ * closed.
  */
-export function StartScreen({
+export function WorkbookDialog({
   platform,
   language,
+  open,
+  current,
+  message,
   busy,
+  onClose,
   onNew,
   onOpenFile,
   onOpen,
@@ -35,8 +42,15 @@ export function StartScreen({
 }: {
   platform: Platform;
   language: Language;
+  open: boolean;
+  /** The workbook shown behind the dialog, if one is. */
+  current: { readonly id: string; readonly workbook: Workbook } | undefined;
+  /** The message bar, shown in the dialog while it is open. */
+  message: ReactNode;
   /** Whether a file is being opened, when another cannot be. */
   busy: boolean;
+  /** Returns to the current workbook. */
+  onClose: () => void;
   /** Starts an empty workbook with this name. */
   onNew: (name: string) => void;
   onOpenFile: () => void;
@@ -46,6 +60,7 @@ export function StartScreen({
 }) {
   const t = useTranslation();
   const headingId = useId();
+  const content = useRef<HTMLDivElement>(null);
   const [workbooks, setWorkbooks] = useState<StoredInfo[] | null>(null);
   const [renaming, setRenaming] = useState<StoredInfo | null>(null);
   const [deleting, setDeleting] = useState<StoredInfo | null>(null);
@@ -53,6 +68,7 @@ export function StartScreen({
   const [listing, setListing] = useState(0);
 
   useEffect(() => {
+    if (!open) return;
     let current = true;
     platform.workbooks
       .list()
@@ -68,7 +84,7 @@ export function StartScreen({
     return () => {
       current = false;
     };
-  }, [platform, listing]);
+  }, [platform, open, listing]);
 
   /** Runs a change to the stored workbooks, then lists them again. */
   const change = (run: () => Promise<void>) => {
@@ -81,121 +97,181 @@ export function StartScreen({
       const stored = await platform.workbooks.load(from);
       await platform.workbooks.save(id, renamedSnapshot(stored, name));
     });
+  const rename = (id: string, name: string) => {
+    if (id !== current?.id) {
+      saveAs(id, id, name);
+      return;
+    }
+    // The open workbook is renamed as the title box renames it, and saved
+    // at once so that the list shows the name.
+    const { workbook } = current;
+    workbook.execute({ type: 'renameWorkbook', name });
+    change(() => platform.workbooks.save(id, workbook.toSnapshot()));
+  };
 
+  const closable = current !== undefined;
   const now = Date.now();
   return (
-    <main className={styles.start}>
-      <header className={styles.startHeader}>
-        <h1 className={styles.startBrand}>
-          <Table2 size={20} aria-hidden />
-          Gridworks
-        </h1>
-        <Tooltip text={t('start.new.tooltip')}>
-          <button
-            type="button"
-            className={`${styles.button} ${styles.primary}`}
-            disabled={workbooks === null}
-            onClick={() =>
-              onNew(
-                numberedName(
-                  t('start.book'),
-                  (workbooks ?? []).map((each) => each.name),
-                ),
-              )
-            }
-          >
-            <FilePlus size={ICON_SIZE} aria-hidden />
-            {t('start.new')}
-          </button>
-        </Tooltip>
-        <Tooltip text={t('file.open.tooltip')}>
-          <button
-            type="button"
-            className={styles.button}
-            disabled={busy}
-            onClick={onOpenFile}
-          >
-            <FolderOpen size={ICON_SIZE} aria-hidden />
-            {t('start.open')}
-          </button>
-        </Tooltip>
-      </header>
-      <section className={styles.startList} aria-labelledby={headingId}>
-        <h2 id={headingId} className={styles.startHeading}>
-          {t('start.recent')}
-        </h2>
-        {workbooks?.length === 0 && (
-          <p className={styles.dialogText}>{t('start.empty')}</p>
-        )}
-        <ul className={styles.startItems} aria-label={t('start.list')}>
-          {workbooks?.map((workbook) => (
-            <li key={workbook.id} className={styles.startItem}>
-              <Tooltip text={t('start.openWorkbook.tooltip')}>
-                <button
-                  type="button"
-                  className={`${styles.button} ${styles.startOpen}`}
-                  aria-label={t('start.openWorkbook').replace(
-                    '{name}',
-                    () => workbook.name,
-                  )}
-                  onClick={() => onOpen(workbook.id)}
-                >
-                  <span className={styles.startName}>{workbook.name}</span>
-                  <time
-                    className={styles.startTime}
-                    dateTime={new Date(workbook.modified).toISOString()}
-                  >
-                    {modifiedText(workbook.modified, now, language)}
-                  </time>
-                </button>
-              </Tooltip>
-              <Actions
-                name={workbook.name}
-                onRename={() => setRenaming(workbook)}
-                onDuplicate={() =>
-                  saveAs(
-                    crypto.randomUUID(),
-                    workbook.id,
-                    t('start.copyName').replace('{name}', () => workbook.name),
+    <Dialog.Root
+      open={open}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <Dialog.Portal>
+        <Dialog.Overlay className={styles.overlay} />
+        <Dialog.Content
+          className={`${styles.dialog} ${styles.workbooks}`}
+          aria-describedby={undefined}
+          ref={content}
+          // The dialog itself takes the focus: on its first button, the
+          // focus would show that button's tooltip, which Esc would close
+          // in place of the dialog.
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            content.current?.focus();
+          }}
+          // With no workbook to return to, the dialog stays.
+          onEscapeKeyDown={(event) => {
+            if (!closable) event.preventDefault();
+          }}
+          onInteractOutside={(event) => {
+            if (!closable) event.preventDefault();
+          }}
+        >
+          <header className={styles.workbooksHeader}>
+            <Dialog.Title className={styles.workbooksTitle}>
+              <Table2 size={20} aria-hidden />
+              {t('start.title')}
+            </Dialog.Title>
+            <Tooltip text={t('start.new.tooltip')}>
+              <button
+                type="button"
+                className={`${styles.button} ${styles.primary}`}
+                disabled={workbooks === null}
+                onClick={() =>
+                  onNew(
+                    numberedName(
+                      t('start.book'),
+                      (workbooks ?? []).map((each) => each.name),
+                    ),
                   )
                 }
-                onDelete={() => setDeleting(workbook)}
-              />
-            </li>
-          ))}
-        </ul>
-      </section>
-      <RenameDialog
-        workbook={renaming}
-        onRename={(name) => {
-          if (renaming && name !== renaming.name) {
-            saveAs(renaming.id, renaming.id, name);
-          }
-          setRenaming(null);
-        }}
-        onCancel={() => setRenaming(null)}
-      />
-      <DeleteDialog
-        workbook={deleting}
-        onDelete={() => {
-          const { id } = deleting!;
-          change(() => platform.workbooks.delete(id));
-          setDeleting(null);
-        }}
-        onCancel={() => setDeleting(null)}
-      />
-    </main>
+              >
+                <FilePlus size={ICON_SIZE} aria-hidden />
+                {t('start.new')}
+              </button>
+            </Tooltip>
+            <Tooltip text={t('file.open.tooltip')}>
+              <button
+                type="button"
+                className={styles.button}
+                disabled={busy}
+                onClick={onOpenFile}
+              >
+                <FolderOpen size={ICON_SIZE} aria-hidden />
+                {t('start.open')}
+              </button>
+            </Tooltip>
+            {closable && (
+              <Tooltip text={t('start.close.tooltip')}>
+                <Dialog.Close
+                  className={styles.iconButton}
+                  aria-label={t('start.close')}
+                >
+                  <X size={ICON_SIZE} aria-hidden />
+                </Dialog.Close>
+              </Tooltip>
+            )}
+          </header>
+          {message}
+          <section className={styles.workbooksList} aria-labelledby={headingId}>
+            <h2 id={headingId} className={styles.workbooksHeading}>
+              {t('start.recent')}
+            </h2>
+            {workbooks?.length === 0 && (
+              <p className={styles.dialogText}>{t('start.empty')}</p>
+            )}
+            <ul className={styles.workbooksItems} aria-label={t('start.list')}>
+              {workbooks?.map((workbook) => (
+                <li key={workbook.id} className={styles.workbooksItem}>
+                  <Tooltip text={t('start.openWorkbook.tooltip')}>
+                    <button
+                      type="button"
+                      className={`${styles.button} ${styles.workbooksOpen}`}
+                      aria-label={t('start.openWorkbook').replace(
+                        '{name}',
+                        () => workbook.name,
+                      )}
+                      onClick={() => onOpen(workbook.id)}
+                    >
+                      <span className={styles.workbooksName}>
+                        {workbook.name}
+                      </span>
+                      <time
+                        className={styles.workbooksTime}
+                        dateTime={new Date(workbook.modified).toISOString()}
+                      >
+                        {modifiedText(workbook.modified, now, language)}
+                      </time>
+                    </button>
+                  </Tooltip>
+                  <Actions
+                    name={workbook.name}
+                    // The workbook shown cannot be deleted from under it.
+                    deletable={workbook.id !== current?.id}
+                    onRename={() => setRenaming(workbook)}
+                    onDuplicate={() =>
+                      saveAs(
+                        crypto.randomUUID(),
+                        workbook.id,
+                        t('start.copyName').replace(
+                          '{name}',
+                          () => workbook.name,
+                        ),
+                      )
+                    }
+                    onDelete={() => setDeleting(workbook)}
+                  />
+                </li>
+              ))}
+            </ul>
+          </section>
+          <RenameDialog
+            workbook={renaming}
+            onRename={(name) => {
+              if (renaming && name !== renaming.name) {
+                rename(renaming.id, name);
+              }
+              setRenaming(null);
+            }}
+            onCancel={() => setRenaming(null)}
+          />
+          <DeleteDialog
+            workbook={deleting}
+            onDelete={() => {
+              const { id } = deleting!;
+              change(() => platform.workbooks.delete(id));
+              setDeleting(null);
+            }}
+            onCancel={() => setDeleting(null)}
+          />
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 
 /** The menu of a stored workbook's actions. */
 function Actions({
   name,
+  deletable,
   onRename,
   onDuplicate,
   onDelete,
 }: {
   name: string;
+  deletable: boolean;
   onRename: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
@@ -226,6 +302,7 @@ function Actions({
           <MenuItem
             icon={Trash2}
             label={t('start.delete')}
+            disabled={!deletable}
             onSelect={onDelete}
           />
         </DropdownMenu.Content>
@@ -237,14 +314,20 @@ function Actions({
 function MenuItem({
   icon: Icon,
   label,
+  disabled,
   onSelect,
 }: {
   icon: LucideIcon;
   label: string;
+  disabled?: boolean;
   onSelect: () => void;
 }) {
   return (
-    <DropdownMenu.Item className={styles.menuItem} onSelect={onSelect}>
+    <DropdownMenu.Item
+      className={styles.menuItem}
+      disabled={disabled}
+      onSelect={onSelect}
+    >
       <Icon size={ICON_SIZE} aria-hidden />
       {label}
     </DropdownMenu.Item>

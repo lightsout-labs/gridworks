@@ -5,7 +5,7 @@ import { cellRect, UNIFORM } from '../../src/app/grid/geometry';
 const TOP = { scrollX: 0, scrollY: 0, zoom: 1, layout: UNIFORM };
 
 /**
- * Opens the app, starts a new workbook from the start screen and waits for
+ * Opens the app, starts a new workbook from the workbook dialog and waits for
  * the grid. With GRIDWORKS_COMMIT set, first waits until the address serves
  * the build of that commit, not a cached older one.
  */
