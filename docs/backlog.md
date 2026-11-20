@@ -1336,3 +1336,15 @@ Notes:
   are neither stored nor read from or written to `.xlsx` files, so a later
   slice that keeps them per sheet (Excel's page setup and print area, see
   S28) adds them to the snapshot. Printing is no lazily loaded chunk.
+
+## S39: Fix dialogs flying in from the bottom right
+
+Status: Todo
+Fixes: #58
+
+Acceptance criteria:
+- On the start screen, choosing Delete for a workbook opens its confirmation
+  dialog in place at the center of the window, with a short, subtle fade;
+  it does not move in from the bottom right. (R43)
+- Every other dialog, such as rename, Format Cells, Sort and Print, opens
+  the same way. (R43)
