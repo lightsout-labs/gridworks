@@ -63,6 +63,42 @@ test('the ribbon prints the selection only', async ({ page }) => {
   await expect(printed(page).locator('td')).toHaveText(['two']);
 });
 
+test('Ctrl+P commits the entry typed first, unless validation rejects it', async ({
+  page,
+}) => {
+  await openApp(page);
+  await page.getByRole('tab', { name: 'Data', exact: true }).click();
+  await clickCell(page, 0, 1);
+  await page
+    .getByRole('button', { name: 'Data validation', exact: true })
+    .click();
+  const validation = page.getByRole('dialog', { name: 'Data validation' });
+  await validation.getByLabel('Allow').selectOption('Number');
+  await validation.getByLabel('Minimum').fill('1');
+  await validation.getByLabel('Maximum').fill('10');
+  await validation.getByRole('button', { name: 'OK', exact: true }).click();
+
+  await clickCell(page, 0, 0);
+  await page.keyboard.type('typed');
+  await page.keyboard.press('ControlOrMeta+p');
+  await expect(panel(page)).toHaveAccessibleName('Print');
+  const print = panel(page).getByRole('button', { name: 'Print', exact: true });
+  await print.hover();
+  await expect(
+    page.getByRole('tooltip', {
+      name: 'Open the print dialog of your browser',
+    }),
+  ).toBeVisible();
+  await print.click();
+  await expect(printed(page).locator('td')).toHaveText(['typed']);
+
+  await clickCell(page, 0, 1);
+  await page.keyboard.type('20');
+  await page.keyboard.press('ControlOrMeta+p');
+  await expect(page.getByRole('alertdialog')).toBeVisible();
+  await expect(panel(page)).toBeHidden();
+});
+
 test('an empty sheet has nothing to print', async ({ page }) => {
   await openApp(page);
   await page.keyboard.press('ControlOrMeta+p');

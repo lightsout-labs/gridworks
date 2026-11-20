@@ -299,6 +299,8 @@ function print(html: string): void {
   printFrame?.remove();
   const frame = document.createElement('iframe');
   frame.setAttribute('aria-hidden', 'true');
+  // No script runs in it; the same origin lets the app call its print.
+  frame.setAttribute('sandbox', 'allow-modals allow-same-origin');
   frame.tabIndex = -1;
   frame.style.cssText =
     'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
