@@ -1,6 +1,6 @@
 # Backlog
 
-Status: Approved
+Status: Draft
 
 Slices for Gridworks, built in this order. Each one is testable end to end.
 
@@ -1348,3 +1348,24 @@ Acceptance criteria:
   it does not move in from the bottom right. (R43)
 - Every other dialog, such as rename, Format Cells, Sort and Print, opens
   the same way. (R43)
+
+## S40: The workbook dialog
+
+Status: Todo
+Closes: #58
+
+Acceptance criteria:
+- Opening the app with no workbook named in the address shows the workbook
+  list in a centered dialog over the ribbon, an empty grid and the status
+  bar, which are dimmed and do not respond. (R34)
+- With no workbook open, Esc and a click outside leave the dialog open, and
+  it has no close button. (R34)
+- The File tab's button opens the dialog over the current workbook; Esc, its
+  close button or a click outside closes it and returns to that workbook as
+  it was. (R34)
+- From the dialog the user can create a new workbook, open a stored one or a
+  file from disk, and rename, duplicate and delete a stored one, deleting
+  after a confirmation, as before. (R34)
+- The dialog is translated in both languages, looks right in both themes,
+  opens with a short, subtle transition, and its controls have hover, focus
+  and disabled states and tooltips. (R41, R42, R43, R44)

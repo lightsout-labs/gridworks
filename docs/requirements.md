@@ -1,6 +1,6 @@
 # Requirements
 
-Status: Approved
+Status: Draft
 
 ## Goal
 
@@ -173,9 +173,11 @@ applications.
     quoted fields, embedded commas and newlines, and UTF-8 text.
 33. Workbooks are saved automatically to browser storage as the user works.
     Closing and reopening the browser restores them with no data loss.
-34. A start screen lists the workbooks stored in the browser, and lets the
-    user create a new one, open, rename, duplicate or delete a stored one,
-    or open a file from disk.
+34. A workbook dialog lists the workbooks stored in the browser, and lets
+    the user create a new one, open, rename, duplicate or delete a stored
+    one, or open a file from disk. When no workbook is open, it shows over
+    the empty, inactive interface and cannot be closed; opened from the
+    ribbon over a workbook, it can be closed to return to that workbook.
 35. After its first load the app works without a network connection.
 
 ### Printing
@@ -306,3 +308,9 @@ requirement above.
   and values and descriptions are translated into both languages.
 - **Formula functions (#44)**: `ISFORMULA` is added, and with it
   `FORMULATEXT`, which reads the same thing; `SHEET` and `SHEETS` are not.
+- **Workbook dialog (#58)**: the full start screen becomes a centered
+  dialog. With no workbook open, the ribbon, an empty grid and the status
+  bar show dimmed and inactive behind it, and it cannot be dismissed; the
+  user creates, opens or picks a workbook. Opened from the ribbon, it shows
+  over the current workbook and Esc, its close button or a click outside
+  returns to it. Its actions stay the same as before.
