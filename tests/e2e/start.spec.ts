@@ -236,13 +236,38 @@ test('dialogs open in place at the center with a short fade', async ({
   page,
 }) => {
   await openApp(page);
-  await page.getByRole('tab', { name: 'Formulas' }).click();
-  await page.getByRole('button', { name: 'Name manager' }).click();
-  const names = page.getByRole('dialog', { name: 'Name manager' });
-  await expectOpensInPlace(names);
-  await page.keyboard.press('Escape');
+  await clickCell(page, 0, 0);
+  await enter(page, '3');
+  await enter(page, '4');
+  await clickCell(page, 0, 0);
+  await page.keyboard.press('Shift+ArrowDown');
+  const button = (name: string) =>
+    page.getByRole('button', { name, exact: true });
+  const opens = async (name: string, open: () => Promise<void>) => {
+    await open();
+    await expectOpensInPlace(page.getByRole('dialog', { name }));
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+  };
+
+  await opens('Custom number format', async () => {
+    await button('Number format').click();
+    await page
+      .getByRole('menuitem', { name: 'More number formats...' })
+      .click();
+  });
+  await opens('Sort', async () => {
+    await page.getByRole('tab', { name: 'Data' }).click();
+    await button('Custom sort').click();
+  });
+  await opens('Name manager', async () => {
+    await page.getByRole('tab', { name: 'Formulas' }).click();
+    await button('Name manager').click();
+  });
+  await opens('Print', () => page.keyboard.press('ControlOrMeta+p'));
 
   await goHome(page);
+  await opens('Rename workbook', () => action(page, 'Book1', 'Rename'));
   await action(page, 'Book1', 'Delete');
   await expectOpensInPlace(
     page.getByRole('alertdialog', { name: 'Delete workbook' }),

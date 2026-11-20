@@ -1339,7 +1339,7 @@ Notes:
 
 ## S39: Fix dialogs flying in from the bottom right
 
-Status: In progress
+Status: Done
 Fixes: #58
 
 Acceptance criteria:
@@ -1348,6 +1348,13 @@ Acceptance criteria:
   it does not move in from the bottom right. (R43)
 - Every other dialog, such as rename, Format Cells, Sort and Print, opens
   the same way. (R43)
+
+Notes:
+- For S40: a centered dialog takes the `.dialog` and `.overlay` classes,
+  whose `fade` keyframes hold no transform; the `appear` keyframes of menus
+  and panels would make it slide in from the bottom right. The workbook
+  dialog can prove it opens in place with `expectOpensInPlace` of
+  `tests/e2e/grid.ts`.
 
 ## S40: The workbook dialog
 
