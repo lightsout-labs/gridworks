@@ -126,7 +126,11 @@ test('the dialog creates, lists, opens, renames, duplicates and deletes workbook
   await expect(listed(page)).toHaveText([/^Forecast/, /^Budget/]);
   await expect(titleBox(page)).toHaveValue('Forecast');
   await page.getByRole('button', { name: 'More actions for Forecast' }).click();
-  await expect(page.getByRole('menuitem', { name: 'Delete' })).toBeDisabled();
+  const deleteItem = page.getByRole('menuitem', { name: 'Delete' });
+  await expect(deleteItem).toBeDisabled();
+  expect(
+    await deleteItem.evaluate((node) => getComputedStyle(node).opacity),
+  ).toBe('0.5');
   await page.keyboard.press('Escape');
 
   // The list outlives a reload, and so does an open workbook.
@@ -184,6 +188,18 @@ test('the File tab opens the dialog over the workbook, which Esc, the close butt
     await expect(page.getByLabel('Name box')).toHaveValue('B2');
   }
   await expectCell(page, 0, 0, 'A1 kept');
+  // Behind the dialog the workbook takes no shortcut: no undo, no find,
+  // no print.
+  await openDialog(page);
+  for (const key of ['ControlOrMeta+z', 'ControlOrMeta+f', 'ControlOrMeta+p']) {
+    await page.keyboard.press(key);
+  }
+  await page.keyboard.press('Escape');
+  await expect(dialog(page)).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByLabel('Find what')).toHaveCount(0);
+  await expectCell(page, 0, 0, 'A1 kept');
+
   // Opening the workbook shown returns to it too.
   await openDialog(page);
   await listed(page).click();
@@ -271,6 +287,11 @@ test('the dialog controls have tooltips and show hover, keyboard focus and disab
     );
   await openApp(page);
   await openDialog(page);
+  // In the light theme, the dialog is light.
+  const light = (await style(dialog(page), 'background-color'))
+    .match(/\d+/g)!
+    .map(Number);
+  expect((light[0]! + light[1]! + light[2]!) / 3).toBeGreaterThan(128);
   const accent = await style(
     dialog(page).getByRole('heading', { name: 'Workbooks' }),
     'color',

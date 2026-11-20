@@ -31,7 +31,8 @@ the [architecture document](../../architecture.md).
   as it is. The dialog focuses itself when it opens: focus on its first
   button would show that button's tooltip, and the first Esc would close
   the tooltip rather than the dialog. While it is open the message bar
-  shows inside it, where it can be read and closed.
+  shows inside it, where it can be read and closed, and the workbook
+  behind it takes no window shortcut and no copy or paste.
 - **The workbook shown is renamed in place and cannot be deleted** from
   the dialog. A rename goes through `renameWorkbook`, as in the title box,
   and is saved at once; a rename through storage would be overwritten by

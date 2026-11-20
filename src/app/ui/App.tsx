@@ -1,7 +1,7 @@
 import { Provider as TooltipProvider } from '@radix-ui/react-tooltip';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Dropped } from '../../engine/io';
-import { createWorkbook, Workbook } from '../../engine/workbook';
+import { Workbook } from '../../engine/workbook';
 import { Grid, MAC, measureText } from '../grid/Grid';
 import { View } from '../grid/view';
 import type { ClipboardContents, Platform } from '../platform';
@@ -73,7 +73,7 @@ export function App({ platform }: { platform: Platform }) {
   // is open: a workbook with no name, which is never stored.
   const [blank] = useState(() => {
     const workbook = Workbook.fromSnapshot(
-      { ...createWorkbook().toSnapshot(), name: '' },
+      { ...restoreWorkbook(null).toSnapshot(), name: '' },
       [],
       measureText,
     );
@@ -185,8 +185,9 @@ export function App({ platform }: { platform: Platform }) {
 
   // Copy, cut and paste work wherever the focus is, with the system
   // clipboard, but an entry being typed copies and pastes its own text.
+  // Behind the workbook dialog, the workbook takes none of them.
   useEffect(() => {
-    if (!open) return;
+    if (!open || choosing) return;
     const { view } = open;
     return platform.listenToClipboard({
       copy: (cut) => (view.state.entry ? null : cut ? view.cut() : view.copy()),
@@ -196,12 +197,13 @@ export function App({ platform }: { platform: Platform }) {
         return true;
       },
     });
-  }, [platform, open]);
+  }, [platform, open, choosing]);
 
   // Undo and redo work wherever the focus is, but an entry being typed
   // undoes its own typing.
   useEffect(() => {
-    if (!open) return;
+    // Behind the workbook dialog, the workbook takes no shortcut.
+    if (!open || choosing) return;
     const { view } = open;
     const onKeyDown = (event: KeyboardEvent) => {
       const command = shortcut(
@@ -245,7 +247,7 @@ export function App({ platform }: { platform: Platform }) {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [open]);
+  }, [open, choosing]);
 
   const copyToClipboard = (contents: ClipboardContents | null) => {
     if (contents) platform.writeClipboard(contents);
