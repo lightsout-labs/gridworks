@@ -5,7 +5,7 @@ import type { Language } from './i18n';
 
 /**
  * The identifier of the workbook an address shows after `#`, or `null` for
- * the start screen.
+ * the workbook dialog.
  */
 export function workbookIdOf(hash: string): string | null {
   try {

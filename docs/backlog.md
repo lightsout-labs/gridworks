@@ -1358,7 +1358,7 @@ Notes:
 
 ## S40: The workbook dialog
 
-Status: Todo
+Status: In progress
 Closes: #58
 
 Acceptance criteria:

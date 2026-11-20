@@ -8,7 +8,7 @@ export interface Stored {
   readonly changes: Command[];
 }
 
-/** What the start screen shows of a stored workbook. */
+/** What the workbook dialog shows of a stored workbook. */
 export interface StoredInfo {
   readonly id: string;
   readonly name: string;

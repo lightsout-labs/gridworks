@@ -1031,69 +1031,77 @@
   background: var(--background);
 }
 
-/* The start screen: the stored workbooks and how to start another. */
+/* The workbook dialog: the stored workbooks and how to start another. */
 
-.start {
-  flex: 1;
-  box-sizing: border-box;
-  min-height: 0;
-  overflow: auto;
-  padding: 32px max(16px, calc((100% - 720px) / 2));
-  background: var(--background);
-  color: var(--text);
+.workbooks {
+  display: flex;
+  flex-direction: column;
+  width: min(600px, calc(100vw - 32px));
+  max-height: min(560px, calc(100vh - 32px));
 }
 
-.startHeader {
+/* Focused itself when it opens, which needs no outline. */
+.workbooks:focus {
+  outline: none;
+}
+
+.workbooksHeader {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 32px;
+  margin-bottom: 16px;
 }
 
-.startBrand {
+.workbooksTitle {
   display: flex;
   align-items: center;
   gap: 8px;
   margin: 0 auto 0 0;
   color: var(--accent);
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 600;
 }
 
-.startHeading {
+.workbooksList {
+  min-height: 0;
+  margin-top: 8px;
+  overflow: auto;
+}
+
+.workbooksHeading {
   margin: 0 0 8px;
   color: var(--muted);
   font-size: 13px;
   font-weight: 600;
 }
 
-.startItems {
+.workbooksItems {
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.startItem {
+.workbooksItem {
   display: flex;
   align-items: center;
   gap: 4px;
   border-bottom: 1px solid var(--border);
 }
 
-.startOpen {
+.workbooksOpen {
   flex: 1;
   justify-content: space-between;
   min-width: 0;
   height: 40px;
 }
 
-.startName {
+.workbooksName {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.startTime {
+.workbooksTime {
   flex: none;
   color: var(--muted);
   font-size: 12px;

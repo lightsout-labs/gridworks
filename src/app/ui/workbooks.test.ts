@@ -9,7 +9,7 @@ import {
 } from './workbooks';
 
 describe('the address of a workbook', () => {
-  it('names the workbook shown after #, and the start screen without one', () => {
+  it('names the workbook shown after #, and the workbook dialog alone without one', () => {
     expect(workbookIdOf('')).toBe(null);
     expect(workbookIdOf('#')).toBe(null);
     expect(workbookIdOf(hashOf('a b/c'))).toBe('a b/c');
