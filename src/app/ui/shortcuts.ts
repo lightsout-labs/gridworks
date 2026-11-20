@@ -14,7 +14,8 @@ export type Shortcut =
   | 'italic'
   | 'underline'
   | 'find'
-  | 'replace';
+  | 'replace'
+  | 'print';
 
 /**
  * The shortcut a key runs, as in Excel, with Cmd in place of Ctrl on a
@@ -48,6 +49,8 @@ export function shortcut(press: KeyPress, mac: boolean): Shortcut | null {
       return 'find';
     case 'h':
       return 'replace';
+    case 'p':
+      return 'print';
     default:
       return null;
   }

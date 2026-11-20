@@ -1311,7 +1311,7 @@ Notes:
 
 ## S32: Printing and saving as PDF
 
-Status: Todo
+Status: Done
 
 Acceptance criteria:
 - Ctrl/Cmd+P and the ribbon open a print panel for the current sheet or the
@@ -1328,3 +1328,11 @@ Acceptance criteria:
 - Its controls are in the ribbon or a context menu, are translated in both
   languages, look right in both themes, and have hover, focus and disabled
   states and tooltips. (R37, R41, R42, R43, R44)
+
+Notes:
+- `printDocument` in `src/app/ui/print.ts` builds the printed HTML from the
+  workbook, and `Platform.print(document)` prints it from a sandboxed frame.
+  Print settings live only in the print panel until the page reloads: they
+  are neither stored nor read from or written to `.xlsx` files, so a later
+  slice that keeps them per sheet (Excel's page setup and print area, see
+  S28) adds them to the snapshot. Printing is no lazily loaded chunk.

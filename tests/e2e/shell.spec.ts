@@ -586,8 +586,13 @@ test.describe('the controls', () => {
           'Export CSV',
           'Save the current sheet to your computer as a CSV file (.csv), with formulas as their results',
         ],
+        [
+          'button',
+          'Print',
+          /^Print the sheet or the selection, or save it as a PDF file \((Ctrl\+|⌘)P\)$/,
+        ],
       ],
-      8,
+      9,
     );
     // No other control is left out.
     await expect(page.getByRole('slider')).toHaveCount(1);

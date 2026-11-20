@@ -8,6 +8,7 @@ import {
   FileText,
   FolderOpen,
   House,
+  Printer,
   SquareFunction,
   Moon,
   Paintbrush,
@@ -72,6 +73,7 @@ export function Ribbon({
   onOpen,
   onSave,
   onExportCsv,
+  onPrint,
   onCopy,
   onFind,
   onEdit,
@@ -90,6 +92,8 @@ export function Ribbon({
   onSave: () => void;
   /** Saves the active sheet as a `.csv` file. */
   onExportCsv: () => void;
+  /** Opens the print panel. */
+  onPrint: () => void;
   /** Puts the cells copied or cut on the system clipboard. */
   onCopy: (contents: ClipboardContents | null) => void;
   /** Opens the find panel, alone or with replace. */
@@ -177,6 +181,14 @@ export function Ribbon({
             tooltip={t('file.exportCsv.tooltip')}
             disabled={busy}
             onRun={onExportCsv}
+            labeled
+          />
+          <Command
+            icon={Printer}
+            label={t('print')}
+            tooltip={`${t('print.tooltip')} (${key}P)`}
+            disabled={false}
+            onRun={onPrint}
             labeled
           />
         </Group>

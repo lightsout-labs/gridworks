@@ -15,6 +15,11 @@ are in the [architecture document](../../architecture.md).
 - **A save cannot start while the page unloads**: browsers discard an
   IndexedDB transaction that begins then, so the workbook is saved when
   the page is hidden instead.
+- **A document prints from a frame of its own**, out of sight but with
+  no size rather than hidden, which some browsers print blank; its
+  `print` runs when it has loaded, and the frame stays until the next
+  print, since browsers print after the call returns. The page's own
+  print would print the app around the grid.
 - **The app is kept offline by a service worker that serves it first from
   its cache** (R35), built by `vite-plugin-pwa` over the whole build and
   registered as the page loads. Any address under `/gridworks/` gets

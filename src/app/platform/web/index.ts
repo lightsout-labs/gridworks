@@ -289,6 +289,29 @@ function writeClipboard({ text, html }: ClipboardContents): void {
   }
 }
 
+// The document prints from a frame of its own, so that the app's page is
+// not what prints. The frame has no size rather than none shown, which
+// some browsers would print blank, and stays until the next print, since
+// browsers print it after `print` returns.
+let printFrame: HTMLIFrameElement | undefined;
+
+function print(html: string): void {
+  printFrame?.remove();
+  const frame = document.createElement('iframe');
+  frame.setAttribute('aria-hidden', 'true');
+  // No script runs in it; the same origin lets the app call its print.
+  frame.setAttribute('sandbox', 'allow-modals allow-same-origin');
+  frame.tabIndex = -1;
+  frame.style.cssText =
+    'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+  frame.addEventListener('load', () => frame.contentWindow?.print(), {
+    once: true,
+  });
+  frame.srcdoc = html;
+  document.body.append(frame);
+  printFrame = frame;
+}
+
 /** The platform for browsers. */
 // The service worker that vite-plugin-pwa builds keeps the whole app, so
 // that it opens without a network; it is registered as the page loads,
@@ -321,6 +344,7 @@ export const webPlatform: Platform = {
   workbooks: { list, load, record, save, delete: remove },
   listenToClipboard,
   writeClipboard,
+  print,
   listenToUpdates,
   // A browser that blocks storage throws; the choice is then not remembered.
   preferences: {

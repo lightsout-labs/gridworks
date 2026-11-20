@@ -703,6 +703,10 @@
   font-size: 12px;
 }
 
+.printChecks {
+  margin-top: 16px;
+}
+
 .dialogButtons {
   display: flex;
   justify-content: flex-end;

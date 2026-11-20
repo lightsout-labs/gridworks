@@ -12,6 +12,7 @@ import { FilterButton } from './Filter';
 import { ListButton, RejectedEntry } from './Validation';
 import { CellDialog, type Editing } from './Notes';
 import { FindPanel, type FindMode } from './Find';
+import { PrintPanel } from './Print';
 import { Translation } from './controls';
 import { droppedMessage, isCsv, workbookName } from './files';
 import { startingLanguage, translator, type Language } from './i18n';
@@ -73,6 +74,7 @@ export function App({ platform }: { platform: Platform }) {
   const [busy, setBusy] = useState(false);
   const [finding, setFinding] = useState<FindMode | null>(null);
   const [editing, setEditing] = useState<Editing | null>(null);
+  const [printing, setPrinting] = useState(false);
 
   // On the root element, so that the tooltips and menus drawn outside the
   // app's own element are themed too, and before the grid first paints.
@@ -188,7 +190,6 @@ export function App({ platform }: { platform: Platform }) {
     if (!open) return;
     const { view } = open;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (view.state.entry) return;
       const command = shortcut(
         {
           key: event.key,
@@ -200,6 +201,14 @@ export function App({ platform }: { platform: Platform }) {
         MAC,
       );
       if (!command) return;
+      // The browser would print the app's page; an entry being typed is
+      // committed first, unless data validation rejects it.
+      if (command === 'print') {
+        event.preventDefault();
+        if (view.commit()) setPrinting(true);
+        return;
+      }
+      if (view.state.entry) return;
       // Find and replace open from anywhere, a text box too, in place of
       // the browser's own find.
       if (command === 'find' || command === 'replace') {
@@ -374,6 +383,7 @@ export function App({ platform }: { platform: Platform }) {
             onOpen={() => void openFile()}
             onSave={() => void saveFile(open.workbook)}
             onExportCsv={() => void exportCsv(open.workbook, open.view)}
+            onPrint={() => setPrinting(true)}
             onCopy={copyToClipboard}
             onFind={setFinding}
             onEdit={edit}
@@ -415,6 +425,12 @@ export function App({ platform }: { platform: Platform }) {
           <SheetTabs {...open} />
           <StatusBar {...open} />
           <FindPanel view={open.view} mode={finding} onMode={setFinding} />
+          <PrintPanel
+            {...open}
+            open={printing}
+            onOpenChange={setPrinting}
+            onPrint={(document) => platform.print(document)}
+          />
           <RejectedEntry view={open.view} />
           <CellDialog
             {...open}
