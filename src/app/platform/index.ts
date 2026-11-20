@@ -84,6 +84,11 @@ export interface Platform {
    */
   writeClipboard(contents: ClipboardContents): void;
   /**
+   * Prints an HTML document through the system's print dialog, which can
+   * also save it as a PDF file.
+   */
+  print(document: string): void;
+  /**
    * Calls `listener` when a newer version of the app has replaced the one
    * this page runs, which a reload of the page shows, until the returned
    * function is called; at once if it has already.

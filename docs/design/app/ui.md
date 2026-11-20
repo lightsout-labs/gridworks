@@ -43,6 +43,26 @@ the [architecture document](../../architecture.md).
 - **Printing builds a plain HTML table** of the sheet or selection with
   print CSS for page size, orientation and margins, and rows that do not
   break across pages (R36). The canvas itself cannot be paginated.
+  `print.ts` builds the document and has no DOM, so it is unit tested; the
+  print panel (`Print.tsx`) only chooses its settings, which it keeps
+  until the page reloads. The sheet prints its cells in use from A1, as
+  `extent` gives them, and the selection each of its ranges within them,
+  on a page of its own, as Excel prints the areas of a selection; with
+  nothing in them, Print is disabled. Excel's defaults apply: portrait,
+  Letter whatever the language (as number formats are), Normal margins
+  (0.75 and 0.7 inch), no gridlines and no headings. Fit to width sets
+  CSS `zoom` on a table wider than the page, from the paper's width less
+  the margins, and never enlarges one. Column headings are a `thead`,
+  which browsers repeat on each page. Cells are drawn as the grid draws
+  them (`rowTexts` and `cellText`, so wrapping, overflow and `####`
+  match), on white paper: black text and borders where the theme's would
+  be, Excel's blue for links. A border is given to both cells beside it,
+  since the collapsed borders of a table would otherwise let a gridline
+  win over the border of the cell to its left or above. Hidden rows and
+  columns, those of a filter too, are left out, and merged cells span
+  those printed. Ctrl/Cmd+P opens the panel from anywhere, an entry
+  being typed committed first, in place of the browser's print of the
+  app's page.
 
 ## Ribbon
 

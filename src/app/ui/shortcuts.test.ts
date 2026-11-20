@@ -39,6 +39,11 @@ describe('shortcut', () => {
     expect(shortcut(press('h', { ctrl: true }), true)).toBe('replace');
   });
 
+  it('prints with Ctrl+P', () => {
+    expect(shortcut(press('p', { ctrl: true }), false)).toBe('print');
+    expect(shortcut(press('p', { meta: true }), true)).toBe('print');
+  });
+
   it('leaves Ctrl+C, X and V to the clipboard events', () => {
     expect(shortcut(press('c', { ctrl: true }), false)).toBeNull();
     expect(shortcut(press('x', { ctrl: true }), false)).toBeNull();

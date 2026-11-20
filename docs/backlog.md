@@ -1311,7 +1311,7 @@ Notes:
 
 ## S32: Printing and saving as PDF
 
-Status: Todo
+Status: In progress
 
 Acceptance criteria:
 - Ctrl/Cmd+P and the ribbon open a print panel for the current sheet or the
