@@ -1,5 +1,11 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { clickCell, enter, expectCell, openApp } from './grid';
+import {
+  clickCell,
+  enter,
+  expectCell,
+  expectOpensInPlace,
+  openApp,
+} from './grid';
 
 const stored = (page: Page) =>
   page.getByRole('list', { name: 'Workbooks in this browser' });
@@ -224,4 +230,46 @@ test('the start screen controls have tooltips and show hover, keyboard focus and
   await expect(create).toBeDisabled();
   expect(await style(create, 'opacity')).toBe('0.5');
   expect(await style(create, 'cursor')).toBe('default');
+});
+
+test('dialogs open in place at the center with a short fade', async ({
+  page,
+}) => {
+  await openApp(page);
+  await clickCell(page, 0, 0);
+  await enter(page, '3');
+  await enter(page, '4');
+  await clickCell(page, 0, 0);
+  await page.keyboard.press('Shift+ArrowDown');
+  const button = (name: string) =>
+    page.getByRole('button', { name, exact: true });
+  const opens = async (name: string, open: () => Promise<void>) => {
+    await open();
+    await expectOpensInPlace(page.getByRole('dialog', { name }));
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+  };
+
+  await opens('Custom number format', async () => {
+    await button('Number format').click();
+    await page
+      .getByRole('menuitem', { name: 'More number formats...' })
+      .click();
+  });
+  await opens('Sort', async () => {
+    await page.getByRole('tab', { name: 'Data' }).click();
+    await button('Custom sort').click();
+  });
+  await opens('Name manager', async () => {
+    await page.getByRole('tab', { name: 'Formulas' }).click();
+    await button('Name manager').click();
+  });
+  await opens('Print', () => page.keyboard.press('ControlOrMeta+p'));
+
+  await goHome(page);
+  await opens('Rename workbook', () => action(page, 'Book1', 'Rename'));
+  await action(page, 'Book1', 'Delete');
+  await expectOpensInPlace(
+    page.getByRole('alertdialog', { name: 'Delete workbook' }),
+  );
 });
