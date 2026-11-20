@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 import { cellRect, UNIFORM } from '../../src/app/grid/geometry';
 
 /** The sheet scrolled to the top at 100%, where these helpers work. */
@@ -185,4 +185,49 @@ export async function openFile(
   await (
     await chooser
   ).setFiles({ name, mimeType, buffer: Buffer.from(bytes) });
+}
+
+/**
+ * Expects a dialog to open in place at the center of the window with a
+ * short fade: its opening animation, replayed and paused, starts where it
+ * ends and faintly transparent.
+ */
+export async function expectOpensInPlace(dialog: Locator): Promise<void> {
+  await expect(dialog).toBeVisible();
+  const frames = await dialog.evaluate((node) => {
+    const element = node as HTMLElement;
+    const frame = () => {
+      const box = element.getBoundingClientRect();
+      return {
+        x: box.x + box.width / 2,
+        y: box.y + box.height / 2,
+        opacity: Number(getComputedStyle(element).opacity),
+      };
+    };
+    element.style.animation = 'none';
+    void element.offsetWidth;
+    element.style.animation = '';
+    const animations = element.getAnimations();
+    for (const animation of animations) {
+      animation.pause();
+      animation.currentTime = 0;
+    }
+    const first = frame();
+    const duration = Math.max(
+      0,
+      ...animations.map((animation) =>
+        Number(animation.effect?.getComputedTiming().endTime ?? 0),
+      ),
+    );
+    for (const animation of animations) animation.finish();
+    return { first, last: frame(), duration };
+  });
+  const size = dialog.page().viewportSize()!;
+  expect(frames.last.x).toBeCloseTo(size.width / 2, 0);
+  expect(frames.last.y).toBeCloseTo(size.height / 2, 0);
+  expect(frames.first.x).toBeCloseTo(frames.last.x, 0);
+  expect(frames.first.y).toBeCloseTo(frames.last.y, 0);
+  expect(frames.first.opacity).toBeLessThan(frames.last.opacity);
+  expect(frames.duration).toBeGreaterThan(0);
+  expect(frames.duration).toBeLessThanOrEqual(200);
 }

@@ -620,7 +620,7 @@
   position: fixed;
   inset: 0;
   background: rgb(0 0 0 / 30%);
-  animation: appear var(--transition);
+  animation: fade var(--transition);
 }
 
 .dialog {
@@ -636,7 +636,15 @@
   box-shadow: var(--shadow);
   color: var(--text);
   transform: translate(-50%, -50%);
-  animation: appear var(--transition);
+  animation: fade var(--transition);
+}
+
+/* A dialog only fades in: a keyframe with a transform would replace the
+   one that centers it, and it would slide in from the bottom right. */
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
 }
 
 .dialogTitle {

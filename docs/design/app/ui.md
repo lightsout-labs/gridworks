@@ -63,6 +63,10 @@ the [architecture document](../../architecture.md).
   those printed. Ctrl/Cmd+P opens the panel from anywhere, an entry
   being typed committed first, in place of the browser's print of the
   app's page.
+- **Dialogs only fade in** (R43), at their place in the center of the
+  window. Menus and panels also move by two pixels as they appear, but a
+  transform in a dialog's keyframes would replace the one that centers it,
+  and the dialog would slide in from the bottom right (#58).
 
 ## Ribbon
 

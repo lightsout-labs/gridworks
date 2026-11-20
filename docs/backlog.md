@@ -1339,7 +1339,7 @@ Notes:
 
 ## S39: Fix dialogs flying in from the bottom right
 
-Status: Todo
+Status: In progress
 Fixes: #58
 
 Acceptance criteria:
